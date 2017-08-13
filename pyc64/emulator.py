@@ -3,6 +3,8 @@ import os
 import tkinter
 import traceback
 import numbers
+import glob
+import time
 from PIL import Image
 
 
@@ -111,6 +113,7 @@ class C64Screen:
     c64_to_str_trans_shifted = {v: k for k, v in str_to_64_trans.items()}
     for c in range(ord('A'), ord('Z')+1):
         c64_to_str_trans_shifted[c] = chr(c)
+    c64_to_str_trans_normal[39] = c64_to_str_trans_shifted[39] = "'"
 
     def __init__(self):
         self.border = 0
@@ -120,8 +123,11 @@ class C64Screen:
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
+        self.update_rate = 100
         self.chars = [32]*40*25      # $0400-$07ff
         self.colors = [self.text] * 40 * 25    # $d800-$dbff
+        self._previous_updated_chars = None
+        self._previous_updated_colors = None
         self.reset()
 
     def reset(self):
@@ -132,6 +138,8 @@ class C64Screen:
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
+        self._previous_updated_chars = None
+        self._previous_updated_colors = None
         for i in range(1000):
             self.chars[i] = 32
             self.colors[i] = self.text
@@ -250,9 +258,9 @@ class C64Screen:
         self.cursor = 0
         self._fix_cursor(on=True)
 
-    def cursorhome(self):
+    def cursormove(self, x=0, y=0):
         self._fix_cursor()
-        self.cursor = 0
+        self.cursor = x + 40*y
         self._fix_cursor(on=True)
 
     def insert(self):
@@ -277,6 +285,12 @@ class C64Screen:
             text = self.str2screen(text)
         return "".join(chr(128 + ord(c)) for c in text)
 
+    def chars_updated_since_last_call(self):
+        result = self.chars != self._previous_updated_chars or self.colors != self._previous_updated_colors
+        self._previous_updated_chars = self.chars.copy()
+        self._previous_updated_colors = self.colors.copy()
+        return result
+
 
 class BasicError(Exception):
     pass
@@ -295,14 +309,23 @@ class GotoLine(Exception):
         self.line = line
 
 
+class StopRunloop(Exception):
+    pass
+
+
+class DoNotPrintReady(Exception):
+    pass
+
+
 class BasicInterpreter:
     def __init__(self, screen):
         self.screen = screen
         self.program = {}
+        self.zeropage = [0] * 256
         self.reset()
 
     def reset(self):
-        import math, hashlib, base64, binascii, sys, platform, Pyro4
+        import math, hashlib, base64, binascii, sys, platform, Pyro4, random
         self.symbols = {
             "md5": hashlib.md5,
             "sha256": hashlib.sha256,
@@ -315,15 +338,15 @@ class BasicInterpreter:
             "platform": platform,
             "π": math.pi,
             "pyro4": Pyro4,
-            "peek": self.peek_func
+            "peek": self.peek_func,
+            "pE": self.peek_func,
+            "rnd": lambda *args: random.random(),
+            "rndi": random.randrange
         }
         for x in dir(math):
             if '_' not in x:
                 self.symbols[x] = getattr(math, x)
-        self.program = {
-            10: "print \"hello\"",
-            20: "goto 10"
-        }
+        self.program = {}
         self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
         self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
         self.screen.writestr("\nready.\n")
@@ -337,31 +360,36 @@ class BasicInterpreter:
                 line = line[:40]
             parts = [x for x in (p.strip() for p in line.split(":")) if x]
             print("RUN CMDS:", parts)  # XXX
-            self.last_error = None
+            self.last_run_error = None
             if parts:
                 for cmd in parts:
                     self._execute_cmd(cmd)
                 if self.current_run_line_index is None:
                     self.screen.writestr("\nready.\n")
-        except (ResetMachineError, StartRunloop, GotoLine):
+        except DoNotPrintReady:
+            pass
+        except (ResetMachineError, StartRunloop, StopRunloop, GotoLine):
             raise
         except BasicError as bx:
-            self.last_error = bx.args[0].lower()
             if self.current_run_line_index is None:
                 self.screen.writestr("\n?" + bx.args[0].lower() + "  error\nready.\n")
             else:
+                self.last_run_error = bx.args[0].lower()
                 line = self.program_lines[self.current_run_line_index]
                 self.screen.writestr("\n?" + bx.args[0].lower() + "  error in {line:d}\nready.\n".format(line=line))
             traceback.print_exc()
         except Exception as ex:
-            self.last_error = str(ex).lower()
+            if self.current_run_line_index is not None:
+                self.last_run_error = str(ex).lower()
             self.screen.writestr("\n?" + str(ex).lower() + "  error\nready.\n")
             traceback.print_exc()
 
     def _execute_cmd(self, cmd):
         if cmd.startswith("read") or cmd.startswith("rE"):
             raise BasicError("out of data")
-        elif cmd.startswith("load") or cmd.startswith("lO"):
+        elif cmd.startswith(("save", "sA")):
+            self.execute_save(cmd)
+        elif cmd.startswith(("load", "lO")):
             self.execute_load(cmd)
         elif cmd.startswith(("print", "?")):
             self.execute_print(cmd)
@@ -377,6 +405,8 @@ class BasicInterpreter:
             self.execute_sys(cmd)
         elif cmd.startswith(("goto", "gO")):
             self.execute_goto(cmd)
+        elif cmd.startswith(("end", "eN")):
+            self.execute_end(cmd)
         elif cmd == "cls":
             self.screen.clearscreen()
         elif cmd.startswith("dos\""):
@@ -386,6 +416,20 @@ class BasicInterpreter:
             if match:
                 symbol, value = match.groups()
                 self.symbols[symbol] = eval(value, self.symbols)
+                return
+            match = re.match("(\d+)\s*(.*)", cmd)
+            if match:
+                if self.current_run_line_index is not None:
+                    raise BasicError("cannot define lines while running")
+                linenum, line = match.groups()
+                line = line.strip()
+                linenum = int(linenum)
+                if not line:
+                    if linenum in self.program:
+                        del self.program[linenum]
+                else:
+                    self.program[linenum] = line
+                raise DoNotPrintReady()
             else:
                 raise BasicError("syntax")
 
@@ -395,15 +439,21 @@ class BasicInterpreter:
         elif cmd.startswith("print"):
             cmd = cmd[5:]
         if cmd:
+            print_newline = "\n"
+            if cmd.endswith((',', ';')):
+                cmd = cmd[:-1]
+                print_newline = ""
             result = eval(cmd, self.symbols)
             if isinstance(result, numbers.Number):
                 if result < 0:
-                    result = str(result)
+                    result = str(result)+" "
                 else:
-                    result = " "+str(result)
+                    result = " "+str(result)+" "
+            else:
+                result = str(result)
         else:
             result = ""
-        self.screen.writestr(result + "\n")
+        self.screen.writestr(result + print_newline)
 
     def execute_goto(self, cmd):
         if cmd.startswith("gO"):
@@ -419,13 +469,20 @@ class BasicInterpreter:
                 raise BasicError("undef'd statement")
             raise GotoLine(line)
 
+    def execute_end(self, cmd):
+        if cmd not in ("eN", "end"):
+            raise BasicError("syntax")
+        if self.current_run_line_index is not None:
+            self.stop_run()
+            raise StopRunloop()
+
     def execute_poke(self, cmd):
         if cmd.startswith("pO"):
             cmd = cmd[2:]
         elif cmd.startswith("poke"):
             cmd = cmd[4:]
-        addr, value = cmd.split(",")
-        addr, value = eval(addr, self.symbols), eval(value, self.symbols)
+        addr, value = cmd.split(',', maxsplit=1)
+        addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
         if addr == 646:
             self.screen.text = value
         elif addr == 53280:
@@ -438,8 +495,8 @@ class BasicInterpreter:
             self.screen.colors[addr - 0xd800] = value
         elif addr == 53272:
             self.screen.shifted = value & 2
-        elif addr == 53265:
-            raise BasicError("screenmode switch not possible")
+        elif 0 <= addr <= 255:
+            self.zeropage[addr] = value
 
     def execute_sys(self, cmd):
         if cmd.startswith("sY"):
@@ -449,6 +506,8 @@ class BasicInterpreter:
         addr = int(cmd)
         if addr in (64738, 64760):
             raise ResetMachineError()
+        if addr == 58640:       # set cursorpos
+            self.screen.cursormove(self.zeropage[211], self.zeropage[214])
         else:
             raise BasicError("no machine language support")
 
@@ -465,7 +524,13 @@ class BasicInterpreter:
             return self.screen.chars[address - 0x0400]
         elif 0xd800 <= address <= 0xdbe7:
             return self.screen.colors[address - 0xd800]
+        elif 0 <= address <= 255:
+            self.update_zeropage()
+            return self.zeropage[address]
         return 0
+
+    def update_zeropage(self):
+        self.zeropage[214], self.zeropage[211] = divmod(self.screen.cursor, 40)  # cursorpos X,Y
 
     def execute_list(self, cmd):
         if cmd.startswith("lI"):
@@ -492,27 +557,71 @@ class BasicInterpreter:
             raise BasicError("syntax")
         self.program.clear()
 
+    def execute_save(self, cmd):
+        if cmd.startswith("sA"):
+            cmd = cmd[2:]
+        elif cmd.startswith("save"):
+            cmd = cmd[4:]
+        cmd = cmd.strip()
+        if cmd.endswith("\",8,1"):
+            cmd = cmd[:-4]
+        elif cmd.endswith("\",8"):
+            cmd = cmd[:-2]
+        if not (cmd.startswith('"') and cmd.endswith('"')):
+            raise BasicError("syntax")
+        cmd = cmd[1:-1]
+        if not cmd:
+            raise BasicError("missing file name")
+        if not self.program:
+            return
+        if not cmd.endswith(".prg"):
+            cmd += ".prg"
+        self.screen.writestr("\nsaving "+cmd)
+        with open(os.path.join("drive8", cmd), "wt", newline=None) as file:
+            for num, line in sorted(self.program.items()):
+                file.write("{:d} {:s}\n".format(num, line))
+
     def execute_load(self, cmd):
         if cmd.startswith("lO"):
             cmd = cmd[2:]
         elif cmd.startswith("load"):
             cmd = cmd[4:]
+        cmd = cmd.strip()
         if cmd.startswith("\"$\""):
             raise BasicError("use dos\"$ instead")
-        if cmd.startswith('"') and cmd.endswith('"'):
-            filename = cmd[1:-1]
-            newprogram = {}
-            num = 10
-            try:
-                with open(os.path.join("drive8", filename), "rt") as file:
-                    for line in file:
-                        newprogram[num] = line
-                        num += 10
-            except FileNotFoundError:
+        if cmd.endswith("\",8,1"):
+            cmd = cmd[:-4]
+        elif cmd.endswith("\",8"):
+            cmd = cmd[:-2]
+        if not (cmd.startswith('"') and cmd.endswith('"')):
+            raise BasicError("syntax")
+        filename = cmd[1:-1]
+        self.screen.writestr("searching for "+filename+"\n")
+        if not os.path.isfile(os.path.join("drive8", filename)):
+            filename = filename+".*"
+        if filename.endswith('*'):
+            # take the first file in the directory matching the pattern
+            filename = glob.glob(os.path.join("drive8", filename))
+            if not filename:
                 raise BasicError("file not found")
-            self.program = newprogram
-            return
-        raise BasicError("syntax")
+            filename = os.path.basename(list(sorted(filename))[0])
+        newprogram = {}
+        num = 1
+        try:
+            with open(os.path.join("drive8", filename), "rt", newline=None) as file:
+                self.screen.writestr("loading " + filename + "\n")
+                for line in file:
+                    line = line.rstrip()
+                    if filename.endswith((".prg", ".PRG")):
+                        num, line = line.split(maxsplit=1)
+                        newprogram[int(num)] = line
+                    else:
+                        newprogram[num] = line.rstrip()
+                        num += 1
+        except FileNotFoundError:
+            raise BasicError("file not found")
+        self.program = newprogram
+        return
 
     def execute_dos(self, cmd):
         cmd = cmd[4:]
@@ -520,11 +629,13 @@ class BasicInterpreter:
             # show disk directory
             files = sorted(os.listdir("drive8"))
             catalog = ((file, os.path.getsize(os.path.join("drive8", file))) for file in files)
-            header = "\"floppy contents \" **  2a"
+            header = "\"floppy contents \" ** 2a"
             self.screen.writestr("\n0 "+self.screen.inversevid(header)+"\n", petscii=True)
             for file, size in sorted(catalog):
-                self.screen.writestr("{:<5d}\"{:s}\"".format(size, file))
-            self.screen.writestr("\n9999 blocks free.\n")
+                name, suff = os.path.splitext(file)
+                name = '"'+name+'"'
+                self.screen.writestr("{:<5d}{:19s}{:3s}\n".format(size, name, suff[1:]))
+            self.screen.writestr("9999 blocks free.\n")
             return
         raise BasicError("syntax")
 
@@ -533,15 +644,16 @@ class BasicInterpreter:
         start = int(cmd) if cmd else None
         if start is not None and start not in self.program:
             raise BasicError("undef'd statement")
-        self.program_lines = list(sorted(self.program))
-        self.current_run_line_index = 0 if start is None else self.program_lines.index(start)
-        raise StartRunloop()
+        if self.program:
+            self.program_lines = list(sorted(self.program))
+            self.current_run_line_index = 0 if start is None else self.program_lines.index(start)
+            raise StartRunloop()
 
     def stop_run(self):
         print("STOP RUNNING!!!!")  # XXX
         self.current_run_line_index = None
         self.program_lines = None
-        self.last_error = None
+        self.last_run_error = None
 
 
 class EmulatorWindow(tkinter.Tk):
@@ -572,6 +684,7 @@ class EmulatorWindow(tkinter.Tk):
         self.repaint()
         self.canvas.pack()
         self.cursor_blink_after = self.after(self.screen.cursor_blink_rate, self.blink_cursor)
+        self.after(self.screen.update_rate, self.screen_refresher)
         self.run_step_after = None
 
     def _keyevent(self, event):
@@ -631,7 +744,7 @@ class EmulatorWindow(tkinter.Tk):
                 if self.key_shift_down:
                     self.screen.clearscreen()
                 else:
-                    self.screen.cursorhome()
+                    self.screen.cursormove()
                 self.repaint()
             elif char == 'Insert':
                 self.screen.insert()
@@ -645,7 +758,14 @@ class EmulatorWindow(tkinter.Tk):
         except StartRunloop:
             if self.run_step_after:
                 raise BasicError("program already running")
-            self.run_step_after = self.after(1, self._do_run_step)
+            if self.basic.program:
+                self.run_step_after = self.after_idle(self._do_run_step)
+            else:
+                self.screen.writestr("\nready.\n")
+        except StopRunloop:
+            if self.run_step_after:
+                self.after_cancel(self.run_step_after)
+                self.run_step_after = None
 
     def runstop(self):
         print("runstop")
@@ -686,14 +806,15 @@ class EmulatorWindow(tkinter.Tk):
         # set border color and screen color
         self.canvas["bg"] = self.tkcolor(self.screen.border)
         self.canvas.itemconfigure(self.screenrect, fill=self.tkcolor(self.screen.screen))
-        bgcol = self.tkcolor(self.screen.screen)
-        for y in range(25):
-            for x in range(40):
-                forecol = self.tkcolor(self.screen.colors[x + y * 40])
-                bm = self.charbitmaps[x+y*40]
-                style = "shifted" if self.screen.shifted else "normal"
-                bitmap = "@"+os.path.join(self.dirprefix, "charset/{:s}-{:02x}.xbm".format(style, self.screen.chars[x + y * 40]))
-                self.canvas.itemconfigure(bm, foreground=forecol, background=bgcol, bitmap=bitmap)
+        if self.screen.chars_updated_since_last_call():
+            bgcol = self.tkcolor(self.screen.screen)
+            for y in range(25):
+                for x in range(40):
+                    forecol = self.tkcolor(self.screen.colors[x + y * 40])
+                    bm = self.charbitmaps[x+y*40]
+                    style = "shifted" if self.screen.shifted else "normal"
+                    bitmap = "@"+os.path.join(self.dirprefix, "charset/{:s}-{:02x}.xbm".format(style, self.screen.chars[x + y * 40]))
+                    self.canvas.itemconfigure(bm, foreground=forecol, background=bgcol, bitmap=bitmap)
 
     def screencor(self, cc):
         return 64+cc[0]*16, 64+cc[1]*16
@@ -703,8 +824,12 @@ class EmulatorWindow(tkinter.Tk):
 
     def blink_cursor(self):
         self.screen.blink_cursor()
-        self.repaint()
+        # self.repaint()
         self.cursor_blink_after = self.after(self.screen.cursor_blink_rate, self.blink_cursor)
+
+    def screen_refresher(self):
+        self.repaint()
+        self.after(self.screen.update_rate, self.screen_refresher)
 
     def reset_machine(self):
         if self.cursor_blink_after:
@@ -717,21 +842,25 @@ class EmulatorWindow(tkinter.Tk):
         self.after(600, reset2)
 
     def _do_run_step(self):
-        if self.basic.current_run_line_index is not None:
+        if self.basic.current_run_line_index is not None and self.basic.last_run_error is None:
             if self.basic.current_run_line_index < len(self.basic.program_lines):
                 next_linenum = self.basic.program_lines[self.basic.current_run_line_index]
                 line = self.basic.program[next_linenum]
                 try:
                     self.execute_line(line)
-                    self.basic.current_run_line_index += 1
+                    if self.basic.current_run_line_index is not None:
+                        self.basic.current_run_line_index += 1
                 except GotoLine as ex:
                     self.basic.current_run_line_index = self.basic.program_lines.index(ex.line)
-                if self.basic.current_run_line_index < len(self.basic.program_lines):
-                    self.run_step_after = self.after(1, self._do_run_step)
+                if self.basic.last_run_error is None and \
+                        self.basic.current_run_line_index is not None and \
+                        self.basic.current_run_line_index < len(self.basic.program_lines):
+                    time.sleep(0.0001)
+                    self.run_step_after = self.after_idle(self._do_run_step)
                     return
                 else:
                     self.run_step_after = None
-                    if not self.basic.last_error:
+                    if not self.basic.last_run_error:
                         self.screen.writestr("\nready.\n")
             # program ends
             self.basic.stop_run()
@@ -739,7 +868,7 @@ class EmulatorWindow(tkinter.Tk):
 
 
 def setup():
-    emu = EmulatorWindow("s1")
+    emu = EmulatorWindow("Fast Commodore-64 emulator in pure Python!")
     emu.mainloop()
 
 
