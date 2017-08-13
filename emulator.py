@@ -17,7 +17,7 @@ import time
 from PIL import Image
 
 
-class C64Screen:
+class C64ScreenAndMemory:
     palette = (
         0x000000,  # black
         0xFFFFFF,  # white
@@ -134,8 +134,8 @@ class C64Screen:
         self.cursor_state = False
         self.cursor_blink_rate = 300
         self.update_rate = 100
-        self.chars = [32] * 40 * 25      # $0400-$07ff
-        self.colors = [self.text] * 40 * 25    # $d800-$dbff
+        self._chars = [32] * 40 * 25      # $0400-$07ff
+        self._colors = [self.text] * 40 * 25    # $d800-$dbff
         self._previous_updated_chars = None
         self._previous_updated_colors = None
         self.reset()
@@ -151,13 +151,30 @@ class C64Screen:
         self._previous_updated_chars = None
         self._previous_updated_colors = None
         for i in range(1000):
-            self.chars[i] = 32
-            self.colors[i] = self.text
+            self._chars[i] = 32
+            self._colors[i] = self.text
+
+    def getchar(self, x, y):
+        """get the character AND color value at position x,y"""
+        mempos = x + y * 40
+        return self._chars[mempos], self._colors[mempos]
+
+    def setcharmem(self, mempos, value):
+        self._chars[mempos] = value
+
+    def setcolormem(self, mempos, value):
+        self._colors[mempos] = value
+
+    def getcharmem(self, mempos):
+        return self._chars[mempos]
+
+    def getcolormem(self, mempos):
+        return self._colors[mempos]
 
     def blink_cursor(self):
         self.cursor_state = not self.cursor_state
-        self.chars[self.cursor] ^= 0x80
-        self.colors[self.cursor] = self.text
+        self._chars[self.cursor] ^= 0x80
+        self._colors[self.cursor] = self.text
 
     @classmethod
     def str2screen(cls, string):
@@ -183,8 +200,8 @@ class C64Screen:
             if not petscii:
                 line = self.str2screen(line)
             for c in line:
-                self.chars[cursor] = ord(c)
-                self.colors[cursor] = self.text
+                self._chars[cursor] = ord(c)
+                self._colors[cursor] = self.text
                 cursor += 1
                 if cursor >= 1000:
                     self._scroll_up()
@@ -196,26 +213,26 @@ class C64Screen:
         if on:
             self.cursor_state = True
         if self.cursor_state:
-            self.chars[self.cursor] ^= 0x80
-            self.colors[self.cursor] = self.text
+            self._chars[self.cursor] ^= 0x80
+            self._colors[self.cursor] = self.text
 
     def _scroll_up(self):
         # scroll the screen up one line
         for i in range(0, 960):
-            self.chars[i] = self.chars[i + 40]
-            self.colors[i] = self.colors[i + 40]
+            self._chars[i] = self._chars[i + 40]
+            self._colors[i] = self._colors[i + 40]
         for i in range(960, 1000):
-            self.chars[i] = 32
-            self.colors[i] = self.text
+            self._chars[i] = 32
+            self._colors[i] = self.text
 
     def _scroll_down(self):
         # scroll the screen down one line
         for i in range(999, 39, -1):
-            self.chars[i] = self.chars[i - 40]
-            self.colors[i] = self.colors[i - 40]
+            self._chars[i] = self._chars[i - 40]
+            self._colors[i] = self._colors[i - 40]
         for i in range(0, 40):
-            self.chars[i] = 32
-            self.colors[i] = self.text
+            self._chars[i] = 32
+            self._colors[i] = self.text
 
     def return_key(self):
         self._fix_cursor()
@@ -229,8 +246,8 @@ class C64Screen:
         if self.cursor > 0:
             self._fix_cursor()
             self.cursor -= 1
-            self.chars[self.cursor] = 32
-            self.colors[self.cursor] = self.text
+            self._chars[self.cursor] = 32
+            self._colors[self.cursor] = self.text
             self._fix_cursor(on=True)
 
     def up(self):
@@ -263,8 +280,8 @@ class C64Screen:
 
     def clearscreen(self):
         for i in range(1000):
-            self.chars[i] = 32
-            self.colors[i] = self.text
+            self._chars[i] = 32
+            self._colors[i] = self.text
         self.cursor = 0
         self._fix_cursor(on=True)
 
@@ -280,16 +297,16 @@ class C64Screen:
     def insert(self):
         self._fix_cursor()
         for i in range(40 * (self.cursor // 40) + 39, self.cursor, -1):
-            self.chars[i] = self.chars[i - 1]
-            self.colors[i] = self.colors[i - 1]
-        self.chars[self.cursor] = 32
-        self.colors[self.cursor] = self.text
+            self._chars[i] = self._chars[i - 1]
+            self._colors[i] = self._colors[i - 1]
+        self._chars[self.cursor] = 32
+        self._colors[self.cursor] = self.text
         self._fix_cursor(on=True)
 
     def current_line(self, amount=1):
         start = 40 * (self.cursor // 40)
         self._fix_cursor()
-        chars = [chr(c) for c in self.chars[start:start + 40 * amount]]
+        chars = [chr(c) for c in self._chars[start:start + 40 * amount]]
         self._fix_cursor()
         trans = self.c64_to_str_trans_shifted if self.shifted else self.c64_to_str_trans_normal
         return ("".join(chars)).translate(trans)
@@ -299,10 +316,10 @@ class C64Screen:
             text = self.str2screen(text)
         return "".join(chr(128 + ord(c)) for c in text)
 
-    def chars_updated_since_last_call(self):
-        result = self.chars != self._previous_updated_chars or self.colors != self._previous_updated_colors
-        self._previous_updated_chars = self.chars.copy()
-        self._previous_updated_colors = self.colors.copy()
+    def is_display_dirty(self):
+        result = self._chars != self._previous_updated_chars or self._colors != self._previous_updated_colors
+        self._previous_updated_chars = self._chars.copy()
+        self._previous_updated_colors = self._colors.copy()
         return result
 
 
@@ -597,9 +614,9 @@ class BasicInterpreter:
         elif addr == 53281:
             self.screen.screen = value
         elif 0x0400 <= addr <= 0x07e7:
-            self.screen.chars[addr - 0x0400] = value
+            self.screen.setcharmem(addr - 0x0400, value)
         elif 0xd800 <= addr <= 0xdbe7:
-            self.screen.colors[addr - 0xd800] = value
+            self.screen.setcolormem(addr - 0xd800, value)
         elif addr == 53272:
             self.screen.shifted = value & 2
         elif 0 <= addr <= 255:
@@ -632,9 +649,9 @@ class BasicInterpreter:
         elif address == 53272:
             return 23 if self.screen.shifted else 21
         elif 0x0400 <= address <= 0x07e7:
-            return self.screen.chars[address - 0x0400]
+            return self.screen.getcharmem(address - 0x0400)
         elif 0xd800 <= address <= 0xdbe7:
-            return self.screen.colors[address - 0xd800]
+            return self.screen.getcolormem(address - 0xd800)
         elif 0 <= address <= 255:
             self.update_zeropage()
             return self.zeropage[address]
@@ -838,7 +855,7 @@ class EmulatorWindow(tkinter.Tk):
         super().__init__()
         self.wm_title(title)
         self.geometry("+200+100")
-        self.screen = C64Screen()
+        self.screen = C64ScreenAndMemory()
         self.basic = BasicInterpreter(self.screen)
         self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
         topleft = self.screencor((0, 0))
@@ -995,39 +1012,44 @@ class EmulatorWindow(tkinter.Tk):
         # normal
         source_chars = Image.open("charset/charset-normal.png")
         for i in range(256):
-            chars = source_chars.copy()
-            row, col = divmod(i, 40)
-            ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-            ci = ci.convert(mode="1", dither=None)
-            ci.save("charset/normal-{:02x}.xbm".format(i), "xbm")
+            filename = "charset/normal-{:02x}.xbm".format(i)
+            if not os.path.isfile(filename):
+                chars = source_chars.copy()
+                row, col = divmod(i, 40)
+                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                ci = ci.convert(mode="1", dither=None)
+                ci.save(filename, "xbm")
         # shifted
         source_chars = Image.open("charset/charset-shifted.png")
         for i in range(256):
-            chars = source_chars.copy()
-            row, col = divmod(i, 40)
-            ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-            ci = ci.convert(mode="1", dither=None)
-            ci.save("charset/shifted-{:02x}.xbm".format(i), "xbm")
+            filename = "charset/shifted-{:02x}.xbm".format(i)
+            if not os.path.isfile(filename):
+                chars = source_chars.copy()
+                row, col = divmod(i, 40)
+                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                ci = ci.convert(mode="1", dither=None)
+                ci.save(filename, "xbm")
 
     def repaint(self):
         # set border color and screen color
         self.canvas["bg"] = self.tkcolor(self.screen.border)
         self.canvas.itemconfigure(self.screenrect, fill=self.tkcolor(self.screen.screen))
-        if self.screen.chars_updated_since_last_call():
+        if self.screen.is_display_dirty():
             bgcol = self.tkcolor(self.screen.screen)
+            style = "shifted" if self.screen.shifted else "normal"
             for y in range(25):
                 for x in range(40):
-                    forecol = self.tkcolor(self.screen.colors[x + y * 40])
+                    char, color = self.screen.getchar(x, y)
+                    forecol = self.tkcolor(color)
                     bm = self.charbitmaps[x + y * 40]
-                    style = "shifted" if self.screen.shifted else "normal"
-                    bitmap = "@charset/{:s}-{:02x}.xbm".format(style, self.screen.chars[x + y * 40])
+                    bitmap = "@charset/{:s}-{:02x}.xbm".format(style, char)
                     self.canvas.itemconfigure(bm, foreground=forecol, background=bgcol, bitmap=bitmap)
 
     def screencor(self, cc):
         return 64 + cc[0] * 16, 64 + cc[1] * 16
 
     def tkcolor(self, color):
-        return "#{:06x}".format(C64Screen.palette[color % 16])
+        return "#{:06x}".format(C64ScreenAndMemory.palette[color % 16])
 
     def blink_cursor(self):
         self.screen.blink_cursor()
