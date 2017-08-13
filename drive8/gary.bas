@@ -1,7 +1,7 @@
 0 rem --- gary by genesis project ---
 1 rem --- see http://csdb.dk/release/?id=121498 ---
 9 rem
-10 poke 53280,0: poke 53281,0: restore
+10 poke 53280,0: poke 53281,0: poke 53272,21: restore
 20 for i=0 to 999
 30 read c: poke 1024+i, c
 40 next i

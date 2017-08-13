@@ -2,9 +2,9 @@
 20 cls: poke 53272,23
 30 poke 53280,2: poke 53281,0: poke 646,7
 40 poke 211,18: poke 214, 12: sys 58640
-41 print "Hello"
+41 print "hello"
 50 poke 211,16: poke 214, 13: sys 58640
-51 print "There!"
+51 print "there!"
 70 sleep 0.2
 99 rem ---draw color bars---
 100 for color=0 to 15
@@ -28,4 +28,4 @@
 400 for i=0 to 11
 410 print
 420 next i
-430 print "Bye!"
+430 print "bye!"

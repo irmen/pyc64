@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+'fast' Commodore-64 'emulator' in 100% pure Python 3.x :)
+
+Written by Irmen de Jong (irmen@razorvine.net)
+License: MIT open-source.
+
+"""
 import re
 import os
 import tkinter
@@ -112,7 +120,7 @@ class C64Screen:
 
     c64_to_str_trans_normal = {v: k for k, v in str_to_64_trans.items()}
     c64_to_str_trans_shifted = {v: k for k, v in str_to_64_trans.items()}
-    for c in range(ord('A'), ord('Z')+1):
+    for c in range(ord('A'), ord('Z') + 1):
         c64_to_str_trans_shifted[c] = chr(c)
     c64_to_str_trans_normal[39] = c64_to_str_trans_shifted[39] = "'"
 
@@ -125,7 +133,7 @@ class C64Screen:
         self.cursor_state = False
         self.cursor_blink_rate = 300
         self.update_rate = 100
-        self.chars = [32]*40*25      # $0400-$07ff
+        self.chars = [32] * 40 * 25      # $0400-$07ff
         self.colors = [self.text] * 40 * 25    # $d800-$dbff
         self._previous_updated_chars = None
         self._previous_updated_colors = None
@@ -261,7 +269,7 @@ class C64Screen:
 
     def cursormove(self, x=0, y=0):
         self._fix_cursor()
-        self.cursor = x + 40*y
+        self.cursor = x + 40 * y
         self._fix_cursor(on=True)
 
     def cursorpos(self):
@@ -270,9 +278,9 @@ class C64Screen:
 
     def insert(self):
         self._fix_cursor()
-        for i in range(40*(self.cursor // 40) + 39, self.cursor, -1):
-            self.chars[i] = self.chars[i-1]
-            self.colors[i] = self.colors[i-1]
+        for i in range(40 * (self.cursor // 40) + 39, self.cursor, -1):
+            self.chars[i] = self.chars[i - 1]
+            self.colors[i] = self.colors[i - 1]
         self.chars[self.cursor] = 32
         self.colors[self.cursor] = self.text
         self._fix_cursor(on=True)
@@ -280,7 +288,7 @@ class C64Screen:
     def current_line(self, amount=1):
         start = 40 * (self.cursor // 40)
         self._fix_cursor()
-        chars = [chr(c) for c in self.chars[start:start+40*amount]]
+        chars = [chr(c) for c in self.chars[start:start + 40 * amount]]
         self._fix_cursor()
         trans = self.c64_to_str_trans_shifted if self.shifted else self.c64_to_str_trans_normal
         return ("".join(chars)).translate(trans)
@@ -488,9 +496,9 @@ class BasicInterpreter:
             result = eval(cmd, self.symbols)
             if isinstance(result, numbers.Number):
                 if result < 0:
-                    result = str(result)+" "
+                    result = str(result) + " "
                 else:
-                    result = " "+str(result)+" "
+                    result = " " + str(result) + " "
             else:
                 result = str(result)
         else:
@@ -515,7 +523,7 @@ class BasicInterpreter:
             start = eval(start, self.symbols)
             to = eval(to, self.symbols)
             step = eval(step, self.symbols)
-            iterator = iter(range(start, to+1, step))
+            iterator = iter(range(start, to + 1, step))
             self.forloops[varname] = (self.current_run_line_index, iterator)
             self.symbols[varname] = next(iterator)
         else:
@@ -551,7 +559,7 @@ class BasicInterpreter:
         line = int(cmd)
         if self.current_run_line_index is None:
             # do a run instead
-            self.execute_run("run "+str(line))
+            self.execute_run("run " + str(line))
         else:
             if line not in self.program:
                 raise BasicError("undef'd statement")
@@ -579,7 +587,7 @@ class BasicInterpreter:
             cmd = cmd[4:]
         addr, value = cmd.split(',', maxsplit=1)
         addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
-        if addr < 0 or addr > 0xffff or value <0 or value > 0xff:
+        if addr < 0 or addr > 0xffff or value < 0 or value > 0xff:
             raise BasicError("illegal quantity")
         if addr == 646:
             self.screen.text = value
@@ -640,6 +648,9 @@ class BasicInterpreter:
         elif cmd.startswith("list"):
             cmd = cmd[4:]
         start, sep, to = cmd.partition("-")
+        start = start.strip()
+        if to:
+            to = to.strip()
         if not self.program:
             return
         start = int(start) if start else 0
@@ -680,7 +691,7 @@ class BasicInterpreter:
             return
         if not cmd.endswith(".bas"):
             cmd += ".bas"
-        self.screen.writestr("\nsaving "+cmd)
+        self.screen.writestr("\nsaving " + cmd)
         with open(os.path.join("drive8", cmd), "wt", newline=None) as file:
             for num, line in sorted(self.program.items()):
                 file.write("{:d} {:s}\n".format(num, line))
@@ -701,9 +712,9 @@ class BasicInterpreter:
         if not (cmd.startswith('"') and cmd.endswith('"')):
             raise BasicError("syntax")
         filename = cmd[1:-1]
-        self.screen.writestr("searching for "+filename+"\n")
+        self.screen.writestr("searching for " + filename + "\n")
         if not os.path.isfile(os.path.join("drive8", filename)):
-            filename = filename+".*"
+            filename = filename + ".*"
         if filename.endswith('*'):
             # take the first file in the directory matching the pattern
             filename = glob.glob(os.path.join("drive8", filename))
@@ -737,11 +748,11 @@ class BasicInterpreter:
             files = sorted(os.listdir("drive8"))
             catalog = ((file, os.path.getsize(os.path.join("drive8", file))) for file in files)
             header = "\"floppy contents \" ** 2a"
-            self.screen.writestr("\n0 "+self.screen.inversevid(header)+"\n", petscii=True)
+            self.screen.writestr("\n0 " + self.screen.inversevid(header) + "\n", petscii=True)
             for file, size in sorted(catalog):
                 name, suff = os.path.splitext(file)
-                name = '"'+name+'"'
-                self.screen.writestr("{:<5d}{:19s}{:3s}\n".format(size//256, name, suff[1:]))
+                name = '"' + name + '"'
+                self.screen.writestr("{:<5d}{:19s}{:3s}\n".format(size // 256, name, suff[1:]))
             self.screen.writestr("9999 blocks free.\n")
             return
         raise BasicError("syntax")
@@ -829,7 +840,7 @@ class EmulatorWindow(tkinter.Tk):
         self.geometry("+200+100")
         self.screen = C64Screen()
         self.basic = BasicInterpreter(self.screen)
-        self.canvas = tkinter.Canvas(self, width=128+40*16, height=128+25*16, borderwidth=0, highlightthickness=0)
+        self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
         topleft = self.screencor((0, 0))
         botright = self.screencor((40, 25))
         self.screenrect = self.canvas.create_rectangle(topleft[0], topleft[1], botright[0], botright[1], outline="")
@@ -839,7 +850,7 @@ class EmulatorWindow(tkinter.Tk):
         for y in range(25):
             for x in range(40):
                 cor = self.screencor((x, y))
-                bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@"+os.path.join(self.dirprefix, "charset/normal-20.xbm"),
+                bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@" + os.path.join(self.dirprefix, "charset/normal-20.xbm"),
                                                foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
                 self.charbitmaps.append(bm)
         self.key_shift_down = False
@@ -850,7 +861,7 @@ class EmulatorWindow(tkinter.Tk):
         self.canvas.pack()
         self.cursor_blink_after = self.after(self.screen.cursor_blink_rate, self.blink_cursor)
         self.after(self.screen.update_rate, self.screen_refresher)
-        introtxt = self.canvas.create_text(topleft[0]+320, topleft[0]+180, text="pyc64 basic & function keys active", fill="white")
+        introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180, text="pyc64 basic & function keys active", fill="white")
         self.after(2500, lambda: self.canvas.delete(introtxt))
         self.run_step_after = None
 
@@ -919,17 +930,17 @@ class EmulatorWindow(tkinter.Tk):
             elif char == 'F7':      # directory shortcut key
                 self.screen.clearscreen()
                 dir_cmd = "dos\"$"
-                self.screen.writestr(dir_cmd+"\n")
+                self.screen.writestr(dir_cmd + "\n")
                 self.execute_line(dir_cmd)
             elif char == 'F5':      # load file shortcut key
                 if self.key_shift_down:
                     load_cmd = "load \"*\",8: "
-                    self.screen.writestr(load_cmd+"\n")
+                    self.screen.writestr(load_cmd + "\n")
                     self.execute_line(load_cmd)
                 else:
                     self.screen.writestr("load ")
                     x, y = self.screen.cursorpos()
-                    self.screen.cursormove(x+17, y)
+                    self.screen.cursormove(x + 17, y)
                     self.screen.writestr(",8:   ")
                     line = self.screen.current_line(1)
                     self.screen.return_key()
@@ -986,7 +997,7 @@ class EmulatorWindow(tkinter.Tk):
         for i in range(256):
             chars = source_chars.copy()
             row, col = divmod(i, 40)
-            ci = chars.crop((col*16, row*16, col*16+16, row*16+16))
+            ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
             ci = ci.convert(mode="1", dither=None)
             ci.save(os.path.join(self.dirprefix, "charset/normal-{:02x}.xbm".format(i)), "xbm")
         # shifted
@@ -994,7 +1005,7 @@ class EmulatorWindow(tkinter.Tk):
         for i in range(256):
             chars = source_chars.copy()
             row, col = divmod(i, 40)
-            ci = chars.crop((col*16, row*16, col*16+16, row*16+16))
+            ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
             ci = ci.convert(mode="1", dither=None)
             ci.save(os.path.join(self.dirprefix, "charset/shifted-{:02x}.xbm".format(i)), "xbm")
 
@@ -1007,13 +1018,13 @@ class EmulatorWindow(tkinter.Tk):
             for y in range(25):
                 for x in range(40):
                     forecol = self.tkcolor(self.screen.colors[x + y * 40])
-                    bm = self.charbitmaps[x+y*40]
+                    bm = self.charbitmaps[x + y * 40]
                     style = "shifted" if self.screen.shifted else "normal"
-                    bitmap = "@"+os.path.join(self.dirprefix, "charset/{:s}-{:02x}.xbm".format(style, self.screen.chars[x + y * 40]))
+                    bitmap = "@" + os.path.join(self.dirprefix, "charset/{:s}-{:02x}.xbm".format(style, self.screen.chars[x + y * 40]))
                     self.canvas.itemconfigure(bm, foreground=forecol, background=bgcol, bitmap=bitmap)
 
     def screencor(self, cc):
-        return 64+cc[0]*16, 64+cc[1]*16
+        return 64 + cc[0] * 16, 64 + cc[1] * 16
 
     def tkcolor(self, color):
         return "#{:06x}".format(C64Screen.palette[color % 16])
@@ -1031,6 +1042,7 @@ class EmulatorWindow(tkinter.Tk):
         if self.cursor_blink_after:
             self.after_cancel(self.cursor_blink_after)
         self.screen.reset()
+
         def reset2():
             self.basic.reset()
             self.cursor_blink_after = self.after(self.screen.cursor_blink_rate, self.blink_cursor)
@@ -1068,5 +1080,5 @@ def setup():
     emu.mainloop()
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     setup()

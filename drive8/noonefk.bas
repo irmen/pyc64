@@ -1,7 +1,7 @@
 0 rem --- N00NEFUKWITEN0NE by EN0NE ---
 1 rem --- see http://csdb.dk/release/?id=122618 ---
 9 rem
-10 poke 53280,3: poke 53281,11: restore
+10 poke 53280,3: poke 53281,11: poke 53272,21: restore
 20 for i=0 to 999
 30 read c: poke 1024+i, c
 40 next i

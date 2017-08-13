@@ -1,14 +1,15 @@
 0 rem --- ihasfloppy by genesis project ---
 1 rem --- see http://csdb.dk/release/?id=122467 ---
 9 rem
-10 poke 53280,0: poke 53281,0: restore
+10 poke 53280,0: poke 53281,0: poke 53272,21: restore
 20 for i=0 to 999
 30 read c: poke 1024+i, c
 40 next i
 50 for i=0 to 999
 60 read c: poke 55296+i, c
 70 next i
-80 sleep 4
+80 print "image is ihasfloppy by genesis project"
+90 sleep 4
 999 rem --- character screen data ---
 1000 data 32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,233,205,32,32,32,32,32,32,32,32,32,32,32,32,32,32
 1001 data 32,32,32,32,65,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,233,205,205,227,205,105,32,32,32,32,32,32,32,32,32,32,32,32,32,32
