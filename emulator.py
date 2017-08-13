@@ -133,6 +133,7 @@ class C64ScreenAndMemory:
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
+        self.cursorblink_enabled = True
         self.update_rate = 100
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
@@ -150,6 +151,7 @@ class C64ScreenAndMemory:
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
+        self.cursorblink_enabled = True
         self._previous_checked_chars = None
         self._previous_checked_colors = None
         for i in range(256):
@@ -831,7 +833,6 @@ class BasicInterpreter:
         elif cmd.startswith("restore"):
             cmd = cmd[7:]
         if cmd:
-            raise
             raise BasicError("syntax")
         self.data_line = None
         self.data_index = None
@@ -894,7 +895,7 @@ class EmulatorWindow(tkinter.Tk):
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
         self.repaint()
         self.canvas.pack()
-        self.cursor_blink_after = self.after(self.screen.cursor_blink_rate, self.blink_cursor)
+        self.after(self.screen.cursor_blink_rate, self.blink_cursor)
         self.after(self.screen.update_rate, self.screen_refresher)
         introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180, text="pyc64 basic & function keys active", fill="white")
         self.after(2500, lambda: self.canvas.delete(introtxt))
@@ -994,10 +995,12 @@ class EmulatorWindow(tkinter.Tk):
             self.basic.execute_line(line)
         except ResetMachineError:
             self.reset_machine()
+            return False
         except StartRunloop:
             if self.run_step_after:
                 raise BasicError("program already running")
             if self.basic.program:
+                self.screen.cursorblink_enabled = False
                 self.run_step_after = self.after_idle(self._do_run_step)
             else:
                 self.screen.writestr("\nready.\n")
@@ -1011,6 +1014,7 @@ class EmulatorWindow(tkinter.Tk):
             time.sleep(sx.args[0])
             if self.basic.current_run_line_index is None:
                 self.screen.writestr("\nready.\n")
+        return True
 
     def runstop(self):
         if self.basic.current_run_line_index is not None:
@@ -1020,6 +1024,7 @@ class EmulatorWindow(tkinter.Tk):
                 self.after_cancel(self.run_step_after)
             self.run_step_after = None
             self.screen.writestr("\nbreak in {:d}\nready.\n".format(line))
+            self.screen.cursorblink_enabled = True
 
     def keyrelease(self, char, mouseposition):
         # print("keyrelease", repr(char), mouseposition)
@@ -1072,22 +1077,23 @@ class EmulatorWindow(tkinter.Tk):
         return "#{:06x}".format(C64ScreenAndMemory.palette[color % 16])
 
     def blink_cursor(self):
-        self.screen.blink_cursor()
-        # self.repaint()
-        self.cursor_blink_after = self.after(self.screen.cursor_blink_rate, self.blink_cursor)
+        if self.screen.cursorblink_enabled:
+            self.screen.blink_cursor()
+            # self.repaint()
+        self.after(self.screen.cursor_blink_rate, self.blink_cursor)
 
     def screen_refresher(self):
         self.repaint()
         self.after(self.screen.update_rate, self.screen_refresher)
 
     def reset_machine(self):
-        if self.cursor_blink_after:
-            self.after_cancel(self.cursor_blink_after)
+        self.run_step_after = None
         self.screen.reset()
+        self.screen.cursorblink_enabled = False
 
         def reset2():
             self.basic.reset()
-            self.cursor_blink_after = self.after(self.screen.cursor_blink_rate, self.blink_cursor)
+            self.screen.cursorblink_enabled = True
             self.update()
         self.after(600, reset2)
 
@@ -1097,7 +1103,10 @@ class EmulatorWindow(tkinter.Tk):
                 next_linenum = self.basic.program_lines[self.basic.current_run_line_index]
                 line = self.basic.program[next_linenum]
                 try:
-                    self.execute_line(line)
+                    go_on = self.execute_line(line)
+                    if not go_on:
+                        self.run_step_after = None
+                        return
                     if self.basic.current_run_line_index is not None:
                         self.basic.current_run_line_index += 1
                 except GotoLine as ex:
@@ -1121,6 +1130,7 @@ class EmulatorWindow(tkinter.Tk):
             # program ends
             self.basic.stop_run()
             self.run_step_after = None
+            self.screen.cursorblink_enabled = True
 
 
 def setup():
