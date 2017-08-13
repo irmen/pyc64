@@ -133,7 +133,7 @@ class C64ScreenAndMemory:
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
-        self.cursorblink_enabled = True
+        self.cursor_enabled = True
         self.update_rate = 100
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
@@ -151,7 +151,7 @@ class C64ScreenAndMemory:
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
-        self.cursorblink_enabled = True
+        self.cursor_enabled = True
         self._previous_checked_chars = None
         self._previous_checked_colors = None
         for i in range(256):
@@ -241,7 +241,7 @@ class C64ScreenAndMemory:
     def _fix_cursor(self, on=False):
         if on:
             self.cursor_state = True
-        if self.cursor_state:
+        if self.cursor_state & self.cursor_enabled:
             self._memory[0x0400 + self.cursor] ^= 0x80
             self._memory[0xd800 + self.cursor] = self.text
 
@@ -1000,7 +1000,7 @@ class EmulatorWindow(tkinter.Tk):
             if self.run_step_after:
                 raise BasicError("program already running")
             if self.basic.program:
-                self.screen.cursorblink_enabled = False
+                self.screen.cursor_enabled = False
                 self.run_step_after = self.after_idle(self._do_run_step)
             else:
                 self.screen.writestr("\nready.\n")
@@ -1024,7 +1024,7 @@ class EmulatorWindow(tkinter.Tk):
                 self.after_cancel(self.run_step_after)
             self.run_step_after = None
             self.screen.writestr("\nbreak in {:d}\nready.\n".format(line))
-            self.screen.cursorblink_enabled = True
+            self.screen.cursor_enabled = True
 
     def keyrelease(self, char, mouseposition):
         # print("keyrelease", repr(char), mouseposition)
@@ -1077,7 +1077,7 @@ class EmulatorWindow(tkinter.Tk):
         return "#{:06x}".format(C64ScreenAndMemory.palette[color % 16])
 
     def blink_cursor(self):
-        if self.screen.cursorblink_enabled:
+        if self.screen.cursor_enabled:
             self.screen.blink_cursor()
             # self.repaint()
         self.after(self.screen.cursor_blink_rate, self.blink_cursor)
@@ -1089,11 +1089,11 @@ class EmulatorWindow(tkinter.Tk):
     def reset_machine(self):
         self.run_step_after = None
         self.screen.reset()
-        self.screen.cursorblink_enabled = False
+        self.screen.cursor_enabled = False
 
         def reset2():
             self.basic.reset()
-            self.screen.cursorblink_enabled = True
+            self.screen.cursor_enabled = True
             self.update()
         self.after(600, reset2)
 
@@ -1130,7 +1130,7 @@ class EmulatorWindow(tkinter.Tk):
             # program ends
             self.basic.stop_run()
             self.run_step_after = None
-            self.screen.cursorblink_enabled = True
+            self.screen.cursor_enabled = True
 
 
 def setup():
