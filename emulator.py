@@ -134,6 +134,7 @@ class C64ScreenAndMemory:
         self.cursor_state = False
         self.cursor_blink_rate = 300
         self.update_rate = 100
+        self._zeropage = [0] * 256
         self._chars = [32] * 40 * 25      # $0400-$07ff
         self._colors = [self.text] * 40 * 25    # $d800-$dbff
         self._previous_updated_chars = None
@@ -153,6 +154,8 @@ class C64ScreenAndMemory:
         for i in range(1000):
             self._chars[i] = 32
             self._colors[i] = self.text
+        for i in range(256):
+            self._zeropage[i] = 0
 
     def getchar(self, x, y):
         """get the character AND color value at position x,y"""
@@ -170,6 +173,23 @@ class C64ScreenAndMemory:
 
     def getcolormem(self, mempos):
         return self._colors[mempos]
+
+    def getmem(self, mempos):
+        # @todo optimize
+        if mempos < 256:
+            # first update certain zeropage variables
+            self._zeropage[211], self._zeropage[214] = self.cursorpos()
+            # ... before returning a value from this memory area
+            return self._zeropage[mempos]
+        else:
+            raise ValueError("addr out of range: "+hex(mempos))
+
+    def setmem(self, mempos, value):
+        # @todo optimize
+        if mempos < 256:
+            self._zeropage[mempos] = value
+        else:
+            raise ValueError("addr out of range: "+hex(mempos))
 
     def blink_cursor(self):
         self.cursor_state = not self.cursor_state
@@ -357,7 +377,6 @@ class BasicInterpreter:
     def __init__(self, screen):
         self.screen = screen
         self.program = {}
-        self.zeropage = [0] * 256
         self.reset()
 
     def reset(self):
@@ -620,7 +639,7 @@ class BasicInterpreter:
         elif addr == 53272:
             self.screen.shifted = value & 2
         elif 0 <= addr <= 255:
-            self.zeropage[addr] = value
+            self.screen.setmem(addr, value)
 
     def execute_sys(self, cmd):
         if cmd.startswith("sY"):
@@ -633,7 +652,8 @@ class BasicInterpreter:
         if addr in (64738, 64760):
             raise ResetMachineError()
         if addr == 58640:       # set cursorpos
-            self.screen.cursormove(self.zeropage[211], self.zeropage[214])
+            x, y = self.screen.getmem(211), self.screen.getmem(214)
+            self.screen.cursormove(x, y)
         else:
             raise BasicError("no machine language support")
 
@@ -653,12 +673,8 @@ class BasicInterpreter:
         elif 0xd800 <= address <= 0xdbe7:
             return self.screen.getcolormem(address - 0xd800)
         elif 0 <= address <= 255:
-            self.update_zeropage()
-            return self.zeropage[address]
+            return self.screen.getmem(address)
         return 0
-
-    def update_zeropage(self):
-        self.zeropage[211], self.zeropage[214] = self.screen.cursorpos()
 
     def execute_list(self, cmd):
         if cmd.startswith("lI"):
