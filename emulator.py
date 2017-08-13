@@ -133,7 +133,7 @@ class C64ScreenAndMemory:
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
-        self.cursor_enabled = True
+        self._cursor_enabled = True
         self.update_rate = 100
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
@@ -163,6 +163,16 @@ class C64ScreenAndMemory:
         for i in range(1000):
             self._memory[0x0400 + i] = 32
             self._memory[0xd800 + i] = self.text
+
+    @property
+    def cursor_enabled(self):
+        return self._cursor_enabled
+
+    @cursor_enabled.setter
+    def cursor_enabled(self, enabled):
+        if not enabled:
+            self._fix_cursor()
+        self._cursor_enabled = enabled
 
     def getchar(self, x, y):
         """get the character AND color value at position x,y"""
@@ -241,7 +251,7 @@ class C64ScreenAndMemory:
     def _fix_cursor(self, on=False):
         if on:
             self.cursor_state = True
-        if self.cursor_state & self.cursor_enabled:
+        if self.cursor_state & self._cursor_enabled:
             self._memory[0x0400 + self.cursor] ^= 0x80
             self._memory[0xd800 + self.cursor] = self.text
 
@@ -807,12 +817,23 @@ class BasicInterpreter:
 
     def execute_if(self, cmd):
         match = re.match(r"if(.+)then(.+)$", cmd)
-        if not match:
-            raise BasicError("syntax")
-        condition, then = match.groups()
-        condition = eval(condition, self.symbols)
-        if condition:
-            self.execute_line(then, print_ready=False)
+        if match:
+            condition, then = match.groups()
+            condition = eval(condition, self.symbols)
+            if condition:
+                self.execute_line(then, print_ready=False)
+        else:
+            # perhaps if .. goto .. form?
+            match = re.match(r"if(.+)goto\s+(\d+)$", cmd)
+            if not match:
+                raise BasicError("syntax")
+            condition, line = match.groups()
+            condition = eval(condition, self.symbols)
+            if condition:
+                line = int(line)
+                if line not in self.program:
+                    raise BasicError("undef'd statement")
+                raise GotoLine(line)
 
     def execute_read(self, cmd):
         if cmd.startswith("rE"):
