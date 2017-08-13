@@ -896,7 +896,6 @@ class BasicInterpreter:
     def stop_run(self):
         if self.current_run_line_index is not None:
             self.cont_line_index = self.current_run_line_index
-            print("CONTINUE AT", self.cont_line_index)   # XXX
             self.current_run_line_index = None
             self.last_run_error = None
 
@@ -1041,12 +1040,17 @@ class EmulatorWindow(tkinter.Tk):
                     line = self.screen.current_line(1)
                     self.screen.return_key()
                     self.execute_line(line)
+                    self.execute_line(line)
             elif char == "F3":      # run program shortcut key
                 self.screen.writestr("run: \n")
                 self.execute_line("run")
             elif char == "F1":      # list program shortcut key
                 self.screen.writestr("list: \n")
                 self.execute_line("list")
+            elif char == "Prior":     # pageup = RESTORE (outside running program)
+                if self.basic.current_run_line_index is None:
+                    self.screen.reset()
+                    self.execute_line("? \"\";")
 
     def execute_line(self, line):
         try:
