@@ -835,7 +835,6 @@ class BasicInterpreter:
 class EmulatorWindow(tkinter.Tk):
     def __init__(self, title):
         super().__init__()
-        self.dirprefix = os.path.dirname(__file__)
         self.wm_title(title)
         self.geometry("+200+100")
         self.screen = C64Screen()
@@ -850,7 +849,7 @@ class EmulatorWindow(tkinter.Tk):
         for y in range(25):
             for x in range(40):
                 cor = self.screencor((x, y))
-                bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@" + os.path.join(self.dirprefix, "charset/normal-20.xbm"),
+                bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@charset/normal-20.xbm",
                                                foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
                 self.charbitmaps.append(bm)
         self.key_shift_down = False
@@ -993,21 +992,21 @@ class EmulatorWindow(tkinter.Tk):
 
     def create_charsets(self):
         # normal
-        source_chars = Image.open(os.path.join(self.dirprefix, "charset-normal.png"))
+        source_chars = Image.open("charset/charset-normal.png")
         for i in range(256):
             chars = source_chars.copy()
             row, col = divmod(i, 40)
             ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
             ci = ci.convert(mode="1", dither=None)
-            ci.save(os.path.join(self.dirprefix, "charset/normal-{:02x}.xbm".format(i)), "xbm")
+            ci.save("charset/normal-{:02x}.xbm".format(i), "xbm")
         # shifted
-        source_chars = Image.open(os.path.join(self.dirprefix, "charset-shifted.png"))
+        source_chars = Image.open("charset/charset-shifted.png")
         for i in range(256):
             chars = source_chars.copy()
             row, col = divmod(i, 40)
             ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
             ci = ci.convert(mode="1", dither=None)
-            ci.save(os.path.join(self.dirprefix, "charset/shifted-{:02x}.xbm".format(i)), "xbm")
+            ci.save("charset/shifted-{:02x}.xbm".format(i), "xbm")
 
     def repaint(self):
         # set border color and screen color
@@ -1020,7 +1019,7 @@ class EmulatorWindow(tkinter.Tk):
                     forecol = self.tkcolor(self.screen.colors[x + y * 40])
                     bm = self.charbitmaps[x + y * 40]
                     style = "shifted" if self.screen.shifted else "normal"
-                    bitmap = "@" + os.path.join(self.dirprefix, "charset/{:s}-{:02x}.xbm".format(style, self.screen.chars[x + y * 40]))
+                    bitmap = "@charset/{:s}-{:02x}.xbm".format(style, self.screen.chars[x + y * 40])
                     self.canvas.itemconfigure(bm, foreground=forecol, background=bgcol, bitmap=bitmap)
 
     def screencor(self, cc):
