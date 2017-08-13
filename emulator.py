@@ -6,6 +6,7 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 
 """
+import sys
 import re
 import os
 import tkinter
@@ -1062,8 +1063,14 @@ class EmulatorWindow(tkinter.Tk):
                 if self.basic.last_run_error is None and \
                         self.basic.current_run_line_index is not None and \
                         self.basic.current_run_line_index < len(self.basic.program_lines):
-                    time.sleep(0.0001)
-                    self.run_step_after = self.after_idle(self._do_run_step)
+                    # Introduce an artificial delay here, to get at least *some*
+                    # sense of the old times. Note that on windows it will be extremely slow somehow
+                    # when you time it with after_idle, so we do a workaround there.
+                    if sys.platform == "win32":
+                        self.run_step_after = self.after(1, self._do_run_step)
+                    else:
+                        time.sleep(0.0001)
+                        self.run_step_after = self.after_idle(self._do_run_step)
                     return
                 else:
                     self.run_step_after = None
