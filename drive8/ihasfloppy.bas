@@ -8,7 +8,7 @@
 50 for i=0 to 999
 60 read c: poke 55296+i, c
 70 next i
-80 print "image is ihasfloppy by genesis project"
+80 poke 211,0: poke 214,0: sys 58640
 90 sleep 4
 999 rem --- character screen data ---
 1000 data 32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,32,233,205,32,32,32,32,32,32,32,32,32,32,32,32,32,32
