@@ -61,6 +61,7 @@ class C64Screen:
         '\\': 28,
         '£': 28,        # pound currency sign
         ']': 29,
+        '^': 30,        # up arrow
         '~': 30,        # up arrow
         '↑': 30,        # up arrow
         '⬆': 30,        # up arrow
@@ -300,22 +301,30 @@ class BasicError(Exception):
     pass
 
 
-class ResetMachineError(Exception):
+class FlowcontrolException(Exception):
     pass
 
 
-class StartRunloop(Exception):
+class ResetMachineError(FlowcontrolException):
     pass
 
 
-class GotoLine(Exception):
+class StartRunloop(FlowcontrolException):
+    pass
+
+
+class GotoLine(FlowcontrolException):
     def __init__(self, line):
         self.line = line
 
 
-class StopRunloop(Exception):
-    pass
+class SleepTimer(FlowcontrolException):
+    def __init__(self, duration):
+        self.duration = duration
 
+
+class StopRunloop(FlowcontrolException):
+    pass
 
 
 class BasicInterpreter:
@@ -347,27 +356,37 @@ class BasicInterpreter:
             if '_' not in x:
                 self.symbols[x] = getattr(math, x)
         self.program = {}
+        self.forloops = {}
+        self.data_line = None
+        self.data_index = None
         self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
         self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
         self.screen.writestr("\nready.\n")
         self.stop_run()
 
-    def execute_line(self, line):
+    def execute_line(self, line, print_ready=True):
         try:
             # if there's no char on the last pos of the first line, only evaluate the first line
             if len(line) >= 40 and line[39] == ' ':
                 line = line[:40]
             if self.process_programline_entry(line):
                 return
+            if line.startswith(("#", "rem")):
+                return
+            if line.startswith("data"):
+                # data is only consumed with a read statement
+                return
             parts = [x for x in (p.strip() for p in line.split(":")) if x]
-            print("RUN CMDS:", parts)  # XXX
+            # print("RUN CMDS:", parts)  # XXX
             self.last_run_error = None
             if parts:
                 for cmd in parts:
-                    self._execute_cmd(cmd)
-                if self.current_run_line_index is None:
+                    do_more = self._execute_cmd(cmd, parts)
+                    if not do_more:
+                        break
+                if self.current_run_line_index is None and print_ready:
                     self.screen.writestr("\nready.\n")
-        except (ResetMachineError, StartRunloop, StopRunloop, GotoLine):
+        except FlowcontrolException:
             raise
         except BasicError as bx:
             if self.current_run_line_index is None:
@@ -399,49 +418,70 @@ class BasicInterpreter:
             return True
         return False
 
-    def _execute_cmd(self, cmd):
-        if cmd.startswith("read") or cmd.startswith("rE"):
-            raise BasicError("out of data")
+    def _execute_cmd(self, cmd, all_cmds_on_line=None):
+        if cmd.startswith(("read", "rE")):
+            self.execute_read(cmd)
+        elif cmd.startswith(("restore", "reS")):
+            self.execute_restore(cmd)
         elif cmd.startswith(("save", "sA")):
             self.execute_save(cmd)
+            return False
         elif cmd.startswith(("load", "lO")):
             self.execute_load(cmd)
+            return False
         elif cmd.startswith(("print", "?")):
             self.execute_print(cmd)
         elif cmd.startswith(("poke", "pO")):
             self.execute_poke(cmd)
         elif cmd.startswith(("list", "lI")):
             self.execute_list(cmd)
+            return False
         elif cmd.startswith(("new", "nI")):
             self.execute_new(cmd)
+            return False
         elif cmd.startswith(("run", "rU")):
             self.execute_run(cmd)
+            return False
         elif cmd.startswith(("sys", "sY")):
             self.execute_sys(cmd)
         elif cmd.startswith(("goto", "gO")):
             self.execute_goto(cmd)
+        elif cmd.startswith(("for", "fO")):
+            self.execute_for(cmd, all_cmds_on_line)
+        elif cmd.startswith(("next", "nE")):
+            self.execute_next(cmd)
+        elif cmd.startswith("if"):
+            self.execute_if(cmd)
+        elif cmd.startswith(("#", "rem")):
+            pass
         elif cmd.startswith(("end", "eN")):
             self.execute_end(cmd)
+            return False
+        elif cmd.startswith(("sleep", "sL")):
+            self.execute_sleep(cmd)
         elif cmd == "cls":
             self.screen.clearscreen()
         elif cmd.startswith("dos\""):
             self.execute_dos(cmd)
+            return False
         else:
             match = re.match(r"([a-zA-Z]+[0-9]*)\s*=\s*(\S+)$", cmd)
             if match:
+                # variable assignment
                 symbol, value = match.groups()
                 self.symbols[symbol] = eval(value, self.symbols)
-                return
+                return True
             else:
                 raise BasicError("syntax")
+        return True
 
     def execute_print(self, cmd):
         if cmd.startswith("?"):
             cmd = cmd[1:]
         elif cmd.startswith("print"):
             cmd = cmd[5:]
+        print_newline = "\n"
         if cmd:
-            print_newline = "\n"
             if cmd.endswith((',', ';')):
                 cmd = cmd[:-1]
                 print_newline = ""
@@ -457,6 +497,52 @@ class BasicInterpreter:
             result = ""
         self.screen.writestr(result + print_newline)
 
+    def execute_for(self, cmd, all_cmds_on_line=None):
+        if cmd.startswith("fO"):
+            cmd = cmd[2:]
+        elif cmd.startswith("for"):
+            cmd = cmd[3:]
+        cmd = cmd.strip()
+        match = re.match("(\w+)\s*=\s*(\S+)\s*to\s*(\S+)\s*(?:step\s*(\S+))?$", cmd)
+        if match:
+            if self.current_run_line_index is None:
+                raise BasicError("illegal direct")    # we only support for loops in a program (with line numbers), not on the screen
+            if all_cmds_on_line and len(all_cmds_on_line) > 1:
+                raise BasicError("for not alone on line")    # we only can loop to for statements that are alone on their own line
+            varname, start, to, step = match.groups()
+            if step is None:
+                step = "1"
+            start = eval(start, self.symbols)
+            to = eval(to, self.symbols)
+            step = eval(step, self.symbols)
+            iterator = iter(range(start, to+1, step))
+            self.forloops[varname] = (self.current_run_line_index, iterator)
+            self.symbols[varname] = next(iterator)
+        else:
+            raise BasicError("syntax")
+
+    def execute_next(self, cmd):
+        if cmd.startswith("nE"):
+            cmd = cmd[2:]
+        elif cmd.startswith("next"):
+            cmd = cmd[4:]
+        varname = cmd.strip()
+        if self.current_run_line_index is None:
+            raise BasicError("illegal direct")  # we only support for loops in a program (with line numbers), not on the screen
+        if not varname:
+            raise BasicError("next without varname")    # we require the varname for now
+        if varname not in self.forloops or varname not in self.symbols:
+            raise BasicError("next without for")
+        if "," in varname:
+            raise BasicError("next with multiple vars")    # we only support one var right now
+        try:
+            runline_index, iterator = self.forloops[varname]
+            self.symbols[varname] = next(iterator)
+        except StopIteration:
+            del self.forloops[varname]
+        else:
+            self.current_run_line_index = runline_index   # jump back to code at line after for loop
+
     def execute_goto(self, cmd):
         if cmd.startswith("gO"):
             cmd = cmd[2:]
@@ -470,6 +556,14 @@ class BasicInterpreter:
             if line not in self.program:
                 raise BasicError("undef'd statement")
             raise GotoLine(line)
+
+    def execute_sleep(self, cmd):
+        if cmd.startswith("sL"):
+            cmd = cmd[2:]
+        elif cmd.startswith("sleep"):
+            cmd = cmd[5:]
+        howlong = float(cmd)
+        raise SleepTimer(howlong)
 
     def execute_end(self, cmd):
         if cmd not in ("eN", "end"):
@@ -485,6 +579,8 @@ class BasicInterpreter:
             cmd = cmd[4:]
         addr, value = cmd.split(',', maxsplit=1)
         addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
+        if addr < 0 or addr > 0xffff or value <0 or value > 0xff:
+            raise BasicError("illegal quantity")
         if addr == 646:
             self.screen.text = value
         elif addr == 53280:
@@ -506,6 +602,8 @@ class BasicInterpreter:
         elif cmd.startswith("sys"):
             cmd = cmd[3:]
         addr = int(cmd)
+        if addr < 0 or addr > 0xffff:
+            raise BasicError("illegal quantity")
         if addr in (64738, 64760):
             raise ResetMachineError()
         if addr == 58640:       # set cursorpos
@@ -514,6 +612,8 @@ class BasicInterpreter:
             raise BasicError("no machine language support")
 
     def peek_func(self, address):
+        if address < 0 or address > 0xffff:
+            raise BasicError("illegal quantity")
         if address == 646:
             return self.screen.text
         elif address == 53280:
@@ -578,8 +678,8 @@ class BasicInterpreter:
             raise BasicError("missing file name")
         if not self.program:
             return
-        if not cmd.endswith(".prg"):
-            cmd += ".prg"
+        if not cmd.endswith(".bas"):
+            cmd += ".bas"
         self.screen.writestr("\nsaving "+cmd)
         with open(os.path.join("drive8", cmd), "wt", newline=None) as file:
             for num, line in sorted(self.program.items()):
@@ -617,7 +717,9 @@ class BasicInterpreter:
                 self.screen.writestr("loading " + filename + "\n")
                 for line in file:
                     line = line.rstrip()
-                    if filename.endswith((".prg", ".PRG")):
+                    if not line:
+                        continue
+                    if filename.endswith((".bas", ".BAS")):
                         num, line = line.split(maxsplit=1)
                         newprogram[int(num)] = line
                     else:
@@ -639,7 +741,7 @@ class BasicInterpreter:
             for file, size in sorted(catalog):
                 name, suff = os.path.splitext(file)
                 name = '"'+name+'"'
-                self.screen.writestr("{:<5d}{:19s}{:3s}\n".format(size, name, suff[1:]))
+                self.screen.writestr("{:<5d}{:19s}{:3s}\n".format(size//256, name, suff[1:]))
             self.screen.writestr("9999 blocks free.\n")
             return
         raise BasicError("syntax")
@@ -654,11 +756,69 @@ class BasicInterpreter:
             self.current_run_line_index = 0 if start is None else self.program_lines.index(start)
             raise StartRunloop()
 
+    def execute_if(self, cmd):
+        match = re.match(r"if(.+)then(.+)$", cmd)
+        if not match:
+            raise BasicError("syntax")
+        condition, then = match.groups()
+        condition = eval(condition, self.symbols)
+        if condition:
+            self.execute_line(then, print_ready=False)
+
+    def execute_read(self, cmd):
+        if cmd.startswith("rE"):
+            cmd = cmd[2:]
+        elif cmd.startswith("read"):
+            cmd = cmd[4:]
+        varname = cmd.strip()
+        if ',' in varname:
+            raise BasicError("syntax")
+        value = self.get_next_data()
+        if value is None:
+            raise BasicError("out of data")
+        self.symbols[varname] = value
+
+    def execute_restore(self, cmd):
+        if cmd.startswith("reS"):
+            cmd = cmd[3:]
+        elif cmd.startswith("restore"):
+            cmd = cmd[7:]
+        if cmd:
+            raise
+            raise BasicError("syntax")
+        self.data_line = None
+        self.data_index = None
+
     def stop_run(self):
-        print("STOP RUNNING!!!!")  # XXX
         self.current_run_line_index = None
         self.program_lines = None
         self.last_run_error = None
+
+    def get_next_data(self):
+        if self.data_line is None:
+            # search first data statement in program
+            self.data_index = 0
+            for nr, line in sorted(self.program.items()):
+                if line.lstrip().startswith(("dA", "data")):
+                    self.data_line = nr
+                    break
+            else:
+                return None
+        try:
+            data = self.program[self.data_line].split(maxsplit=1)[1]
+            value = data.split(",")[self.data_index]
+        except IndexError:
+            # go to next line
+            self.data_index = 0
+            for nr, line in sorted(self.program.items()):
+                if self.data_line < nr and line.lstrip().startswith(("dA", "data")):
+                    self.data_line = nr
+                    return self.get_next_data()
+            else:
+                return None
+        else:
+            self.data_index += 1
+            return eval(value)
 
 
 class EmulatorWindow(tkinter.Tk):
@@ -701,7 +861,7 @@ class EmulatorWindow(tkinter.Tk):
         return c, (event.x, event.y)
 
     def keypress(self, char, mouseposition):
-        print("keypress", repr(char), mouseposition)
+        # print("keypress", repr(char), mouseposition)
         if char.startswith("Shift"):
             self.key_shift_down = True
         if char.startswith("Control"):
@@ -781,7 +941,6 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.writestr("list: \n")
                 self.execute_line("list")
 
-
     def execute_line(self, line):
         try:
             self.basic.execute_line(line)
@@ -798,9 +957,14 @@ class EmulatorWindow(tkinter.Tk):
             if self.run_step_after:
                 self.after_cancel(self.run_step_after)
                 self.run_step_after = None
+        except SleepTimer as sx:
+            self.repaint()
+            self.update_idletasks()  # repaint Tkinter window
+            time.sleep(sx.args[0])
+            if self.basic.current_run_line_index is None:
+                self.screen.writestr("\nready.\n")
 
     def runstop(self):
-        print("runstop")
         if self.basic.current_run_line_index is not None:
             line = self.basic.program_lines[self.basic.current_run_line_index]
             self.basic.stop_run()
