@@ -1,6 +1,16 @@
 """
 'fast' Commodore-64 'emulator' in 100% pure Python 3.x :)
 
+Note: the basic dialect is woefully incomplete and the commands that
+are provided are often not even compatible with their originals on the C64,
+but they do try to support *some* of the BASIC 2.0 structure.
+
+The most important thing that is missing is the ability to
+to do any 'blocking' operation such as INPUT or WAIT.
+Creating an interactive program is not possible at this point.
+The SLEEP command is added only as a hack, to be able to at least
+slow down the thing at certain points.
+
 Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 
@@ -36,7 +46,8 @@ class C64ScreenAndMemory:
         0x959595,  # light grey
     )
 
-    # special non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○
+    # translate ascii strings to petscii codes:
+    # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )
     str_to_64_trans = str.maketrans({
         '@': 0,
         'a': 1,
@@ -119,6 +130,7 @@ class C64ScreenAndMemory:
         'π': 94,    # pi symbol
     })
 
+    # the inverse, translate petscii back to ascii strings:
     c64_to_str_trans_normal = {v: k for k, v in str_to_64_trans.items()}
     c64_to_str_trans_shifted = {v: k for k, v in str_to_64_trans.items()}
     for c in range(ord('A'), ord('Z') + 1):
@@ -418,7 +430,8 @@ class BasicInterpreter:
             "wpeek": self.wpeek_func,
             "wpE": self.wpeek_func,
             "rnd": lambda *args: random.random(),
-            "rndi": random.randrange
+            "rndi": random.randrange,
+            "asc": ord
         }
         for x in dir(math):
             if '_' not in x:
@@ -427,6 +440,9 @@ class BasicInterpreter:
         self.forloops = {}
         self.data_line = None
         self.data_index = None
+        self.cont_line_index = self.current_run_line_index = None
+        self.program_lines = None
+        self.last_run_error = None
         self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
         self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
         self.screen.writestr("\nready.\n")
@@ -527,6 +543,11 @@ class BasicInterpreter:
         elif cmd.startswith(("end", "eN")):
             self.execute_end(cmd)
             return False
+        elif cmd.startswith(("stop", "sT")):
+            self.execute_end(cmd)
+            return False
+        elif cmd.startswith(("cont", "cO")):
+            self.execute_cont(cmd)
         elif cmd.startswith(("sleep", "sL")):
             self.execute_sleep(cmd)
         elif cmd == "cls":
@@ -636,11 +657,24 @@ class BasicInterpreter:
         raise SleepTimer(howlong)
 
     def execute_end(self, cmd):
-        if cmd not in ("eN", "end"):
+        if cmd not in ("eN", "end", "sT", "stop"):
             raise BasicError("syntax")
         if self.current_run_line_index is not None:
+            if cmd in ("sT", "stop"):
+                self.screen.writestr("\nbreak in {:d}\n".format(self.program_lines[self.current_run_line_index]))
             self.stop_run()
             raise StopRunloop()
+
+    def execute_cont(self, cmd):
+        # Only works on a per-line basis!
+        # so if program breaks in the middle of a line and you CONT it,
+        # it will just resume with the line following it. This can result in parts of code being skipped.
+        # Solving this is complex it requires to not only keep track of a *line* but also of the *position in the line*.
+        if cmd not in ("cO", "cont"):
+            raise BasicError("syntax")
+        if self.cont_line_index is None or self.program_lines is None or not self.program:
+            raise BasicError("can't continue")
+        self.execute_run("run "+str(self.program_lines[self.cont_line_index+1]))
 
     def execute_poke(self, cmd):
         if cmd.startswith("pO"):
@@ -812,6 +846,7 @@ class BasicInterpreter:
             raise BasicError("undef'd statement")
         if self.program:
             self.program_lines = list(sorted(self.program))
+            self.cont_line_index = None
             self.current_run_line_index = 0 if start is None else self.program_lines.index(start)
             raise StartRunloop()
 
@@ -859,9 +894,11 @@ class BasicInterpreter:
         self.data_index = None
 
     def stop_run(self):
-        self.current_run_line_index = None
-        self.program_lines = None
-        self.last_run_error = None
+        if self.current_run_line_index is not None:
+            self.cont_line_index = self.current_run_line_index
+            print("CONTINUE AT", self.cont_line_index)   # XXX
+            self.current_run_line_index = None
+            self.last_run_error = None
 
     def get_next_data(self):
         if self.data_line is None:

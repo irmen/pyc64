@@ -28,8 +28,10 @@ Note that most of the BASIC operations are essentially handled by Python itself 
 so you can do many interesting things that are silly to see working on a classic 80's c-64 screen.
 For instance, try ``print 5**123``  or ``print sys.platform`` or ``print sum(log(x) for x in range(1,10))``
 
+Note that it is not supported to do any blocking operation such as INPUT or WAIT.
+This means that making an interactive program is not possible at this point.
 
-The only extra library you need is [pillow](https://pillow.readthedocs.io) because the emulator needs to do some
+You'll need the [pillow](https://pillow.readthedocs.io) library because the emulator needs to do some
 charset bitmap conversions at startup for tkinter.
 
 
