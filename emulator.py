@@ -122,8 +122,8 @@ class C64ScreenAndMemory:
     c64_to_str_trans_normal = {v: k for k, v in str_to_64_trans.items()}
     c64_to_str_trans_shifted = {v: k for k, v in str_to_64_trans.items()}
     for c in range(ord('A'), ord('Z') + 1):
-        c64_to_str_trans_shifted[c] = chr(c)
-    c64_to_str_trans_normal[39] = c64_to_str_trans_shifted[39] = "'"
+        c64_to_str_trans_shifted[c] = c
+    c64_to_str_trans_normal[39] = c64_to_str_trans_shifted[39] = ord("'")
 
     def __init__(self):
         self.border = 0
@@ -134,14 +134,15 @@ class C64ScreenAndMemory:
         self.cursor_state = False
         self.cursor_blink_rate = 300
         self.update_rate = 100
-        self._zeropage = [0] * 256
-        self._chars = [32] * 40 * 25      # $0400-$07ff
-        self._colors = [self.text] * 40 * 25    # $d800-$dbff
-        self._previous_updated_chars = None
-        self._previous_updated_colors = None
+        # zeropage is from $0000-$00ff
+        # screen chars     $0400-$07ff
+        # screen colors    $d800-$dbff
+        self._memory = [0] * 65536    # 64Kb of 'RAM'
+        self._previous_checked_chars = None
+        self._previous_checked_colors = None
         self.reset()
 
-    def reset(self):
+    def reset(self, hard=False):
         self.border = 14
         self.screen = 6
         self.text = 14
@@ -149,52 +150,51 @@ class C64ScreenAndMemory:
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
-        self._previous_updated_chars = None
-        self._previous_updated_colors = None
-        for i in range(1000):
-            self._chars[i] = 32
-            self._colors[i] = self.text
+        self._previous_checked_chars = None
+        self._previous_checked_colors = None
         for i in range(256):
-            self._zeropage[i] = 0
+            self._memory[i] = 0
+        if hard:
+            # wipe all of the memory
+            for i in range(256, 65536):
+                self._memory[i] = 0
+        for i in range(1000):
+            self._memory[0x0400 + i] = 32
+            self._memory[0xd800 + i] = self.text
 
     def getchar(self, x, y):
         """get the character AND color value at position x,y"""
-        mempos = x + y * 40
-        return self._chars[mempos], self._colors[mempos]
+        offset = x + y * 40
+        return self._memory[0x0400 + offset], self._memory[0xd800 + offset]
 
-    def setcharmem(self, mempos, value):
-        self._chars[mempos] = value
+    def getmem(self, address):
+        # update various special registers:
+        if address == 646:
+            self._memory[646] = self.text
+        elif address == 53280:
+            self._memory[53280] = self.border
+        elif address == 53281:
+            self._memory[53281] = self.screen
+        elif address == 53272:
+            self._memory[53272] = 23 if self.shifted else 21
+        return self._memory[address]
 
-    def setcolormem(self, mempos, value):
-        self._colors[mempos] = value
-
-    def getcharmem(self, mempos):
-        return self._chars[mempos]
-
-    def getcolormem(self, mempos):
-        return self._colors[mempos]
-
-    def getmem(self, mempos):
-        # @todo optimize
-        if mempos < 256:
-            # first update certain zeropage variables
-            self._zeropage[211], self._zeropage[214] = self.cursorpos()
-            # ... before returning a value from this memory area
-            return self._zeropage[mempos]
-        else:
-            raise ValueError("addr out of range: "+hex(mempos))
-
-    def setmem(self, mempos, value):
-        # @todo optimize
-        if mempos < 256:
-            self._zeropage[mempos] = value
-        else:
-            raise ValueError("addr out of range: "+hex(mempos))
+    def setmem(self, addr, value):
+        self._memory[addr] = value
+        # now trigger various special registers
+        if addr == 646:
+            self.text = value
+        elif addr == 53280:
+            self.border = value
+        elif addr == 53281:
+            self.screen = value
+        elif addr == 53272:
+            self.shifted = bool(value & 2)
 
     def blink_cursor(self):
         self.cursor_state = not self.cursor_state
-        self._chars[self.cursor] ^= 0x80
-        self._colors[self.cursor] = self.text
+        self._memory[0x0400 + self.cursor] ^= 0x80
+        self._memory[0xd800 + self.cursor] = self.text
 
     @classmethod
     def str2screen(cls, string):
@@ -220,8 +220,8 @@ class C64ScreenAndMemory:
             if not petscii:
                 line = self.str2screen(line)
             for c in line:
-                self._chars[cursor] = ord(c)
-                self._colors[cursor] = self.text
+                self._memory[0x0400 + cursor] = ord(c)
+                self._memory[0xd800 + cursor] = self.text
                 cursor += 1
                 if cursor >= 1000:
                     self._scroll_up()
@@ -233,26 +233,26 @@ class C64ScreenAndMemory:
         if on:
             self.cursor_state = True
         if self.cursor_state:
-            self._chars[self.cursor] ^= 0x80
-            self._colors[self.cursor] = self.text
+            self._memory[0x0400 + self.cursor] ^= 0x80
+            self._memory[0xd800 + self.cursor] = self.text
 
     def _scroll_up(self):
         # scroll the screen up one line
         for i in range(0, 960):
-            self._chars[i] = self._chars[i + 40]
-            self._colors[i] = self._colors[i + 40]
+            self._memory[0x0400 + i] = self._memory[0x0400 + 40 + i]
+            self._memory[0xd800 + i] = self._memory[0xd800 + 40 + i]
         for i in range(960, 1000):
-            self._chars[i] = 32
-            self._colors[i] = self.text
+            self._memory[0x0400 + i] = 32
+            self._memory[0xd800 + i] = self.text
 
     def _scroll_down(self):
         # scroll the screen down one line
         for i in range(999, 39, -1):
-            self._chars[i] = self._chars[i - 40]
-            self._colors[i] = self._colors[i - 40]
+            self._memory[0x0400 + i] = self._memory[0x0400 - 40 + i]
+            self._memory[0xd800 + i] = self._memory[0xd800 - 40 + i]
         for i in range(0, 40):
-            self._chars[i] = 32
-            self._colors[i] = self.text
+            self._memory[0x0400 + i] = 32
+            self._memory[0xd800 + i] = self.text
 
     def return_key(self):
         self._fix_cursor()
@@ -266,8 +266,8 @@ class C64ScreenAndMemory:
         if self.cursor > 0:
             self._fix_cursor()
             self.cursor -= 1
-            self._chars[self.cursor] = 32
-            self._colors[self.cursor] = self.text
+            self._memory[0x0400 + self.cursor] = 32
+            self._memory[0xd800 + self.cursor] = self.text
             self._fix_cursor(on=True)
 
     def up(self):
@@ -300,8 +300,8 @@ class C64ScreenAndMemory:
 
     def clearscreen(self):
         for i in range(1000):
-            self._chars[i] = 32
-            self._colors[i] = self.text
+            self._memory[0x400 + i] = 32
+            self._memory[0xd800 + i] = self.text
         self.cursor = 0
         self._fix_cursor(on=True)
 
@@ -317,19 +317,19 @@ class C64ScreenAndMemory:
     def insert(self):
         self._fix_cursor()
         for i in range(40 * (self.cursor // 40) + 39, self.cursor, -1):
-            self._chars[i] = self._chars[i - 1]
-            self._colors[i] = self._colors[i - 1]
-        self._chars[self.cursor] = 32
-        self._colors[self.cursor] = self.text
+            self._memory[0x0400 + i] = self._memory[0x0400 - 1 + i]
+            self._memory[0xd800 + i] = self._colors[0xd800 - 1 + i]
+        self._memory[0x0400 + self.cursor] = 32
+        self._memory[0xd800 + self.cursor] = self.text
         self._fix_cursor(on=True)
 
     def current_line(self, amount=1):
-        start = 40 * (self.cursor // 40)
+        start = 0x0400 + 40 * (self.cursor // 40)
         self._fix_cursor()
-        chars = [chr(c) for c in self._chars[start:start + 40 * amount]]
+        chars = "".join([chr(c) for c in self._memory[start:start + 40 * amount]])
         self._fix_cursor()
         trans = self.c64_to_str_trans_shifted if self.shifted else self.c64_to_str_trans_normal
-        return ("".join(chars)).translate(trans)
+        return chars.translate(trans)
 
     def inversevid(self, text, petscii=False):
         if not petscii:
@@ -337,9 +337,11 @@ class C64ScreenAndMemory:
         return "".join(chr(128 + ord(c)) for c in text)
 
     def is_display_dirty(self):
-        result = self._chars != self._previous_updated_chars or self._colors != self._previous_updated_colors
-        self._previous_updated_chars = self._chars.copy()
-        self._previous_updated_colors = self._colors.copy()
+        charmem = self._memory[0x0400:0x07e8]
+        colormem = self._memory[0xd800:0xdbe8]
+        result = charmem != self._previous_checked_chars or colormem != self._previous_checked_colors
+        self._previous_checked_chars = charmem
+        self._previous_checked_colors = colormem
         return result
 
 
@@ -626,20 +628,7 @@ class BasicInterpreter:
         addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
         if addr < 0 or addr > 0xffff or value < 0 or value > 0xff:
             raise BasicError("illegal quantity")
-        if addr == 646:
-            self.screen.text = value
-        elif addr == 53280:
-            self.screen.border = value
-        elif addr == 53281:
-            self.screen.screen = value
-        elif 0x0400 <= addr <= 0x07e7:
-            self.screen.setcharmem(addr - 0x0400, value)
-        elif 0xd800 <= addr <= 0xdbe7:
-            self.screen.setcolormem(addr - 0xd800, value)
-        elif addr == 53272:
-            self.screen.shifted = value & 2
-        elif 0 <= addr <= 255:
-            self.screen.setmem(addr, value)
+        self.screen.setmem(addr, value)
 
     def execute_sys(self, cmd):
         if cmd.startswith("sY"):
@@ -660,21 +649,7 @@ class BasicInterpreter:
     def peek_func(self, address):
         if address < 0 or address > 0xffff:
             raise BasicError("illegal quantity")
-        if address == 646:
-            return self.screen.text
-        elif address == 53280:
-            return self.screen.border
-        elif address == 53281:
-            return self.screen.screen
-        elif address == 53272:
-            return 23 if self.screen.shifted else 21
-        elif 0x0400 <= address <= 0x07e7:
-            return self.screen.getcharmem(address - 0x0400)
-        elif 0xd800 <= address <= 0xdbe7:
-            return self.screen.getcolormem(address - 0xd800)
-        elif 0 <= address <= 255:
-            return self.screen.getmem(address)
-        return 0
+        return self.screen.getmem(address)
 
     def execute_list(self, cmd):
         if cmd.startswith("lI"):
