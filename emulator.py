@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 'fast' Commodore-64 'emulator' in 100% pure Python 3.x :)
 
@@ -116,6 +115,7 @@ class C64ScreenAndMemory:
         '○': 87,    # open circle
         '♣': 88,    # clubs
         '♦': 90,    # diamonds
+        '|': 94,    # pi symbol
         'π': 94,    # pi symbol
     })
 
@@ -167,7 +167,7 @@ class C64ScreenAndMemory:
         offset = x + y * 40
         return self._memory[0x0400 + offset], self._memory[0xd800 + offset]
 
-    def getmem(self, address):
+    def getmem(self, address, word=False):
         # update various special registers:
         if address == 646:
             self._memory[646] = self.text
@@ -177,10 +177,17 @@ class C64ScreenAndMemory:
             self._memory[53281] = self.screen
         elif address == 53272:
             self._memory[53272] = 23 if self.shifted else 21
+        if word:
+            return self._memory[address] + 256 * self._memory[address + 1]
         return self._memory[address]
 
-    def setmem(self, addr, value):
-        self._memory[addr] = value
+    def setmem(self, addr, value, word=False):
+        if word:
+            hi, lo = divmod(value, 256)
+            self._memory[addr] = lo
+            self._memory[addr + 1] = hi
+        else:
+            self._memory[addr] = value
         # now trigger various special registers
         if addr == 646:
             self.text = value
@@ -396,6 +403,8 @@ class BasicInterpreter:
             "π": math.pi,
             "peek": self.peek_func,
             "pE": self.peek_func,
+            "wpeek": self.wpeek_func,
+            "wpE": self.wpeek_func,
             "rnd": lambda *args: random.random(),
             "rndi": random.randrange
         }
@@ -480,6 +489,8 @@ class BasicInterpreter:
             self.execute_print(cmd)
         elif cmd.startswith(("poke", "pO")):
             self.execute_poke(cmd)
+        elif cmd.startswith(("wpoke", "wpO")):
+            self.execute_wpoke(cmd)
         elif cmd.startswith(("list", "lI")):
             self.execute_list(cmd)
             return False
@@ -630,6 +641,17 @@ class BasicInterpreter:
             raise BasicError("illegal quantity")
         self.screen.setmem(addr, value)
 
+    def execute_wpoke(self, cmd):
+        if cmd.startswith("wpO"):
+            cmd = cmd[3:]
+        elif cmd.startswith("wpoke"):
+            cmd = cmd[5:]
+        addr, value = cmd.split(',', maxsplit=1)
+        addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
+        if addr < 0 or addr > 0xffff or addr & 1 or value < 0 or value > 0xffff:
+            raise BasicError("illegal quantity")
+        self.screen.setmem(addr, value, True)
+
     def execute_sys(self, cmd):
         if cmd.startswith("sY"):
             cmd = cmd[2:]
@@ -650,6 +672,11 @@ class BasicInterpreter:
         if address < 0 or address > 0xffff:
             raise BasicError("illegal quantity")
         return self.screen.getmem(address)
+
+    def wpeek_func(self, address):
+        if address < 0 or address > 0xffff or address & 1:
+            raise BasicError("illegal quantity")
+        return self.screen.getmem(address, True)
 
     def execute_list(self, cmd):
         if cmd.startswith("lI"):
@@ -904,7 +931,9 @@ class EmulatorWindow(tkinter.Tk):
                     self.screen.backspace()
             elif char == '\x08':
                 self.screen.backspace()
-            elif char == '\x1b':
+            elif char == '\x03' and self.key_control_down:  # ctrl+C
+                self.runstop()
+            elif char == '\x1b':    # esc
                 self.runstop()
             elif '\x01' <= char <= '\x1a':
                 # @todo fix key-to-petscii mapping
