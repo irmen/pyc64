@@ -263,6 +263,10 @@ class C64Screen:
         self.cursor = x + 40*y
         self._fix_cursor(on=True)
 
+    def cursorpos(self):
+        row, col = divmod(self.cursor, 40)
+        return col, row
+
     def insert(self):
         self._fix_cursor()
         for i in range(40*(self.cursor // 40) + 39, self.cursor, -1):
@@ -313,9 +317,6 @@ class StopRunloop(Exception):
     pass
 
 
-class DoNotPrintReady(Exception):
-    pass
-
 
 class BasicInterpreter:
     def __init__(self, screen):
@@ -325,7 +326,7 @@ class BasicInterpreter:
         self.reset()
 
     def reset(self):
-        import math, hashlib, base64, binascii, sys, platform, Pyro4, random
+        import math, hashlib, base64, binascii, sys, platform, random
         self.symbols = {
             "md5": hashlib.md5,
             "sha256": hashlib.sha256,
@@ -333,11 +334,10 @@ class BasicInterpreter:
             "b64decode": base64.b64decode,
             "b64encode": base64.b64encode,
             "crc32": binascii.crc32,
-            "os" : os,
+            "os": os,
             "sys": sys,
             "platform": platform,
             "π": math.pi,
-            "pyro4": Pyro4,
             "peek": self.peek_func,
             "pE": self.peek_func,
             "rnd": lambda *args: random.random(),
@@ -354,10 +354,11 @@ class BasicInterpreter:
 
     def execute_line(self, line):
         try:
-            print("RUN LINE:", repr(line))
             # if there's no char on the last pos of the first line, only evaluate the first line
             if len(line) >= 40 and line[39] == ' ':
                 line = line[:40]
+            if self.process_programline_entry(line):
+                return
             parts = [x for x in (p.strip() for p in line.split(":")) if x]
             print("RUN CMDS:", parts)  # XXX
             self.last_run_error = None
@@ -366,8 +367,6 @@ class BasicInterpreter:
                     self._execute_cmd(cmd)
                 if self.current_run_line_index is None:
                     self.screen.writestr("\nready.\n")
-        except DoNotPrintReady:
-            pass
         except (ResetMachineError, StartRunloop, StopRunloop, GotoLine):
             raise
         except BasicError as bx:
@@ -383,6 +382,22 @@ class BasicInterpreter:
                 self.last_run_error = str(ex).lower()
             self.screen.writestr("\n?" + str(ex).lower() + "  error\nready.\n")
             traceback.print_exc()
+
+    def process_programline_entry(self, line):
+        match = re.match("(\d+)(\s*.*)", line)
+        if match:
+            if self.current_run_line_index is not None:
+                raise BasicError("cannot define lines while running")
+            linenum, line = match.groups()
+            line = line.strip()
+            linenum = int(linenum)
+            if not line:
+                if linenum in self.program:
+                    del self.program[linenum]
+            else:
+                self.program[linenum] = line
+            return True
+        return False
 
     def _execute_cmd(self, cmd):
         if cmd.startswith("read") or cmd.startswith("rE"):
@@ -417,19 +432,6 @@ class BasicInterpreter:
                 symbol, value = match.groups()
                 self.symbols[symbol] = eval(value, self.symbols)
                 return
-            match = re.match("(\d+)\s*(.*)", cmd)
-            if match:
-                if self.current_run_line_index is not None:
-                    raise BasicError("cannot define lines while running")
-                linenum, line = match.groups()
-                line = line.strip()
-                linenum = int(linenum)
-                if not line:
-                    if linenum in self.program:
-                        del self.program[linenum]
-                else:
-                    self.program[linenum] = line
-                raise DoNotPrintReady()
             else:
                 raise BasicError("syntax")
 
@@ -530,7 +532,7 @@ class BasicInterpreter:
         return 0
 
     def update_zeropage(self):
-        self.zeropage[214], self.zeropage[211] = divmod(self.screen.cursor, 40)  # cursorpos X,Y
+        self.zeropage[211], self.zeropage[214] = self.screen.cursorpos()
 
     def execute_list(self, cmd):
         if cmd.startswith("lI"):
@@ -538,9 +540,11 @@ class BasicInterpreter:
         elif cmd.startswith("list"):
             cmd = cmd[4:]
         start, sep, to = cmd.partition("-")
-        print(start, sep, to)
+        if not self.program:
+            return
         start = int(start) if start else 0
         to = int(to) if to else None
+        self.screen.writestr("\n")
         for num, text in sorted(self.program.items()):
             if num < start:
                 continue
@@ -589,10 +593,11 @@ class BasicInterpreter:
         cmd = cmd.strip()
         if cmd.startswith("\"$\""):
             raise BasicError("use dos\"$ instead")
-        if cmd.endswith("\",8,1"):
+        if cmd.endswith(",8,1"):
             cmd = cmd[:-4]
-        elif cmd.endswith("\",8"):
+        elif cmd.endswith(",8"):
             cmd = cmd[:-2]
+        cmd = cmd.strip()
         if not (cmd.startswith('"') and cmd.endswith('"')):
             raise BasicError("syntax")
         filename = cmd[1:-1]
@@ -685,6 +690,8 @@ class EmulatorWindow(tkinter.Tk):
         self.canvas.pack()
         self.cursor_blink_after = self.after(self.screen.cursor_blink_rate, self.blink_cursor)
         self.after(self.screen.update_rate, self.screen_refresher)
+        introtxt = self.canvas.create_text(topleft[0]+320, topleft[0]+180, text="pyc64 basic & function keys active", fill="white")
+        self.after(2500, lambda: self.canvas.delete(introtxt))
         self.run_step_after = None
 
     def _keyevent(self, event):
@@ -694,7 +701,7 @@ class EmulatorWindow(tkinter.Tk):
         return c, (event.x, event.y)
 
     def keypress(self, char, mouseposition):
-        # print("keypress", repr(char), mouseposition)
+        print("keypress", repr(char), mouseposition)
         if char.startswith("Shift"):
             self.key_shift_down = True
         if char.startswith("Control"):
@@ -749,6 +756,31 @@ class EmulatorWindow(tkinter.Tk):
             elif char == 'Insert':
                 self.screen.insert()
                 self.repaint()
+            elif char == 'F7':      # directory shortcut key
+                self.screen.clearscreen()
+                dir_cmd = "dos\"$"
+                self.screen.writestr(dir_cmd+"\n")
+                self.execute_line(dir_cmd)
+            elif char == 'F5':      # load file shortcut key
+                if self.key_shift_down:
+                    load_cmd = "load \"*\",8: "
+                    self.screen.writestr(load_cmd+"\n")
+                    self.execute_line(load_cmd)
+                else:
+                    self.screen.writestr("load ")
+                    x, y = self.screen.cursorpos()
+                    self.screen.cursormove(x+17, y)
+                    self.screen.writestr(",8:   ")
+                    line = self.screen.current_line(1)
+                    self.screen.return_key()
+                    self.execute_line(line)
+            elif char == "F3":      # run program shortcut key
+                self.screen.writestr("run: \n")
+                self.execute_line("run")
+            elif char == "F1":      # list program shortcut key
+                self.screen.writestr("list: \n")
+                self.execute_line("list")
+
 
     def execute_line(self, line):
         try:
