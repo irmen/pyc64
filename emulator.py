@@ -28,120 +28,30 @@ from PIL import Image
 
 class C64ScreenAndMemory:
     palette = (
-        0x000000,  # black
-        0xFFFFFF,  # white
-        0x68372B,  # red
-        0x70A4B2,  # cyan
-        0x6F3D86,  # purple
-        0x588D43,  # green
-        0x352879,  # blue
-        0xB8C76F,  # yellow
-        0x6F4F25,  # orange
-        0x433900,  # brown
-        0x9A6759,  # ligth red
-        0x444444,  # dark grey
-        0x6C6C6C,  # medium grey
-        0x9AD284,  # light green
-        0x6C5EB5,  # light blue
-        0x959595,  # light grey
+        0x000000,  # 0 = black
+        0xFFFFFF,  # 1 = white
+        0x68372B,  # 2 = red
+        0x70A4B2,  # 3 = cyan
+        0x6F3D86,  # 4 = purple
+        0x588D43,  # 5 = green
+        0x352879,  # 6 = blue
+        0xB8C76F,  # 7 = yellow
+        0x6F4F25,  # 8 = orange
+        0x433900,  # 9 = brown
+        0x9A6759,  # 10 = light red
+        0x444444,  # 11 = dark grey
+        0x6C6C6C,  # 12 = medium grey
+        0x9AD284,  # 13 = light green
+        0x6C5EB5,  # 14 = light blue
+        0x959595,  # 15 = light grey
     )
-
-    # translate ascii strings to petscii codes:
-    # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )
-    str_to_64_trans = str.maketrans({
-        '@': 0,
-        'a': 1,
-        'b': 2,
-        'c': 3,
-        'd': 4,
-        'e': 5,
-        'f': 6,
-        'g': 7,
-        'h': 8,
-        'i': 9,
-        'j': 10,
-        'k': 11,
-        'l': 12,
-        'm': 13,
-        'n': 14,
-        'o': 15,
-        'p': 16,
-        'q': 17,
-        'r': 18,
-        's': 19,
-        't': 20,
-        'u': 21,
-        'v': 22,
-        'w': 23,
-        'x': 24,
-        'y': 25,
-        'z': 26,
-        '[': 27,
-        '\\': 28,
-        '£': 28,        # pound currency sign
-        ']': 29,
-        '^': 30,        # up arrow
-        '~': 30,        # up arrow
-        '↑': 30,        # up arrow
-        '⬆': 30,        # up arrow
-        '_': 31,        # left arrow
-        '←': 31,        # left arrow
-        '⬅': 31,        # left arrow
-        ' ': 32,
-        '!': 33,
-        '"': 34,
-        '#': 35,
-        '$': 36,
-        '%': 37,
-        '&': 38,
-        '`': 39,
-        '\'': 39,
-        '(': 40,
-        ')': 41,
-        '*': 42,
-        '+': 43,
-        ',': 44,
-        '-': 45,
-        '.': 46,
-        '/': 47,
-        '0': 48,
-        '1': 49,
-        '2': 50,
-        '3': 51,
-        '4': 52,
-        '5': 53,
-        '6': 54,
-        '7': 55,
-        '8': 56,
-        '9': 57,
-        ':': 58,
-        ';': 59,
-        '<': 60,
-        '=': 61,
-        '>': 62,
-        '?': 63,
-        '♠': 65,    # spades
-        '●': 81,    # circle
-        '♥': 83,    # hearts
-        '○': 87,    # open circle
-        '♣': 88,    # clubs
-        '♦': 90,    # diamonds
-        '|': 94,    # pi symbol
-        'π': 94,    # pi symbol
-    })
-
-    # the inverse, translate petscii back to ascii strings:
-    c64_to_str_trans_normal = {v: k for k, v in str_to_64_trans.items()}
-    c64_to_str_trans_shifted = {v: k for k, v in str_to_64_trans.items()}
-    for c in range(ord('A'), ord('Z') + 1):
-        c64_to_str_trans_shifted[c] = c
-    c64_to_str_trans_normal[39] = c64_to_str_trans_shifted[39] = ord("'")
 
     def __init__(self):
         self.border = 0
         self.screen = 0
         self.text = 0
         self.shifted = False
+        self.inversevid = False
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
@@ -160,6 +70,7 @@ class C64ScreenAndMemory:
         self.screen = 6
         self.text = 14
         self.shifted = False
+        self.inversevid = False
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
@@ -227,44 +138,195 @@ class C64ScreenAndMemory:
         self._memory[0x0400 + self.cursor] ^= 0x80
         self._memory[0xd800 + self.cursor] = self.text
 
-    @classmethod
-    def str2screen(cls, string):
-        """
-        Convert ascii string to C64 screencodes.
-        A few non-ascii symbols are also supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○
-        NOTE: Text should be given in lowercase. Uppercase text will output PETSCII symbols.
-        """
-        return string.translate(cls.str_to_64_trans)
+    # ASCII-to-PETSCII translation table
+    # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )
+    ascii_to_petscii_trans = str.maketrans({
+        'a': 65,
+        'b': 66,
+        'c': 67,
+        'd': 68,
+        'e': 69,
+        'f': 70,
+        'g': 71,
+        'h': 72,
+        'i': 73,
+        'j': 74,
+        'k': 75,
+        'l': 76,
+        'm': 77,
+        'n': 78,
+        'o': 79,
+        'p': 80,
+        'q': 81,
+        'r': 82,
+        's': 83,
+        't': 84,
+        'u': 85,
+        'v': 86,
+        'w': 87,
+        'x': 88,
+        'y': 89,
+        'z': 90,
+        'A': 97,
+        'B': 98,
+        'C': 99,
+        'D': 100,
+        'E': 101,
+        'F': 102,
+        'G': 103,
+        'H': 104,
+        'I': 105,
+        'J': 106,
+        'K': 107,
+        'L': 108,
+        'M': 109,
+        'N': 110,
+        'O': 111,
+        'P': 112,
+        'Q': 113,
+        'R': 114,
+        'S': 115,
+        'T': 116,
+        'U': 117,
+        'V': 118,
+        'W': 119,
+        'X': 120,
+        'Y': 121,
+        'Z': 122,
+        '{': 179,       # left squiggle
+        '}': 235,       # right squiggle
+        '£': 92,        # pound currency sign
+        '^': 94,        # up arrow
+        '~': 126,       # pi math symbol
+        'π': 126,       # pi symbol
+        '|': 221,       # vertical bar
+        '↑': 94,        # up arrow
+        '⬆': 94,        # up arrow
+        '←': 95,        # left arrow
+        '⬅': 95,        # left arrow
+        '_': 164,       # lower bar/underscore
+        '`': 39,        # single quote
+        '♠': 97,        # spades
+        '●': 113,       # circle
+        '♥': 115,       # hearts
+        '○': 119,       # open circle
+        '♣': 120,    # clubs
+        '♦': 122,    # diamonds
+    })
 
-    def writestr(self, txt, ascii_to_petscii=True, inversevid=False):
+    def writestr(self, txt):
+        """Write ASCII text to the screen."""
+        # convert ascii to petscii
+        self.write(txt.translate(self.ascii_to_petscii_trans))
+
+    def _petscii2screen(self, petscii_code, inversevid=False):
+        if petscii_code <= 0x0f:
+            code = petscii_code + 128
+        elif petscii_code <= 0x3f:
+            code = petscii_code
+        elif petscii_code <= 0x5f:
+            code = petscii_code - 64
+        elif petscii_code <= 0x7f:
+            code = petscii_code - 32
+        elif petscii_code <= 0x9f:
+            code = petscii_code + 64
+        elif petscii_code <= 0xbf:
+            code = petscii_code - 64
+        elif petscii_code <= 0xfe:
+            code = petscii_code - 128
+        else:
+            code = 94
+        if inversevid:
+            return code | 0x80
+        return code
+
+    def _screen2petscii(self, screencode):
+        screencode &= 0x7f
+        if screencode <= 0x1f:
+            return screencode + 64
+        if screencode <= 0x3f:
+            return screencode
+        return screencode + 32
+
+    def write(self, petscii):
+        """Write PETSCII-encoded text to the screen."""
         self._fix_cursor()
-        cursor = self.cursor
         # first, filter out all non-printable chars
-        txt = "".join(c for c in txt if c not in "\x00\x01\x02\x03\x04\x06\x07\x08\x09\x0a\x0b\x0c\x0f\x10\x15\x16"
+        txt = "".join(c for c in petscii if c not in "\x00\x01\x02\x03\x04\x06\x07\x08\x09\x0a\x0b\x0c\x0f\x10\x15\x16"
                       "\x17\x18\x19\x1a\x1b\x80\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8f")
         txt = txt.replace("\x8d", "\x0d")    # replace shift-RETURN by regular RETURN
-        # print("writestr", repr(txt))  # XXX
         lines = txt.split("\x0d")    # line breaks are not the lF but the RETURN char ('\r')
         first_line = True
-        inversevid = 0x80 if inversevid else 0
+
+        def handle_special(c):
+            # note: return/shift-return are handled automatically
+            txtcolors = {
+                    '\x05': 1,   # white
+                    '\x1c': 2,   # red
+                    '\x1e': 5,   # green
+                    '\x1f': 6,   # blue
+                    '\x81': 8,   # orange
+                    '\x90': 0,   # black
+                    '\x95': 9,   # brown
+                    '\x96': 10,  # pink/light red
+                    '\x97': 11,  # dark grey
+                    '\x98': 12,  # grey
+                    '\x99': 13,  # light green
+                    '\x9a': 14,  # light blue
+                    '\x9b': 14,  # light grey
+                    '\x9c': 4,   # purple
+                    '\x9e': 7,   # yellow
+                    '\x9f': 3,   # cyan
+                }
+            if c in txtcolors:
+                self.text = txtcolors[c]
+            elif c == '\x0e':
+                self.shifted = True
+            elif c == '\x8e':
+                self.shifted = False
+            elif c == '\x11':
+                self.down()
+            elif c == '\x91':
+                self.up()
+            elif c == '\x1d':
+                self.right()
+            elif c == '\x9d':
+                self.left()
+            elif c == '\x12':
+                self.inversevid = True
+            elif c == '\x92':
+                self.inversevid = False
+            elif c == '\x13':
+                self.cursormove(0, 0)   # home
+            elif c == '\x14':
+                self.backspace()
+            elif c == '\x94':
+                self.insert()
+            elif c == '\x93':
+                self.clearscreen()
+            else:
+                return False
+            return True
+
+        prev_cursor_enabled = self._cursor_enabled
+        self._cursor_enabled = False
         for line in lines:
             if not first_line:
-                cursor = 40 * (cursor // 40) + 40
-                if cursor >= 1000:
+                self.cursor = 40 * (self.cursor // 40 + 1)
+                if self.cursor >= 960:
                     self._scroll_up()
-                    cursor -= 40
+                    self.cursor = 960
             first_line = False
-            if ascii_to_petscii:
-                line = self.str2screen(line)
             for c in line:
-                self._memory[0x0400 + cursor] = ord(c) | inversevid
-                self._memory[0xd800 + cursor] = self.text
-                cursor += 1
-                if cursor >= 1000:
-                    self._scroll_up()
-                    cursor -= 40
-        self.cursor = cursor
-        self._fix_cursor(on=True)
+                if not handle_special(c):
+                    self._memory[0x0400 + self.cursor] = self._petscii2screen(ord(c), self.inversevid)
+                    self._memory[0xd800 + self.cursor] = self.text
+                    self.cursor += 1
+                    if self.cursor >= 1000:
+                        self._scroll_up()
+                        self.cursor = 960
+        self._cursor_enabled = prev_cursor_enabled
+        self._fix_cursor(True)
 
     def _fix_cursor(self, on=False):
         if on:
@@ -342,7 +404,7 @@ class C64ScreenAndMemory:
         self.cursor = 0
         self._fix_cursor(on=True)
 
-    def cursormove(self, x=0, y=0):
+    def cursormove(self, x, y):
         self._fix_cursor()
         self.cursor = x + 40 * y
         self._fix_cursor(on=True)
@@ -355,18 +417,19 @@ class C64ScreenAndMemory:
         self._fix_cursor()
         for i in range(40 * (self.cursor // 40) + 39, self.cursor, -1):
             self._memory[0x0400 + i] = self._memory[0x0400 - 1 + i]
-            self._memory[0xd800 + i] = self._colors[0xd800 - 1 + i]
+            self._memory[0xd800 + i] = self._memory[0xd800 - 1 + i]
         self._memory[0x0400 + self.cursor] = 32
         self._memory[0xd800 + self.cursor] = self.text
         self._fix_cursor(on=True)
 
-    def current_line(self, amount=1):
+    def current_line(self, amount=1, petscii=True):
         start = 0x0400 + 40 * (self.cursor // 40)
         self._fix_cursor()
-        chars = "".join([chr(c) for c in self._memory[start:start + 40 * amount]])
+        screencodes = self._memory[start:start + 40 * amount]
         self._fix_cursor()
-        trans = self.c64_to_str_trans_shifted if self.shifted else self.c64_to_str_trans_normal
-        return chars.translate(trans)
+        if petscii:
+            return "".join(chr(self._screen2petscii(c)) for c in screencodes)
+        return "".join(chr(c) for c in screencodes)
 
     def is_display_dirty(self):
         charmem = self._memory[0x0400:0x07e8]
@@ -462,7 +525,6 @@ class BasicInterpreter:
                 # data is only consumed with a read statement
                 return
             parts = [x for x in (p.strip() for p in line.split(":")) if x]
-            # print("RUN CMDS:", parts)  # XXX
             self.last_run_error = None
             if parts:
                 for cmd in parts:
@@ -504,6 +566,7 @@ class BasicInterpreter:
         return False
 
     def _execute_cmd(self, cmd, all_cmds_on_line=None):
+        print("RUN CMD:", repr(cmd))  # XXX
         if cmd.startswith(("read", "rE")):
             self.execute_read(cmd)
         elif cmd.startswith(("restore", "reS")):
@@ -832,9 +895,7 @@ class BasicInterpreter:
             catalog = ((file, os.path.getsize(os.path.join("drive8", file))) for file in files)
             header = "\"floppy contents \" ** 2a"
             # @todo replace inverse vid output
-            self.screen.writestr("\r0 ")
-            self.screen.writestr(header, inversevid=True)
-            self.screen.writestr("\r")
+            self.screen.writestr("\r0 \x12"+header+"\x92\r")
             for file, size in sorted(catalog):
                 name, suff = os.path.splitext(file)
                 name = '"' + name + '"'
@@ -1000,7 +1061,7 @@ class EmulatorWindow(tkinter.Tk):
                 self.runstop()
             elif '\x01' <= char <= '\x1a':
                 # @todo fix key-to-petscii mapping
-                self.screen.writestr(chr(ord(char) + 111), ascii_to_petscii=False)   # simulate commodore key for PETSCII symbols
+                self.screen.write(chr(ord(char)+111))   # simulate commodore key for PETSCII symbols
             else:
                 self.screen.writestr(char)
             self.repaint()
@@ -1022,7 +1083,7 @@ class EmulatorWindow(tkinter.Tk):
                 if self.key_shift_down:
                     self.screen.clearscreen()
                 else:
-                    self.screen.cursormove()
+                    self.screen.cursormove(0, 0)
                 self.repaint()
             elif char == 'Insert':
                 self.screen.insert()
@@ -1044,7 +1105,6 @@ class EmulatorWindow(tkinter.Tk):
                     self.screen.writestr(",8:   ")
                     line = self.screen.current_line(1)
                     self.screen.return_key()
-                    self.execute_line(line)
                     self.execute_line(line)
             elif char == "F3":      # run program shortcut key
                 self.screen.writestr("run: \r")
@@ -1205,5 +1265,15 @@ def setup():
     emu.mainloop()
 
 
+def test_screencode_mappings():
+    scr = C64ScreenAndMemory()
+    for c in range(32, 128):
+        sc = scr._petscii2screen(c)
+        cc = scr._screen2petscii(sc)
+        if cc != c:
+            print("char mapping error: %d -> %d -> %d" % (c, sc, cc))
+
+
 if __name__ == "__main__":
+    test_screencode_mappings()
     setup()
