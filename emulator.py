@@ -219,7 +219,8 @@ class C64ScreenAndMemory:
         # convert ascii to petscii
         self.write(txt.translate(self.ascii_to_petscii_trans))
 
-    def _petscii2screen(self, petscii_code, inversevid=False):
+    @classmethod
+    def _petscii2screen(cls, petscii_code, inversevid=False):
         if petscii_code <= 0x0f:
             code = petscii_code + 128
         elif petscii_code <= 0x3f:
@@ -240,7 +241,8 @@ class C64ScreenAndMemory:
             return code | 0x80
         return code
 
-    def _screen2petscii(self, screencode):
+    @classmethod
+    def _screen2petscii(cls, screencode):
         """Translate screencode back to PETSCII code"""
         screencode &= 0x7f
         if screencode <= 0x1f:
@@ -249,7 +251,8 @@ class C64ScreenAndMemory:
             return screencode
         return screencode + 32
 
-    def _screen2ascii(self, screencode):
+    @classmethod
+    def _screen2ascii(cls, screencode):
         """Translate screencode back to ASCII char"""
         return "@abcdefghijklmnopqrstuvwxyz[£]↑← !\"#$%&'()*+,-./0123456789:;<=>?\0ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
                "\0\0|π\0 \0\0\0_\0\0\0\0\0\0}\0\0\0\0\0\0\0{\0\0\0\0\0\0\0\0\0\0\0\0"[screencode & 0x7f]
@@ -449,6 +452,14 @@ class C64ScreenAndMemory:
         self._previous_checked_chars = charmem
         self._previous_checked_colors = colormem
         return result
+
+    @classmethod
+    def test_screencode_mappings(cls):
+        for c in range(32, 128):
+            sc = cls._petscii2screen(c)
+            cc = cls._screen2petscii(sc)
+            if cc != c:
+                print("char mapping error: %d -> %d -> %d" % (c, sc, cc))
 
 
 class BasicError(Exception):
@@ -1023,6 +1034,7 @@ class EmulatorWindow(tkinter.Tk):
                 self.charbitmaps.append(bm)
         self.key_shift_down = False
         self.key_control_down = False
+        self.key_alt_down = False
         self.bind("<KeyPress>", lambda event: self.keypress(*self._keyevent(event)))
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
         self.repaint()
@@ -1045,7 +1057,8 @@ class EmulatorWindow(tkinter.Tk):
             self.key_shift_down = True
         if char.startswith("Control"):
             self.key_control_down = True
-
+        if char.startswith("Alt"):
+            self.key_alt_down = True
         if char.startswith(("Shift", "Control")):
             if self.key_shift_down and self.key_control_down:
                 self.screen.shifted = not self.screen.shifted
@@ -1069,9 +1082,6 @@ class EmulatorWindow(tkinter.Tk):
                 self.runstop()
             elif char == '\x1b':    # esc
                 self.runstop()
-            elif '\x01' <= char <= '\x1a':
-                # @todo fix key-to-petscii mapping
-                self.screen.write(chr(ord(char)+111))   # simulate commodore key for PETSCII symbols
             else:
                 self.screen.writestr(char)
             self.repaint()
@@ -1169,6 +1179,8 @@ class EmulatorWindow(tkinter.Tk):
             self.key_shift_down = False
         if char.startswith("Control"):
             self.key_control_down = False
+        if char.startswith("Alt"):
+            self.key_alt_down = False
 
     def create_charsets(self):
         # normal
@@ -1271,19 +1283,10 @@ class EmulatorWindow(tkinter.Tk):
 
 
 def setup():
-    emu = EmulatorWindow("Fast Commodore-64 emulator in pure Python!")
+    C64ScreenAndMemory.test_screencode_mappings()
+    emu = EmulatorWindow("Fast Commodore-64 'emulator' in pure Python!")
     emu.mainloop()
 
 
-def test_screencode_mappings():
-    scr = C64ScreenAndMemory()
-    for c in range(32, 128):
-        sc = scr._petscii2screen(c)
-        cc = scr._screen2petscii(sc)
-        if cc != c:
-            print("char mapping error: %d -> %d -> %d" % (c, sc, cc))
-
-
 if __name__ == "__main__":
-    test_screencode_mappings()
     setup()

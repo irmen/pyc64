@@ -1,4 +1,4 @@
-# pyc64: Commodore-64 emulator in pure Python!
+# pyc64: Commodore-64 "emulator" in pure Python!
 
 ![Screenshot one](demo_screenshot1.png)
 
@@ -31,8 +31,8 @@ For instance, try ``print 5**123``  or ``print sys.platform`` or ``print sum(log
 Note that it is not supported to do any blocking operation such as INPUT or WAIT.
 This means that making an interactive program is not possible at this point.
 
-You'll need the [pillow](https://pillow.readthedocs.io) library because the emulator needs to do some
-charset bitmap conversions at startup for tkinter.
+You'll need the [pillow](https://pillow.readthedocs.io) library because 
+the program needs to do some charset bitmap conversions at startup for tkinter.
 
 
 ![Screenshot two](demo_screenshot2.png)
