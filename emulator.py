@@ -241,12 +241,18 @@ class C64ScreenAndMemory:
         return code
 
     def _screen2petscii(self, screencode):
+        """Translate screencode back to PETSCII code"""
         screencode &= 0x7f
         if screencode <= 0x1f:
             return screencode + 64
         if screencode <= 0x3f:
             return screencode
         return screencode + 32
+
+    def _screen2ascii(self, screencode):
+        """Translate screencode back to ASCII char"""
+        return "@abcdefghijklmnopqrstuvwxyz[£]↑← !\"#$%&'()*+,-./0123456789:;<=>?\0ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
+               "\0\0|π\0 \0\0\0_\0\0\0\0\0\0}\0\0\0\0\0\0\0{\0\0\0\0\0\0\0\0\0\0\0\0"[screencode & 0x7f]
 
     def write(self, petscii):
         """Write PETSCII-encoded text to the screen."""
@@ -422,14 +428,19 @@ class C64ScreenAndMemory:
         self._memory[0xd800 + self.cursor] = self.text
         self._fix_cursor(on=True)
 
-    def current_line(self, amount=1, petscii=True):
+    def current_line(self, amount=1, petscii=True, ascii=False):
+        if petscii and ascii:
+            raise ValueError("select only one result type")
         start = 0x0400 + 40 * (self.cursor // 40)
         self._fix_cursor()
         screencodes = self._memory[start:start + 40 * amount]
         self._fix_cursor()
         if petscii:
+            return "".join(self._screen2ascii(c) for c in screencodes)
+        elif ascii:
             return "".join(chr(self._screen2petscii(c)) for c in screencodes)
-        return "".join(chr(c) for c in screencodes)
+        else:
+            return "".join(chr(c) for c in screencodes)
 
     def is_display_dirty(self):
         charmem = self._memory[0x0400:0x07e8]
@@ -566,7 +577,7 @@ class BasicInterpreter:
         return False
 
     def _execute_cmd(self, cmd, all_cmds_on_line=None):
-        print("RUN CMD:", repr(cmd))  # XXX
+        # print("RUN CMD:", repr(cmd))  # XXX
         if cmd.startswith(("read", "rE")):
             self.execute_read(cmd)
         elif cmd.startswith(("restore", "reS")):
@@ -894,7 +905,6 @@ class BasicInterpreter:
             files = sorted(os.listdir("drive8"))
             catalog = ((file, os.path.getsize(os.path.join("drive8", file))) for file in files)
             header = "\"floppy contents \" ** 2a"
-            # @todo replace inverse vid output
             self.screen.writestr("\r0 \x12"+header+"\x92\r")
             for file, size in sorted(catalog):
                 name, suff = os.path.splitext(file)
