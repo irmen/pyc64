@@ -18,6 +18,7 @@ License: MIT open-source.
 import sys
 import re
 import os
+import array
 import tkinter
 import traceback
 import numbers
@@ -48,35 +49,35 @@ class C64ScreenAndMemory:
 
     def __init__(self):
         self.border = 0
-        self.screen = 0
+        self._screen = 0
         self.text = 0
-        self.shifted = False
+        self._shifted = False
         self.inversevid = False
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
         self._cursor_enabled = True
+        self._full_repaint = True
         self.update_rate = 100
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
         # screen colors    $d800-$dbff
-        self._memory = [0] * 65536    # 64Kb of 'RAM'
-        self._previous_checked_chars = None
-        self._previous_checked_colors = None
+        self._memory = array.array('B', [0] * 65536)    # 64Kb of 'RAM'
         self.reset()
 
     def reset(self, hard=False):
         self.border = 14
-        self.screen = 6
+        self._screen = 6
+        self._full_repaint = True
         self.text = 14
-        self.shifted = False
+        self._shifted = False
         self.inversevid = False
         self.cursor = 0
         self.cursor_state = False
         self.cursor_blink_rate = 300
         self.cursor_enabled = True
-        self._previous_checked_chars = None
-        self._previous_checked_colors = None
+        self._previous_checked_chars = array.array('B', [0] * 1000)
+        self._previous_checked_colors = array.array('B', [0] * 1000)
         for i in range(256):
             self._memory[i] = 0
         if hard:
@@ -86,6 +87,24 @@ class C64ScreenAndMemory:
         for i in range(1000):
             self._memory[0x0400 + i] = 32
             self._memory[0xd800 + i] = self.text
+
+    @property
+    def screen(self):
+        return self._screen
+
+    @screen.setter
+    def screen(self, color):
+        self._screen = color
+        self._full_repaint = True
+
+    @property
+    def shifted(self):
+        return self._shifted
+
+    @shifted.setter
+    def shifted(self, boolean):
+        self._full_repaint |= boolean != self._shifted
+        self._shifted = boolean
 
     @property
     def cursor_enabled(self):
@@ -109,9 +128,9 @@ class C64ScreenAndMemory:
         elif address == 53280:
             self._memory[53280] = self.border
         elif address == 53281:
-            self._memory[53281] = self.screen
+            self._memory[53281] = self._screen
         elif address == 53272:
-            self._memory[53272] = 23 if self.shifted else 21
+            self._memory[53272] = 23 if self._shifted else 21
         if word:
             return self._memory[address] + 256 * self._memory[address + 1]
         return self._memory[address]
@@ -290,9 +309,9 @@ class C64ScreenAndMemory:
             if c in txtcolors:
                 self.text = txtcolors[c]
             elif c == '\x0e':
-                self.shifted = True
+                self._shifted = True
             elif c == '\x8e':
-                self.shifted = False
+                self._shifted = False
             elif c == '\x11':
                 self.down()
             elif c == '\x91':
@@ -445,14 +464,6 @@ class C64ScreenAndMemory:
         else:
             return "".join(chr(c) for c in screencodes)
 
-    def is_display_dirty(self):
-        charmem = self._memory[0x0400:0x07e8]
-        colormem = self._memory[0xd800:0xdbe8]
-        result = charmem != self._previous_checked_chars or colormem != self._previous_checked_colors
-        self._previous_checked_chars = charmem
-        self._previous_checked_colors = colormem
-        return result
-
     @classmethod
     def test_screencode_mappings(cls):
         for c in range(32, 128):
@@ -460,6 +471,23 @@ class C64ScreenAndMemory:
             cc = cls._screen2petscii(sc)
             if cc != c:
                 print("char mapping error: %d -> %d -> %d" % (c, sc, cc))
+
+    def getdirty(self):
+        if self._full_repaint:
+            self._full_repaint = False
+            result = [(i, (self._memory[0x0400 + i], self._memory[0xd800 + i])) for i in range(1000)]
+        else:
+            result = [(i, (self._memory[0x0400 + i], self._memory[0xd800 + i]))
+                      for i in range(1000)
+                      if self._memory[0x0400 + i] != self._previous_checked_chars[i]
+                      or self._memory[0xd800 + i] != self._previous_checked_colors[i]]
+        if result:
+            self._previous_checked_chars = self._memory[0x0400:0x07e8]
+            self._previous_checked_colors = self._memory[0xd800:0xdbe8]
+        return result
+
+    def getscreencopy(self):
+        return self._memory[0x0400:0x07e8], self._memory[0xd800:0xdbe8]
 
 
 class BasicError(Exception):
@@ -1017,7 +1045,10 @@ class EmulatorWindow(tkinter.Tk):
         super().__init__()
         self.wm_title(title)
         self.geometry("+200+100")
+        self.img = tkinter.PhotoImage("c64logo.png")
+        self.tk.call('wm', 'iconphoto', self._w, self.img)
         self.screen = C64ScreenAndMemory()
+        self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
         self.basic = BasicInterpreter(self.screen)
         self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
         topleft = self.screencor((0, 0))
@@ -1207,17 +1238,19 @@ class EmulatorWindow(tkinter.Tk):
     def repaint(self):
         # set border color and screen color
         self.canvas["bg"] = self.tkcolor(self.screen.border)
-        self.canvas.itemconfigure(self.screenrect, fill=self.tkcolor(self.screen.screen))
-        if self.screen.is_display_dirty():
-            bgcol = self.tkcolor(self.screen.screen)
-            style = "shifted" if self.screen.shifted else "normal"
-            for y in range(25):
-                for x in range(40):
-                    char, color = self.screen.getchar(x, y)
-                    forecol = self.tkcolor(color)
-                    bm = self.charbitmaps[x + y * 40]
-                    bitmap = "@charset/{:s}-{:02x}.xbm".format(style, char)
-                    self.canvas.itemconfigure(bm, foreground=forecol, background=bgcol, bitmap=bitmap)
+        self.canvas.itemconfigure(self.screenrect, fill=self.tkcolor(self.screen._screen))
+        bgcol = self.tkcolor(self.screen._screen)
+        style = "shifted" if self.screen.shifted else "normal"
+        if self.repaint_only_dirty:
+            dirty = iter(self.screen.getdirty())
+        else:
+            chars, colors = self.screen.getscreencopy()
+            dirty = enumerate(zip(chars, colors))
+        for index, (char, color) in dirty:
+            forecol = self.tkcolor(color)
+            bm = self.charbitmaps[index]
+            bitmap = "@charset/{:s}-{:02x}.xbm".format(style, char)
+            self.canvas.itemconfigure(bm, foreground=forecol, background=bgcol, bitmap=bitmap)
 
     def screencor(self, cc):
         return 64 + cc[0] * 16, 64 + cc[1] * 16
