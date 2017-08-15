@@ -616,7 +616,7 @@ class BasicInterpreter:
         return False
 
     def _execute_cmd(self, cmd, all_cmds_on_line=None):
-        # print("RUN CMD:", repr(cmd))  # XXX
+        # print("RUN CMD:", repr(cmd))
         if cmd.startswith(("read", "rE")):
             self.execute_read(cmd)
         elif cmd.startswith(("restore", "reS")):
@@ -1082,7 +1082,8 @@ class EmulatorWindow(tkinter.Tk):
         with_shift = state & 1
         with_control = state & 4
         with_alt = state & 8
-        if char.startswith("Shift") and with_control or char.startswith("Control") and with_shift:
+        if char.startswith("Shift") and with_control or char.startswith("Control") and with_shift \
+            or char == "??" and with_control and with_shift:
             # simulate SHIFT+COMMODORE_KEY to flip the charset
             self.screen.shifted = not self.screen.shifted
 
