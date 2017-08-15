@@ -1078,10 +1078,10 @@ class EmulatorWindow(tkinter.Tk):
         c = event.char
         if not c or ord(c) > 255:
             c = event.keysym
-        return c, (event.x, event.y)
+        return c, event.state, event.keycode, event.x, event.y
 
-    def keypress(self, char, mouseposition):
-        # print("keypress", repr(char), mouseposition)
+    def keypress(self, char, state, keycode, mousex, mousey):
+        # print("keypress", repr(char), state, keycode)
         if char.startswith("Shift"):
             self.key_shift_down = True
         if char.startswith("Control"):
@@ -1100,13 +1100,11 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.return_key()
                 if not self.key_shift_down:
                     self.execute_line(line)
-            elif char == '\x7f':
+            elif char in ('\x08', '\x7f', 'Delete'):
                 if self.key_shift_down:
                     self.screen.insert()
                 else:
                     self.screen.backspace()
-            elif char == '\x08':
-                self.screen.backspace()
             elif char == '\x03' and self.key_control_down:  # ctrl+C
                 self.runstop()
             elif char == '\x1b':    # esc
@@ -1134,7 +1132,7 @@ class EmulatorWindow(tkinter.Tk):
                 else:
                     self.screen.cursormove(0, 0)
                 self.repaint()
-            elif char == 'Insert':
+            elif char in ('Insert', 'Help'):
                 self.screen.insert()
                 self.repaint()
             elif char == 'F7':      # directory shortcut key
@@ -1202,8 +1200,8 @@ class EmulatorWindow(tkinter.Tk):
             self.screen.writestr("\rbreak in {:d}\rready.\r".format(line))
             self.screen.cursor_enabled = True
 
-    def keyrelease(self, char, mouseposition):
-        # print("keyrelease", repr(char), mouseposition)
+    def keyrelease(self, char, state, keycode, mousex, mousey):
+        # print("keyrelease", repr(char), state, keycode)
         if char.startswith("Shift"):
             self.key_shift_down = False
         if char.startswith("Control"):
