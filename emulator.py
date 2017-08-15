@@ -1061,9 +1061,6 @@ class EmulatorWindow(tkinter.Tk):
                 bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@charset/normal-20.xbm",
                                                foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
                 self.charbitmaps.append(bm)
-        self.key_shift_down = False
-        self.key_control_down = False
-        self.key_alt_down = False
         self.bind("<KeyPress>", lambda event: self.keypress(*self._keyevent(event)))
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
         self.repaint()
@@ -1082,15 +1079,12 @@ class EmulatorWindow(tkinter.Tk):
 
     def keypress(self, char, state, keycode, mousex, mousey):
         # print("keypress", repr(char), state, keycode)
-        if char.startswith("Shift"):
-            self.key_shift_down = True
-        if char.startswith("Control"):
-            self.key_control_down = True
-        if char.startswith("Alt"):
-            self.key_alt_down = True
-        if char.startswith(("Shift", "Control")):
-            if self.key_shift_down and self.key_control_down:
-                self.screen.shifted = not self.screen.shifted
+        with_shift = state & 1
+        with_control = state & 4
+        with_alt = state & 8
+        if char.startswith("Shift") and with_control or char.startswith("Control") and with_shift:
+            # simulate SHIFT+COMMODORE_KEY to flip the charset
+            self.screen.shifted = not self.screen.shifted
 
         if len(char) == 1:
             # if '1' <= char <= '8' and self.key_control_down:
@@ -1098,14 +1092,14 @@ class EmulatorWindow(tkinter.Tk):
             if char == '\r':    # RETURN key
                 line = self.screen.current_line(2)
                 self.screen.return_key()
-                if not self.key_shift_down:
+                if not with_shift:
                     self.execute_line(line)
             elif char in ('\x08', '\x7f', 'Delete'):
-                if self.key_shift_down:
+                if with_shift:
                     self.screen.insert()
                 else:
                     self.screen.backspace()
-            elif char == '\x03' and self.key_control_down:  # ctrl+C
+            elif char == '\x03' and with_control:  # ctrl+C
                 self.runstop()
             elif char == '\x1b':    # esc
                 self.runstop()
@@ -1127,7 +1121,7 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.right()
                 self.repaint()
             elif char == 'Home':
-                if self.key_shift_down:
+                if with_shift:
                     self.screen.clearscreen()
                 else:
                     self.screen.cursormove(0, 0)
@@ -1141,7 +1135,7 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.writestr(dir_cmd + "\r")
                 self.execute_line(dir_cmd)
             elif char == 'F5':      # load file shortcut key
-                if self.key_shift_down:
+                if with_shift:
                     load_cmd = "load \"*\",8: "
                     self.screen.writestr(load_cmd + "\r")
                     self.execute_line(load_cmd)
@@ -1202,12 +1196,7 @@ class EmulatorWindow(tkinter.Tk):
 
     def keyrelease(self, char, state, keycode, mousex, mousey):
         # print("keyrelease", repr(char), state, keycode)
-        if char.startswith("Shift"):
-            self.key_shift_down = False
-        if char.startswith("Control"):
-            self.key_control_down = False
-        if char.startswith("Alt"):
-            self.key_alt_down = False
+        pass
 
     def create_charsets(self):
         # normal
