@@ -284,23 +284,23 @@ class ScreenAndMemory:
         def handle_special(c):
             # note: return/shift-return are handled automatically
             txtcolors = {
-                    '\x05': 1,   # white
-                    '\x1c': 2,   # red
-                    '\x1e': 5,   # green
-                    '\x1f': 6,   # blue
-                    '\x81': 8,   # orange
-                    '\x90': 0,   # black
-                    '\x95': 9,   # brown
-                    '\x96': 10,  # pink/light red
-                    '\x97': 11,  # dark grey
-                    '\x98': 12,  # grey
-                    '\x99': 13,  # light green
-                    '\x9a': 14,  # light blue
-                    '\x9b': 14,  # light grey
-                    '\x9c': 4,   # purple
-                    '\x9e': 7,   # yellow
-                    '\x9f': 3,   # cyan
-                }
+                '\x05': 1,   # white
+                '\x1c': 2,   # red
+                '\x1e': 5,   # green
+                '\x1f': 6,   # blue
+                '\x81': 8,   # orange
+                '\x90': 0,   # black
+                '\x95': 9,   # brown
+                '\x96': 10,  # pink/light red
+                '\x97': 11,  # dark grey
+                '\x98': 12,  # grey
+                '\x99': 13,  # light green
+                '\x9a': 14,  # light blue
+                '\x9b': 14,  # light grey
+                '\x9c': 4,   # purple
+                '\x9e': 7,   # yellow
+                '\x9f': 3,   # cyan
+            }
             if c in txtcolors:
                 self.text = txtcolors[c]
             elif c == '\x0e':
@@ -360,31 +360,31 @@ class ScreenAndMemory:
 
     def _scroll_up(self, fill=(32, None)):
         # scroll the screen up one line
-        self._memory[0x0400:0x0400+960] = self._memory[0x0400+40: 0x0400+1000]
-        self._memory[0xd800:0xd800+960] = self._memory[0xd800+40: 0xd800+1000]
+        self._memory[0x0400: 0x0400 + 960] = self._memory[0x0400 + 40: 0x0400 + 1000]
+        self._memory[0xd800: 0xd800 + 960] = self._memory[0xd800 + 40: 0xd800 + 1000]
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        self._memory[0x0400 + 960:0x0400+1000] = [fillchar]*40
-        self._memory[0xd800 + 960:0xd800+1000] = [fillcolor]*40
+        self._memory[0x0400 + 960: 0x0400 + 1000] = [fillchar] * 40
+        self._memory[0xd800 + 960: 0xd800 + 1000] = [fillcolor] * 40
 
     def _scroll_down(self, fill=(32, None)):
         # scroll the screen down one line
-        self._memory[0x0400+40:0x0400+1000] = self._memory[0x0400: 0x0400+960]
-        self._memory[0xd800+40:0xd800+1000] = self._memory[0xd800: 0xd800+960]
+        self._memory[0x0400 + 40: 0x0400 + 1000] = self._memory[0x0400: 0x0400 + 960]
+        self._memory[0xd800 + 40: 0xd800 + 1000] = self._memory[0xd800: 0xd800 + 960]
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        self._memory[0x0400:0x0400+40] = [fillchar]*40
-        self._memory[0xd800:0xd800+40] = [fillcolor]*40
+        self._memory[0x0400: 0x0400 + 40] = [fillchar] * 40
+        self._memory[0xd800: 0xd800 + 40] = [fillcolor] * 40
 
     def _scroll_left(self, fill=(32, None)):
         # scroll the screen left one colum
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
         for y in range(0, 1000, 40):
-            self._memory[0x0400 + y:0x0400 + y + 39] = self._memory[0x0400 + y+1:0x0400 + y + 40]
-            self._memory[0xd800 + y:0xd800 + y + 39] = self._memory[0xd800 + y+1:0xd800 + y + 40]
-        self._memory[0x0400+39:0x0400 + 1000:40] = [fillchar]*25
-        self._memory[0xd800+39:0xd800 + 1000:40] = [fillcolor]*25
+            self._memory[0x0400 + y: 0x0400 + y + 39] = self._memory[0x0400 + y + 1: 0x0400 + y + 40]
+            self._memory[0xd800 + y: 0xd800 + y + 39] = self._memory[0xd800 + y + 1: 0xd800 + y + 40]
+        self._memory[0x0400 + 39: 0x0400 + 1000: 40] = [fillchar] * 25
+        self._memory[0xd800 + 39: 0xd800 + 1000: 40] = [fillcolor] * 25
 
     def _scroll_right(self, fill=(32, None)):
         # scroll the screen right one colum
@@ -466,8 +466,8 @@ class ScreenAndMemory:
             self._fix_cursor(on=True)
 
     def clearscreen(self):
-        self._memory[0x0400:0x0400+1000] = [32] * 1000
-        self._memory[0xd800:0xd800+1000] = [self.text] * 1000
+        self._memory[0x0400: 0x0400 + 1000] = [32] * 1000
+        self._memory[0xd800: 0xd800 + 1000] = [self.text] * 1000
         self.cursor = 0
         self._fix_cursor(on=True)
 
@@ -509,8 +509,8 @@ class ScreenAndMemory:
         else:
             result = [(i, (self._memory[0x0400 + i], self._memory[0xd800 + i]))
                       for i in range(1000)
-                      if self._memory[0x0400 + i] != self._previous_checked_chars[i]
-                      or self._memory[0xd800 + i] != self._previous_checked_colors[i]]
+                      if self._memory[0x0400 + i] != self._previous_checked_chars[i] or
+                      self._memory[0xd800 + i] != self._previous_checked_colors[i]]
         if result:
             self._previous_checked_chars = self._memory[0x0400:0x07e8]
             self._previous_checked_colors = self._memory[0xd800:0xdbe8]
@@ -705,11 +705,15 @@ class BasicInterpreter:
             self.execute_sleep(cmd)
         elif cmd.startswith(("scroll", "sC")):
             self.execute_scroll(cmd)
+        elif cmd.startswith(("color", "coL")):
+            self.execute_color(cmd)
         elif cmd == "cls":
             self.screen.clearscreen()
         elif cmd.startswith("dos\""):
             self.execute_dos(cmd)
             return False
+        elif cmd == "help":
+            self.execute_help(cmd)
         else:
             match = re.match(r"([a-zA-Z]+[0-9]*)\s*=\s*(.+)", cmd)
             if match:
@@ -720,6 +724,26 @@ class BasicInterpreter:
             else:
                 raise BasicError("syntax")
         return True
+
+    def execute_help(self, cmd):
+        help = """known statements:
+    ?        peek
+    cls      poke
+    color    print
+    cont     read
+    data     rem
+    dos      restore
+    end      run
+    for      save
+    get      scroll
+    goto     sleep
+    if       stop
+    list     sys
+    load     wpeek
+    new      wpoke
+    next     help
+"""
+        self.screen.writestr(help.replace("\n", "\r"))
 
     def execute_print(self, cmd):
         if cmd.startswith("?"):
@@ -761,6 +785,7 @@ class BasicInterpreter:
             start = eval(start, self.symbols)
             to = eval(to, self.symbols)
             step = eval(step, self.symbols)
+
             def frange(start, to, step):
                 yield start
                 start += step
@@ -772,6 +797,7 @@ class BasicInterpreter:
                     while start >= to:
                         yield start
                         start += step
+
             iterator = iter(frange(start, to, step))
             self.forloops[varname] = (self.current_run_line_index, iterator)
             self.symbols[varname] = next(iterator)
@@ -845,7 +871,7 @@ class BasicInterpreter:
             cmd = cmd[2:]
         elif cmd.startswith("scroll"):
             cmd = cmd[6:]
-        direction = eval("("+cmd+")", self.symbols)
+        direction = eval("(" + cmd + ")", self.symbols)
         scrolldir = 'u'
         fillsc = 32
         fillcolor = self.screen.text
@@ -880,7 +906,7 @@ class BasicInterpreter:
             raise BasicError("syntax")
         if self.cont_line_index is None or self.program_lines is None or not self.program:
             raise BasicError("can't continue")
-        self.execute_run("run "+str(self.program_lines[self.cont_line_index+1]))
+        self.execute_run("run " + str(self.program_lines[self.cont_line_index + 1]))
 
     def execute_poke(self, cmd):
         if cmd.startswith("pO"):
@@ -980,9 +1006,8 @@ class BasicInterpreter:
         if not cmd.endswith(".bas"):
             cmd += ".bas"
         self.screen.writestr("\rsaving " + cmd)
-        with open(os.path.join("drive8", cmd), "wt", newline=None) as file:
-            for num, line in sorted(self.program.items()):
-                file.write("{:d} {:s}\r".format(num, line))
+        with open(os.path.join("drive8", cmd), "w") as file:
+            file.writelines("{:d} {:s}\n".format(num, line) for num, line in sorted(self.program.items()))
 
     def execute_load(self, cmd):
         if cmd.startswith("lO"):
@@ -1036,14 +1061,14 @@ class BasicInterpreter:
             files = sorted(os.listdir("drive8"))
             catalog = ((file, os.path.getsize(os.path.join("drive8", file))) for file in files)
             header = "\"floppy contents \" ** 2a"
-            self.screen.writestr("\r0 \x12"+header+"\x92\r")
+            self.screen.writestr("\r0 \x12" + header + "\x92\r")
             for file, size in sorted(catalog):
                 name, suff = os.path.splitext(file)
                 name = '"' + name + '"'
                 self.screen.writestr("{:<5d}{:19s}{:3s}\r".format(size // 256, name, suff[1:]))
             self.screen.writestr("9999 blocks free.\r")
             return
-        raise BasicError("syntax")
+        raise BasicError("dos command")
 
     def execute_run(self, cmd):
         cmd = cmd[3:]
@@ -1098,6 +1123,27 @@ class BasicInterpreter:
             raise BasicError("syntax")
         self.data_line = None
         self.data_index = None
+
+    def execute_color(self, cmd):
+        if cmd.startswith("coL"):
+            cmd = cmd[3:]
+        elif cmd.startswith("color"):
+            cmd = cmd[5:]
+        if cmd:
+            colors = eval(cmd, self.symbols)
+            if isinstance(colors, tuple):
+                if len(colors) != 3:
+                    raise BasicError("syntax")
+                c1 = int(colors[0])
+                c2 = int(colors[1])
+                c3 = int(colors[2])
+                if c1 > 255 or c2 > 255 or c3 > 255:
+                    raise BasicError("illegal quantity")
+                self.screen.border = c1
+                self.screen.screen = c2
+                self.screen.text = c3
+                return
+        raise BasicError("syntax")
 
     def stop_run(self):
         if self.current_run_line_index is not None:
