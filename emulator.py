@@ -23,6 +23,7 @@ import traceback
 import numbers
 import glob
 import time
+from collections import deque
 from PIL import Image
 
 
@@ -549,10 +550,15 @@ class StopRunloop(FlowcontrolException):
     pass
 
 
+class HandleBufferedKeys(FlowcontrolException):
+    pass
+
+
 class BasicInterpreter:
     def __init__(self, screen):
         self.screen = screen
         self.program = {}
+        self.keybuffer = deque(maxlen=16)
         self.reset()
 
     def reset(self):
@@ -693,6 +699,8 @@ class BasicInterpreter:
             return False
         elif cmd.startswith(("cont", "cO")):
             self.execute_cont(cmd)
+        elif cmd.startswith(("get", "gE")):
+            self.execute_get(cmd)
         elif cmd.startswith(("sleep", "sL")):
             self.execute_sleep(cmd)
         elif cmd.startswith(("scroll", "sC")):
@@ -791,6 +799,24 @@ class BasicInterpreter:
             del self.forloops[varname]
         else:
             self.current_run_line_index = runline_index   # jump back to code at line after for loop
+
+    def execute_get(self, cmd):
+        if cmd.startswith("gE"):
+            cmd = cmd[2:]
+        elif cmd.startswith("get"):
+            cmd = cmd[3:]
+        if self.current_run_line_index is None:
+            raise BasicError("illegal direct")
+        varname = cmd.strip()
+        if self.keybuffer:
+            char, state, mousex, mousey = self.keybuffer.popleft()
+            if len(char) == 1:
+                self.symbols[varname] = char
+                return
+            else:
+                # @todo handle control chars ???
+                pass
+        self.symbols[varname] = ""
 
     def execute_goto(self, cmd):
         if cmd.startswith("gO"):
@@ -1078,6 +1104,11 @@ class BasicInterpreter:
             self.cont_line_index = self.current_run_line_index
             self.current_run_line_index = None
             self.last_run_error = None
+        # process buffered keys during program execution
+        if self.keybuffer:
+            keys = list(self.keybuffer)
+            self.keybuffer.clear()
+            raise HandleBufferedKeys(keys)
 
     def get_next_data(self):
         if self.data_line is None:
@@ -1141,17 +1172,28 @@ class EmulatorWindow(tkinter.Tk):
         c = event.char
         if not c or ord(c) > 255:
             c = event.keysym
-        return c, event.state, event.keycode, event.x, event.y
+        return c, event.state, event.x, event.y
 
-    def keypress(self, char, state, keycode, mousex, mousey):
-        # print("keypress", repr(char), state, keycode)
+    def keypress(self, char, state, mousex, mousey):
+        # print("keypress", repr(char), state)
         with_shift = state & 1
         with_control = state & 4
         with_alt = state & 8
         if char.startswith("Shift") and with_control or char.startswith("Control") and with_shift \
-            or char == "??" and with_control and with_shift:
-            # simulate SHIFT+COMMODORE_KEY to flip the charset
-            self.screen.shifted = not self.screen.shifted
+                or char == "??" and with_control and with_shift:
+                # simulate SHIFT+COMMODORE_KEY to flip the charset
+                self.screen.shifted = not self.screen.shifted
+                return
+
+        if self.basic.current_run_line_index is not None:
+            # we're running a program, only the break key should do something!
+            if char == '\x03' and with_control:  # ctrl+C
+                self.runstop()
+            elif char == '\x1b':    # esc
+                self.runstop()
+            else:
+                self.basic.keybuffer.append((char, state, mousex, mousey))
+            return
 
         if len(char) == 1:
             # if '1' <= char <= '8' and self.key_control_down:
@@ -1254,14 +1296,17 @@ class EmulatorWindow(tkinter.Tk):
     def runstop(self):
         if self.basic.current_run_line_index is not None:
             line = self.basic.program_lines[self.basic.current_run_line_index]
-            self.basic.stop_run()
+            try:
+                self.basic.stop_run()
+            except HandleBufferedKeys as kx:
+                pass    # no keys handled when stopping via RUN/STOP
             if self.run_step_after:
                 self.after_cancel(self.run_step_after)
             self.run_step_after = None
             self.screen.writestr("\rbreak in {:d}\rready.\r".format(line))
             self.screen.cursor_enabled = True
 
-    def keyrelease(self, char, state, keycode, mousex, mousey):
+    def keyrelease(self, char, state, mousex, mousey):
         # print("keyrelease", repr(char), state, keycode)
         pass
 
@@ -1342,6 +1387,7 @@ class EmulatorWindow(tkinter.Tk):
                 try:
                     go_on = self.execute_line(line)
                     if not go_on:
+                        # forceful stop (SYS 64738 / machine reset)
                         self.run_step_after = None
                         return
                     if self.basic.current_run_line_index is not None:
@@ -1364,10 +1410,17 @@ class EmulatorWindow(tkinter.Tk):
                     self.run_step_after = None
                     if not self.basic.last_run_error:
                         self.screen.writestr("\rready.\r")
-            # program ends
-            self.basic.stop_run()
+            try:
+                self.basic.stop_run()
+            except HandleBufferedKeys as kx:
+                if not self.basic.last_run_error:
+                    self._handle_buffered_keys(kx.args[0])
             self.run_step_after = None
             self.screen.cursor_enabled = True
+
+    def _handle_buffered_keys(self, keys):
+        for key, state, mousex, mousey in keys:
+            self.keypress(key, state, mousex, mousey)
 
 
 def setup():
