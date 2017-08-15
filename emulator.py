@@ -363,23 +363,59 @@ class ScreenAndMemory:
             self._memory[0x0400 + self.cursor] ^= 0x80
             self._memory[0xd800 + self.cursor] = self.text
 
-    def _scroll_up(self):
+    def _scroll_up(self, fill=(32, None)):
         # scroll the screen up one line
         for i in range(0, 960):
             self._memory[0x0400 + i] = self._memory[0x0400 + 40 + i]
             self._memory[0xd800 + i] = self._memory[0xd800 + 40 + i]
+        fillchar = fill[0]
+        fillcolor = self.text if fill[1] is None else fill[1]
         for i in range(960, 1000):
-            self._memory[0x0400 + i] = 32
-            self._memory[0xd800 + i] = self.text
+            self._memory[0x0400 + i] = fillchar
+            self._memory[0xd800 + i] = fillcolor
 
-    def _scroll_down(self):
+    def _scroll_down(self, fill=(32, None)):
         # scroll the screen down one line
         for i in range(999, 39, -1):
             self._memory[0x0400 + i] = self._memory[0x0400 - 40 + i]
             self._memory[0xd800 + i] = self._memory[0xd800 - 40 + i]
+        fillchar = fill[0]
+        fillcolor = self.text if fill[1] is None else fill[1]
         for i in range(0, 40):
-            self._memory[0x0400 + i] = 32
-            self._memory[0xd800 + i] = self.text
+            self._memory[0x0400 + i] = fillchar
+            self._memory[0xd800 + i] = fillcolor
+
+    def _scroll_left(self, fill=(32, None)):
+        # scroll the screen left one colum
+        fillchar = fill[0]
+        fillcolor = self.text if fill[1] is None else fill[1]
+        for y in range(0, 1000, 40):
+            self._memory[0x0400 + y:0x0400 + y + 39] = self._memory[0x0400 + y+1:0x0400 + y + 40]
+            self._memory[0xd800 + y:0xd800 + y + 39] = self._memory[0xd800 + y+1:0xd800 + y + 40]
+            self._memory[0x0400 + y + 39] = fillchar
+            self._memory[0xd800 + y + 39] = fillcolor
+
+    def _scroll_right(self, fill=(32, None)):
+        # scroll the screen right one colum
+        fillchar = fill[0]
+        fillcolor = self.text if fill[1] is None else fill[1]
+        for y in range(0, 1000, 40):
+            self._memory[0x0400 + y + 1:0x0400 + y + 40] = self._memory[0x0400 + y:0x0400 + y + 39]
+            self._memory[0xd800 + y + 1:0xd800 + y + 40] = self._memory[0xd800 + y:0xd800 + y + 39]
+            self._memory[0x0400 + y] = fillchar
+            self._memory[0xd800 + y] = fillcolor
+
+    def scroll(self, up=False, down=False, left=False, right=False, fill=(32, None)):
+        self._fix_cursor()
+        if up:
+            self._scroll_up(fill)
+        if down:
+            self._scroll_down(fill)
+        if left:
+            self._scroll_left(fill)
+        if right:
+            self._scroll_right(fill)
+        self._fix_cursor(True)
 
     def return_key(self):
         self._fix_cursor()
@@ -664,13 +700,15 @@ class BasicInterpreter:
             self.execute_cont(cmd)
         elif cmd.startswith(("sleep", "sL")):
             self.execute_sleep(cmd)
+        elif cmd.startswith(("scroll", "sC")):
+            self.execute_scroll(cmd)
         elif cmd == "cls":
             self.screen.clearscreen()
         elif cmd.startswith("dos\""):
             self.execute_dos(cmd)
             return False
         else:
-            match = re.match(r"([a-zA-Z]+[0-9]*)\s*=\s*(\S+)$", cmd)
+            match = re.match(r"([a-zA-Z]+[0-9]*)\s*=\s*(.+)", cmd)
             if match:
                 # variable assignment
                 symbol, value = match.groups()
@@ -720,7 +758,18 @@ class BasicInterpreter:
             start = eval(start, self.symbols)
             to = eval(to, self.symbols)
             step = eval(step, self.symbols)
-            iterator = iter(range(start, to + 1, step))
+            def frange(start, to, step):
+                yield start
+                start += step
+                if step >= 0:
+                    while start <= to:
+                        yield start
+                        start += step
+                else:
+                    while start >= to:
+                        yield start
+                        start += step
+            iterator = iter(frange(start, to, step))
             self.forloops[varname] = (self.current_run_line_index, iterator)
             self.symbols[varname] = next(iterator)
         else:
@@ -770,6 +819,28 @@ class BasicInterpreter:
         howlong = float(cmd)
         raise SleepTimer(howlong)
 
+    def execute_scroll(self, cmd):
+        if cmd.startswith("sC"):
+            cmd = cmd[2:]
+        elif cmd.startswith("scroll"):
+            cmd = cmd[6:]
+        direction = eval("("+cmd+")", self.symbols)
+        scrolldir = 'u'
+        fillsc = 32
+        fillcolor = self.screen.text
+        if len(direction) >= 1:
+            scrolldir = direction[0]
+        if len(direction) >= 2:
+            fillsc = direction[1]
+        if len(direction) == 3:
+            fillcolor = direction[2]
+        if len(direction) > 3:
+            raise BasicError("syntax")
+        if scrolldir in ("u", "d", "l", "r", "ul", "ur", "dl", "dr", "lu", "ru", "ld", "rd"):
+            self.screen.scroll('u' in scrolldir, 'd' in scrolldir, 'l' in scrolldir, 'r' in scrolldir, (fillsc, fillcolor))
+        else:
+            raise BasicError("scroll direction")
+
     def execute_end(self, cmd):
         if cmd not in ("eN", "end", "sT", "stop"):
             raise BasicError("syntax")
@@ -799,7 +870,7 @@ class BasicInterpreter:
         addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
         if addr < 0 or addr > 0xffff or value < 0 or value > 0xff:
             raise BasicError("illegal quantity")
-        self.screen.setmem(addr, value)
+        self.screen.setmem(int(addr), int(value))
 
     def execute_wpoke(self, cmd):
         if cmd.startswith("wpO"):
@@ -810,7 +881,7 @@ class BasicInterpreter:
         addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
         if addr < 0 or addr > 0xffff or addr & 1 or value < 0 or value > 0xffff:
             raise BasicError("illegal quantity")
-        self.screen.setmem(addr, value, True)
+        self.screen.setmem(int(addr), int(value), True)
 
     def execute_sys(self, cmd):
         if cmd.startswith("sY"):
