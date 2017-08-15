@@ -27,7 +27,7 @@ import time
 from PIL import Image
 
 
-class C64ScreenAndMemory:
+class ScreenAndMemory:
     palette = (
         0x000000,  # 0 = black
         0xFFFFFF,  # 1 = white
@@ -1045,9 +1045,7 @@ class EmulatorWindow(tkinter.Tk):
         super().__init__()
         self.wm_title(title)
         self.geometry("+200+100")
-        self.img = tkinter.PhotoImage("c64logo.png")
-        self.tk.call('wm', 'iconphoto', self._w, self.img)
-        self.screen = C64ScreenAndMemory()
+        self.screen = ScreenAndMemory()
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
         self.basic = BasicInterpreter(self.screen)
         self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
@@ -1237,9 +1235,12 @@ class EmulatorWindow(tkinter.Tk):
 
     def repaint(self):
         # set border color and screen color
-        self.canvas["bg"] = self.tkcolor(self.screen.border)
-        self.canvas.itemconfigure(self.screenrect, fill=self.tkcolor(self.screen._screen))
-        bgcol = self.tkcolor(self.screen._screen)
+        bordercolor = self.tkcolor(self.screen.border)
+        screencolor = self.tkcolor(self.screen.screen)
+        if self.canvas["bg"] != bordercolor:
+            self.canvas["bg"] = bordercolor
+        if self.canvas.itemcget(self.screenrect, "fill") != screencolor:
+            self.canvas.itemconfigure(self.screenrect, fill=screencolor)
         style = "shifted" if self.screen.shifted else "normal"
         if self.repaint_only_dirty:
             dirty = iter(self.screen.getdirty())
@@ -1250,13 +1251,13 @@ class EmulatorWindow(tkinter.Tk):
             forecol = self.tkcolor(color)
             bm = self.charbitmaps[index]
             bitmap = "@charset/{:s}-{:02x}.xbm".format(style, char)
-            self.canvas.itemconfigure(bm, foreground=forecol, background=bgcol, bitmap=bitmap)
+            self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
 
     def screencor(self, cc):
         return 64 + cc[0] * 16, 64 + cc[1] * 16
 
     def tkcolor(self, color):
-        return "#{:06x}".format(C64ScreenAndMemory.palette[color % 16])
+        return "#{:06x}".format(ScreenAndMemory.palette[color % 16])
 
     def blink_cursor(self):
         if self.screen.cursor_enabled:
@@ -1316,7 +1317,7 @@ class EmulatorWindow(tkinter.Tk):
 
 
 def setup():
-    C64ScreenAndMemory.test_screencode_mappings()
+    ScreenAndMemory.test_screencode_mappings()
     emu = EmulatorWindow("Fast Commodore-64 'emulator' in pure Python!")
     emu.mainloop()
 
