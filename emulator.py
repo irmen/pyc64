@@ -77,11 +77,10 @@ class ScreenAndMemory:
         self.cursor_enabled = True
         self._previous_checked_chars = bytearray(1000)
         self._previous_checked_colors = bytearray(1000)
-        self._memory[0:256] = [0]*256   # clear zeropage
+        self._memory[0:256] = bytearray(256)   # clear zeropage
         if hard:
-            self._memory[0:65536] = 0   # wipe all of the memory
-        self._memory[0x0400:0x0400+1000] = [32] * 1000
-        self._memory[0xd800:0xd800+1000] = [self.text] * 1000
+            self._memory[0:65536] = bytearray(65536)   # wipe all of the memory
+        self.clearscreen()
 
     @property
     def screen(self):
@@ -600,6 +599,8 @@ class BasicInterpreter:
             if self.process_programline_entry(line):
                 return
             if line.startswith(("#", "rem")):
+                if self.current_run_line_index is None and print_ready:
+                    self.screen.writestr("\rready.\r")
                 return
             if line.startswith("data"):
                 # data is only consumed with a read statement
@@ -796,7 +797,7 @@ class BasicInterpreter:
             cmd = cmd[2:]
         elif cmd.startswith("goto"):
             cmd = cmd[4:]
-        line = int(cmd)
+        line = eval(cmd, self.symbols)    # allows jump tables via GOTO VAR
         if self.current_run_line_index is None:
             # do a run instead
             self.execute_run("run " + str(line))
@@ -810,7 +811,7 @@ class BasicInterpreter:
             cmd = cmd[2:]
         elif cmd.startswith("sleep"):
             cmd = cmd[5:]
-        howlong = float(cmd)
+        howlong = eval(cmd, self.symbols)
         raise SleepTimer(howlong)
 
     def execute_scroll(self, cmd):
@@ -882,7 +883,7 @@ class BasicInterpreter:
             cmd = cmd[2:]
         elif cmd.startswith("sys"):
             cmd = cmd[3:]
-        addr = int(cmd)
+        addr = eval(cmd, self.symbols)
         if addr < 0 or addr > 0xffff:
             raise BasicError("illegal quantity")
         if addr in (64738, 64760):
@@ -1038,13 +1039,13 @@ class BasicInterpreter:
                 self.execute_line(then, print_ready=False)
         else:
             # perhaps if .. goto .. form?
-            match = re.match(r"if(.+)goto\s+(\d+)$", cmd)
+            match = re.match(r"if(.+)goto\s+(\S+)$", cmd)
             if not match:
                 raise BasicError("syntax")
             condition, line = match.groups()
             condition = eval(condition, self.symbols)
             if condition:
-                line = int(line)
+                line = eval(line, self.symbols)   # allows jumptables via GOTO VAR
                 if line not in self.program:
                     raise BasicError("undef'd statement")
                 raise GotoLine(line)
