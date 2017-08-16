@@ -24,6 +24,7 @@ import platform
 import random
 import traceback
 import re
+import time
 import numbers
 import glob
 from collections import deque
@@ -86,8 +87,8 @@ class BasicInterpreter:
         self.data_line = None
         self.data_index = None
         self.next_run_line_idx = None
-        self.last_run_line_idx = None
         self.program_lines = None
+        self.sleep_until = None
         self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
         self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
         self.screen.writestr("\nready.\n")
@@ -100,7 +101,7 @@ class BasicInterpreter:
             if in_program:
                 # we're running in a program, REM and DATA do nothing
                 if line.startswith(("#", "rem") or line.startswith(("dA", "data"))):
-                    self.last_run_line_idx, self.next_run_line_idx = self.next_run_line_idx, self.next_run_line_idx + 1
+                    self.next_run_line_idx += 1
                     return gui_events
             else:
                 # direct mode
@@ -129,13 +130,13 @@ class BasicInterpreter:
                     self.screen.writestr("\nready.\n")
             if self.next_run_line_idx is not None:
                 # schedule next line to be executed
-                self.last_run_line_idx, self.next_run_line_idx = self.next_run_line_idx, self.next_run_line_idx + 1
+                self.next_run_line_idx += 1
         except GotoLineException as gx:
-            self.last_run_line_idx = self.next_run_line_idx = gx.line_idx
+            self.next_run_line_idx = gx.line_idx
         except FlowcontrolException:
             if in_program:
                 # we do go to the next line...
-                self.last_run_line_idx, self.next_run_line_idx = self.next_run_line_idx, self.next_run_line_idx + 1
+                self.next_run_line_idx += 1
             raise
         except BasicError as bx:
             traceback.print_exc()
@@ -161,6 +162,7 @@ class BasicInterpreter:
             linenum = int(linenum)
             if not line:
                 if linenum in self.program:
+                    del self.program[linenum]
                     del self.program[linenum]
             else:
                 self.program[linenum] = line
@@ -213,8 +215,6 @@ class BasicInterpreter:
         elif cmd.startswith(("stop", "sT")):
             self.execute_end(cmd)
             return False, gui_event
-        elif cmd.startswith(("cont", "cO")):
-            self.execute_cont(cmd)
         elif cmd.startswith(("get", "gE")):
             self.execute_get(cmd)
         elif cmd.startswith(("sleep", "sL")):
@@ -245,7 +245,7 @@ class BasicInterpreter:
 
     def execute_help(self, cmd):
         self.screen.writestr("\nknown statements:\n")
-        known = ["?", "print", "cls", "color", "cursor", "cont", "data","dos", "end", "for", "get",
+        known = ["?", "print", "cls", "color", "cursor", "data","dos", "end", "for", "get",
                  "goto", "if", "list", "load", "new", "next", "peek", "wpeek", "poke", "wpoke",
                  "read", "rem", "restore", "run", "save", "scroll", "sleep", "stop", "sys", "help"]
         for kw in sorted(known):
@@ -372,10 +372,8 @@ class BasicInterpreter:
             cmd = cmd[5:]
         if all_cmds_on_line and len(all_cmds_on_line) > 1:
             raise BasicError("sleep not alone on line")    # we only can SLEEP when it's on their own line
-        if self.next_run_line_idx is None:
-            raise BasicError("illegal direct")
         howlong = eval(cmd, self.symbols)
-        return ("sleep", howlong)
+        self.sleep_until = time.time() + howlong
 
     def execute_scroll(self, cmd):
         if cmd.startswith("sC"):
@@ -406,19 +404,6 @@ class BasicInterpreter:
             if cmd in ("sT", "stop"):
                 self.screen.writestr("\nbreak in {:d}\n".format(self.program_lines[self.next_run_line_idx]))
             self.stop_run()
-
-    def execute_cont(self, cmd):
-        # Only works on a per-line basis!
-        # so if program breaks in the middle of a line and you CONT it,
-        # it will just resume with the line following it. This can result in parts of code being skipped.
-        # Solving this is complex it requires to not only keep track of a *line* but also of the *position in the line*.
-        if cmd not in ("cO", "cont"):
-            raise BasicError("syntax")
-        if self.last_run_line_idx is None or self.program_lines is None or not self.program:
-            raise BasicError("can't continue")
-        if self.last_run_line_idx >= len(self.program_lines):
-            raise BasicError("can't continue")
-        self.execute_run("run " + str(self.program_lines[self.last_run_line_idx + 1]))
 
     def execute_poke(self, cmd):
         if cmd.startswith("pO"):
@@ -593,7 +578,6 @@ class BasicInterpreter:
             raise BasicError("undef'd statement")
         if self.program:
             self.program_lines = list(sorted(self.program))
-            self.last_run_line_idx = None
             raise GotoLineException(0 if start is None else self.program_lines.index(start))
 
     def execute_if(self, cmd):
@@ -681,7 +665,6 @@ class BasicInterpreter:
     def stop_run(self, error=False):
         in_program = self.next_run_line_idx is not None
         if in_program:
-            self.last_run_line_idx = self.next_run_line_idx
             self.next_run_line_idx = None
         if self.keybuffer and not error:
             # return buffered keys during program execution
@@ -715,9 +698,14 @@ class BasicInterpreter:
             self.data_index += 1
             return eval(value)
 
-    def interpret_step(self):
+    def interpret_program_step(self):
         if self.next_run_line_idx is None:
             return   # no program currently running
+        if self.sleep_until is not None:
+            # we're in a sleep call!
+            if time.time() < self.sleep_until:
+                return []
+            self.sleep_until = None
         if self.next_run_line_idx >= len(self.program_lines):
             self.screen.writestr("\nready.\n")
             self.stop_run()

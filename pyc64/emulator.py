@@ -161,7 +161,10 @@ class EmulatorWindow(tkinter.Tk):
 
     def runstop(self):
         if self.basic.next_run_line_idx is not None:
-            line = self.basic.program_lines[self.basic.next_run_line_idx]
+            if self.basic.sleep_until:
+                line = self.basic.program_lines[self.basic.next_run_line_idx - 1]
+            else:
+                line = self.basic.program_lines[self.basic.next_run_line_idx]
             try:
                 self.basic.stop_run()
             except HandleBufferedKeysException:
@@ -234,7 +237,7 @@ class EmulatorWindow(tkinter.Tk):
     def basic_interpret_loop(self):
         self.screen.cursor_enabled = self.basic.next_run_line_idx is None
         try:
-            gui_events = self.basic.interpret_step()
+            gui_events = self.basic.interpret_program_step()
         except ResetMachineException:
             self.reset_machine()
         except HandleBufferedKeysException as kx:
