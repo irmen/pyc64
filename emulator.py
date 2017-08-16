@@ -1012,7 +1012,7 @@ class BasicInterpreter:
         if not cmd.endswith(".bas"):
             cmd += ".bas"
         self.screen.writestr("\nsaving " + cmd)
-        with open(os.path.join("drive8", cmd), "w") as file:
+        with open(os.path.join("drive8", cmd), "w", encoding="utf8") as file:
             file.writelines("{:d} {:s}\n".format(num, line) for num, line in sorted(self.program.items()))
 
     def execute_load(self, cmd):
@@ -1043,7 +1043,7 @@ class BasicInterpreter:
         newprogram = {}
         num = 1
         try:
-            with open(os.path.join("drive8", filename), "rt", newline=None) as file:
+            with open(os.path.join("drive8", filename), "r", newline=None, encoding="utf8") as file:
                 self.screen.writestr("loading " + filename + "\n")
                 for line in file:
                     line = line.rstrip()
@@ -1449,7 +1449,8 @@ class EmulatorWindow(tkinter.Tk):
         if sys.platform == "win32":
             self.after(1, self.basic_interpret_loop)
         else:
-            time.sleep(0.0001)
+            time.sleep(0.0002)
+            self.update_idletasks()
             self.after_idle(self.basic_interpret_loop)
 
     def handle_execline_gui_events(self, gui_events):
