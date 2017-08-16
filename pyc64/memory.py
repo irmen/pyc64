@@ -132,9 +132,10 @@ class ScreenAndMemory:
             self.shifted = bool(value & 2)
 
     def blink_cursor(self):
-        self.cursor_state = not self.cursor_state
-        self._memory[0x0400 + self.cursor] ^= 0x80
-        self._memory[0xd800 + self.cursor] = self.text
+        if self.cursor_enabled:
+            self.cursor_state = not self.cursor_state
+            self._memory[0x0400 + self.cursor] ^= 0x80
+            self._memory[0xd800 + self.cursor] = self.text
 
     # ASCII-to-PETSCII translation table
     # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )

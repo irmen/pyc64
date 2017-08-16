@@ -1,3 +1,19 @@
+"""
+Basic dialect interpreter.
+
+Note: the basic dialect is woefully incomplete and the commands that
+are provided are often not even compatible with their originals on the C64,
+but they do try to support *some* of the BASIC 2.0 structure.
+
+The most important thing that is missing is the ability to
+to do any 'blocking' operation such as INPUT or WAIT.
+(GET - to grab a single pressed key - is supported).
+The SLEEP command is added more or less as a hack, to be able to at least
+slow down the thing at certain points.
+
+Written by Irmen de Jong (irmen@razorvine.net)
+License: MIT open-source.
+"""
 import os
 import math
 import hashlib

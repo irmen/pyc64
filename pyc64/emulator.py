@@ -1,19 +1,11 @@
 """
 'fast' Commodore-64 'emulator' in 100% pure Python 3.x :)
 
-Note: the basic dialect is woefully incomplete and the commands that
-are provided are often not even compatible with their originals on the C64,
-but they do try to support *some* of the BASIC 2.0 structure.
-
-The most important thing that is missing is the ability to
-to do any 'blocking' operation such as INPUT or WAIT.
-Creating an interactive program is not possible at this point.
-The SLEEP command is added only as a hack, to be able to at least
-slow down the thing at certain points.
+This module is the GUI window logic, handling keyboard input
+and screen drawing via tkinter bitmaps.
 
 Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
-
 """
 import sys
 import os
@@ -33,6 +25,10 @@ class EmulatorWindow(tkinter.Tk):
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
         self.basic = BasicInterpreter(self.screen)
         self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
+        self.buttonbar = tkinter.Frame(self)
+        resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
+        resetbut.pack(side=tkinter.LEFT)
+        self.buttonbar.pack(fill=tkinter.X)
         topleft = self.screencor((0, 0))
         botright = self.screencor((40, 25))
         self.screenrect = self.canvas.create_rectangle(topleft[0], topleft[1], botright[0], botright[1], outline="")
@@ -49,8 +45,8 @@ class EmulatorWindow(tkinter.Tk):
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
         self.repaint()
         self.canvas.pack()
-        self.after(self.screen.cursor_blink_rate, self.blink_cursor)
-        self.after(self.screen.update_rate, self.screen_refresher)
+        self.cyclic(self.screen.blink_cursor, self.screen.cursor_blink_rate)
+        self.cyclic(self.repaint, self.screen.update_rate)
         introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180, text="pyc64 basic & function keys active", fill="white")
         self.after(2500, lambda: self.canvas.delete(introtxt))
         self.after(1, self.basic_interpret_loop)
@@ -62,7 +58,7 @@ class EmulatorWindow(tkinter.Tk):
         return c, event.state, event.x, event.y
 
     def keypress(self, char, state, mousex, mousey):
-        print("keypress", repr(char), state)  # XXX
+        # print("keypress", repr(char), state)  # XXX
         with_shift = state & 1
         with_control = state & 4
         with_alt = state & 8
@@ -225,14 +221,10 @@ class EmulatorWindow(tkinter.Tk):
     def tkcolor(self, color):
         return "#{:06x}".format(colorpalette[color % 16])
 
-    def blink_cursor(self):
-        if self.screen.cursor_enabled:
-            self.screen.blink_cursor()
-        self.after(self.screen.cursor_blink_rate, self.blink_cursor)
-
-    def screen_refresher(self):
-        self.repaint()
-        self.after(self.screen.update_rate, self.screen_refresher)
+    def cyclic(self, callable, rate, initial=True):
+        if not initial:
+            callable()
+        self.after(rate, lambda: self.cyclic(callable, rate, False))
 
     def reset_machine(self):
         self.screen.reset()
@@ -243,6 +235,8 @@ class EmulatorWindow(tkinter.Tk):
         self.screen.cursor_enabled = self.basic.next_run_line_idx is None
         try:
             gui_events = self.basic.interpret_step()
+        except ResetMachineException:
+            self.reset_machine()
         except HandleBufferedKeysException as kx:
             key_events = kx.args[0]
             for char, state, mousex, mousey in key_events:
