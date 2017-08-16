@@ -1006,7 +1006,7 @@ class BasicInterpreter:
         if not cmd.endswith(".bas"):
             cmd += ".bas"
         self.screen.writestr("\rsaving " + cmd)
-        with open(os.path.join("drive8", cmd), "w") as file:
+        with open(os.path.join("drive8", cmd), "w", encoding="utf-8") as file:
             file.writelines("{:d} {:s}\n".format(num, line) for num, line in sorted(self.program.items()))
 
     def execute_load(self, cmd):
@@ -1037,7 +1037,7 @@ class BasicInterpreter:
         newprogram = {}
         num = 1
         try:
-            with open(os.path.join("drive8", filename), "rt", newline=None) as file:
+            with open(os.path.join("drive8", filename), "rt", newline=None, encoding="utf-8") as file:
                 self.screen.writestr("loading " + filename + "\r")
                 for line in file:
                     line = line.rstrip()
