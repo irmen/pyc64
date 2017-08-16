@@ -473,7 +473,7 @@ class ScreenAndMemory:
             raise ValueError("select only one result type")
         start = 0x0400 + 40 * (self.cursor // 40)
         self._fix_cursor()
-        screencodes = self._memory[start:start + 40 * amount]
+        screencodes = self._memory[start:min(0x07e8, start + 40 * amount)]
         self._fix_cursor()
         if petscii:
             return "".join(self._screen2ascii(c) for c in screencodes)

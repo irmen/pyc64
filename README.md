@@ -29,7 +29,8 @@ so you can do many interesting things that are silly to see working on a classic
 For instance, try ``print 5**123``  or ``print sys.platform`` or ``print sum(log(x) for x in range(1,10))``
 
 Note that it is not supported to do any blocking operation such as INPUT or WAIT.
-This means that making an interactive program is not possible at this point.
+However, GET is supported (which gets one keypress from the keyboard buffer)
+So simple interactive programs can be created.
 
 You'll need the [pillow](https://pillow.readthedocs.io) library because 
 the program needs to do some charset bitmap conversions at startup for tkinter.
