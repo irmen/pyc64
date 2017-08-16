@@ -96,23 +96,22 @@ class BasicInterpreter:
 
     def execute_line(self, line):
         in_program = self.next_run_line_idx is not None
-        gui_events = []
         try:
             if in_program:
                 # we're running in a program, REM and DATA do nothing
                 if line.startswith(("#", "rem") or line.startswith(("dA", "data"))):
                     self.next_run_line_idx += 1
-                    return gui_events
+                    return
             else:
                 # direct mode
                 # if there's no char on the last pos of the first line, only evaluate the first line
                 if len(line) >= 40 and line[39] == ' ':
                     line = line[:40]
                 if self.process_programline_entry(line):
-                    return gui_events
+                    return
                 if line.startswith(("#", "rem")):
                     self.screen.writestr("\nready.\n")
-                    return gui_events
+                    return
                 if line.startswith(("dA", "data")):
                     raise BasicError("illegal direct")
             # execute the command(s) on the line
@@ -121,9 +120,7 @@ class BasicInterpreter:
                 for cmd in parts:
                     if cmd == "" or cmd.startswith(("#", "rem", "dA", "data")):
                         continue
-                    do_more, gui_event = self._execute_cmd(cmd, parts)
-                    if gui_event:
-                        gui_events.append(gui_event)
+                    do_more = self._execute_cmd(cmd, parts)
                     if not do_more:
                         break
                 if self.next_run_line_idx is None:
@@ -150,7 +147,6 @@ class BasicInterpreter:
             traceback.print_exc()
             self.screen.writestr("\n?" + str(ex).lower() + "  error\nready.\n")
             self.stop_run(True)
-        return gui_events
 
     def process_programline_entry(self, line):
         match = re.match("(\d+)(\s*.*)", line)
@@ -171,17 +167,16 @@ class BasicInterpreter:
 
     def _execute_cmd(self, cmd, all_cmds_on_line=None):
         # print("RUN CMD:", repr(cmd))   # XXX
-        gui_event = None
         if cmd.startswith(("read", "rE")):
             self.execute_read(cmd)
         elif cmd.startswith(("restore", "reS")):
             self.execute_restore(cmd)
         elif cmd.startswith(("save", "sA")):
             self.execute_save(cmd)
-            return False, gui_event
+            return False
         elif cmd.startswith(("load", "lO")):
             self.execute_load(cmd)
-            return False, gui_event
+            return False
         elif cmd.startswith(("print", "?")):
             self.execute_print(cmd)
         elif cmd.startswith(("poke", "pO")):
@@ -190,13 +185,13 @@ class BasicInterpreter:
             self.execute_wpoke(cmd)
         elif cmd.startswith(("list", "lI")):
             self.execute_list(cmd)
-            return False, gui_event
+            return False
         elif cmd.startswith(("new", "nI")):
             self.execute_new(cmd)
-            return False, gui_event
+            return False
         elif cmd.startswith(("run", "rU")):
             self.execute_run(cmd)
-            return False, gui_event
+            return False
         elif cmd.startswith(("sys", "sY")):
             self.execute_sys(cmd)
         elif cmd.startswith(("goto", "gO")):
@@ -211,14 +206,14 @@ class BasicInterpreter:
             pass
         elif cmd.startswith(("end", "eN")):
             self.execute_end(cmd)
-            return False, gui_event
+            return False
         elif cmd.startswith(("stop", "sT")):
             self.execute_end(cmd)
-            return False, gui_event
+            return False
         elif cmd.startswith(("get", "gE")):
             self.execute_get(cmd)
         elif cmd.startswith(("sleep", "sL")):
-            gui_event = self.execute_sleep(cmd, all_cmds_on_line)
+            self.execute_sleep(cmd, all_cmds_on_line)
         elif cmd.startswith(("scroll", "sC")):
             self.execute_scroll(cmd)
         elif cmd.startswith(("color", "coL")):
@@ -229,7 +224,7 @@ class BasicInterpreter:
             self.screen.clearscreen()    # basic V2:  ?chr$(147);
         elif cmd.startswith("dos\""):
             self.execute_dos(cmd)
-            return False, gui_event
+            return False
         elif cmd == "help":
             self.execute_help(cmd)
         else:
@@ -238,10 +233,10 @@ class BasicInterpreter:
                 # variable assignment
                 symbol, value = match.groups()
                 self.symbols[symbol] = eval(value, self.symbols)
-                return True, gui_event
+                return True
             else:
                 raise BasicError("syntax")
-        return True, gui_event
+        return True
 
     def execute_help(self, cmd):
         self.screen.writestr("\nknown statements:\n")
@@ -373,7 +368,16 @@ class BasicInterpreter:
         if all_cmds_on_line and len(all_cmds_on_line) > 1:
             raise BasicError("sleep not alone on line")    # we only can SLEEP when it's on their own line
         howlong = eval(cmd, self.symbols)
-        self.sleep_until = time.time() + howlong
+        if howlong == 0:
+            return
+        if 0 < howlong <= 60:       # sleep value must be between 0 and 60 seconds
+            if self.next_run_line_idx is None:
+                self.screen.cursor_enabled = False
+                time.sleep(howlong)
+            else:
+                self.sleep_until = time.time() + howlong
+        else:
+            raise BasicError("illegal quantity")
 
     def execute_scroll(self, cmd):
         if cmd.startswith("sC"):
@@ -712,5 +716,4 @@ class BasicInterpreter:
         else:
             linenum = self.program_lines[self.next_run_line_idx]
             line = self.program[linenum]
-            gui_events = self.execute_line(line)
-            return gui_events
+            self.execute_line(line)

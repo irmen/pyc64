@@ -92,7 +92,7 @@ class ScreenAndMemory:
     @cursor_enabled.setter
     def cursor_enabled(self, enabled):
         if not enabled:
-            self._fix_cursor()
+            self._fix_cursor(False)
         self._cursor_enabled = enabled
 
     def getchar(self, x, y):
@@ -135,7 +135,7 @@ class ScreenAndMemory:
         if self.cursor_enabled:
             self.cursor_state = not self.cursor_state
             self._memory[0x0400 + self.cursor] ^= 0x80
-            self._memory[0xd800 + self.cursor] = self.text
+            self._memory[0xd800 + self.cursor] = self.text      # @todo preserve char color
 
     # ASCII-to-PETSCII translation table
     # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )
@@ -336,11 +336,15 @@ class ScreenAndMemory:
         self._fix_cursor(True)
 
     def _fix_cursor(self, on=False):
-        if on:
-            self.cursor_state = True
-        if self.cursor_state & self._cursor_enabled:
-            self._memory[0x0400 + self.cursor] ^= 0x80
+        if on and not self.cursor_enabled:
+            return
+        if not on and self.cursor_state:
+            self._memory[0x0400 + self.cursor] &= 0x7f
             self._memory[0xd800 + self.cursor] = self.text
+        if on and not self.cursor_state:
+            self._memory[0x0400 + self.cursor] |= 0x80
+            self._memory[0xd800 + self.cursor] = self.text
+        self.cursor_state = on
 
     def _scroll_up(self, fill=(32, None)):
         # scroll the screen up one line

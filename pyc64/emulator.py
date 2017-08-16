@@ -85,6 +85,7 @@ class EmulatorWindow(tkinter.Tk):
                 line = self.screen.current_line(2)
                 self.screen.return_key()
                 if not with_shift:
+                    self.screen.cursor_enabled = False
                     self.execute_direct_line(line)
             elif char in ('\x08', '\x7f', 'Delete'):
                 if with_shift:
@@ -152,8 +153,7 @@ class EmulatorWindow(tkinter.Tk):
 
     def execute_direct_line(self, line):
         try:
-            gui_events = self.basic.execute_line(line)
-            self.handle_execline_gui_events(gui_events)
+            self.basic.execute_line(line)
         except ResetMachineException:
             self.reset_machine()
         finally:
@@ -237,21 +237,13 @@ class EmulatorWindow(tkinter.Tk):
     def basic_interpret_loop(self):
         self.screen.cursor_enabled = self.basic.next_run_line_idx is None
         try:
-            gui_events = self.basic.interpret_program_step()
+            self.basic.interpret_program_step()
         except ResetMachineException:
             self.reset_machine()
         except HandleBufferedKeysException as kx:
             key_events = kx.args[0]
             for char, state, mousex, mousey in key_events:
                 self.keypress(char, state, mousex, mousey)
-        else:
-            for event in list(gui_events or []):
-                if event[0] == "sleep":
-                    self.after(int(event[1] * 1000), self.basic_interpret_loop)
-                    gui_events.remove(event)
-                    self.handle_execline_gui_events(gui_events)
-                    return
-            self.handle_execline_gui_events(gui_events)
         # Introduce an artificial delay here, to get at least *some*
         # sense of the old times. Note that on windows it will be extremely slow somehow
         # when you time it with after_idle, so we do a workaround there.
@@ -261,14 +253,6 @@ class EmulatorWindow(tkinter.Tk):
             time.sleep(0.0002)
             self.update_idletasks()
             self.after_idle(self.basic_interpret_loop)
-
-    def handle_execline_gui_events(self, gui_events):
-        for event in list(gui_events or []):
-            if event[0] == "sleep":
-                # cannot handle SLEEP outside of running program
-                raise RuntimeError("sleep outside program")
-            else:
-                raise ValueError("invalid gui event", event)
 
 
 def start():
