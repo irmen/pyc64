@@ -244,15 +244,10 @@ class EmulatorWindow(tkinter.Tk):
             key_events = kx.args[0]
             for char, state, mousex, mousey in key_events:
                 self.keypress(char, state, mousex, mousey)
-        # Introduce an artificial delay here, to get at least *some*
-        # sense of the old times. Note that on windows it will be extremely slow somehow
-        # when you time it with after_idle, so we do a workaround there.
-        if sys.platform == "win32":
-            self.after(1, self.basic_interpret_loop)
-        else:
-            time.sleep(0.0002)
-            self.update_idletasks()
-            self.after_idle(self.basic_interpret_loop)
+        # Introduce an artificial delay here, to get at least *some* sense of the old times.
+        # note: after_update makes it a lot faster, but is really slow on some systems
+        # (windows) and it interferes with normal event handling (buttons etc, on osx)
+        self.after(1, self.basic_interpret_loop)
 
 
 def start():
