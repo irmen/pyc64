@@ -280,8 +280,6 @@ class ScreenAndMemory:
         txt = "".join(c for c in petscii if c not in "\x00\x01\x02\x03\x04\x06\x07\x08\x09\x0a\x0b\x0c\x0f\x10\x15\x16"
                       "\x17\x18\x19\x1a\x1b\x80\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8f")
         txt = txt.replace("\x8d", "\x0d")    # replace shift-RETURN by regular RETURN
-        lines = txt.split("\x0d")    # not the lF but the RETURN char ('\r') is a line break
-        first_line = True
 
         def handle_special(c):
             # note: return/shift-return are handled automatically
@@ -305,6 +303,12 @@ class ScreenAndMemory:
             }
             if c in txtcolors:
                 self.text = txtcolors[c]
+            elif c == '\x0d':
+                # RETURN, go to next line
+                self.cursor = 40 * (1 + self.cursor // 40)
+                if self.cursor > 960:
+                    self._scroll_up()
+                    self.cursor = 960
             elif c == '\x0e':
                 self._shifted = True
             elif c == '\x8e':
@@ -335,21 +339,14 @@ class ScreenAndMemory:
 
         prev_cursor_enabled = self._cursor_enabled
         self._cursor_enabled = False
-        for line in lines:
-            if not first_line:
-                self.cursor = 40 * (self.cursor // 40 + 1)
-                if self.cursor >= 960:
+        for c in txt:
+            if not handle_special(c):
+                self._memory[0x0400 + self.cursor] = self._petscii2screen(ord(c), self.inversevid)
+                self._memory[0xd800 + self.cursor] = self.text
+                self.cursor += 1
+                if self.cursor >= 1000:
                     self._scroll_up()
                     self.cursor = 960
-            first_line = False
-            for c in line:
-                if not handle_special(c):
-                    self._memory[0x0400 + self.cursor] = self._petscii2screen(ord(c), self.inversevid)
-                    self._memory[0xd800 + self.cursor] = self.text
-                    self.cursor += 1
-                    if self.cursor >= 1000:
-                        self._scroll_up()
-                        self.cursor = 960
         self._cursor_enabled = prev_cursor_enabled
         self._fix_cursor(True)
 
