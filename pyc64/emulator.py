@@ -278,23 +278,30 @@ class EmulatorWindow(tkinter.Tk):
             bm = self.charbitmaps[index]
             bitmap = "@" + self.temp_graphics_folder + "/{:s}-{:02x}.xbm".format(prefix, char)
             self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
-        # sprite colors
-        for snum, scol in enumerate(self.screen.getspritecolors()):
-            spritecolor = self.tkcolor(scol)
+        sprites = self.screen.getsprites()
+        for snum, sprite in enumerate(sprites):
+            configure = {}
+            # sprite enabled
+            tkstate = tkinter.NORMAL if sprite.enabled else tkinter.HIDDEN
+            if self.canvas.itemcget(self.spritebitmaps[snum], "state") != tkstate:
+                configure["state"] = tkstate
+            # sprite colors
+            spritecolor = self.tkcolor(sprite.color)
             if self.canvas.itemcget(self.spritebitmaps[snum], "foreground") != spritecolor:
-                self.canvas.itemconfigure(self.spritebitmaps[snum], foreground=spritecolor)
-        # sprite positions
-        for snum, spos in enumerate(self.screen.getspritepositions()):
-            x, y = self.screencor_sprite(spos)
+                configure["foreground"] = spritecolor
+            # sprite positions
+            x, y = self.screencor_sprite((sprite.x, sprite.y))
             self.canvas.coords(self.spritebitmaps[snum], x, y)
-        # sprite double sizes
-        for snum, (dx, dy) in enumerate(self.screen.getspritedoubles()):
-            extension = "-2x" if dx else ""
-            extension += "-2y" if dy else ""
+            # sprite double sizes
+            extension = "-2x" if sprite.doublex else ""
+            extension += "-2y" if sprite.doubley else ""
             current_bm = self.canvas.itemcget(self.spritebitmaps[snum], "bitmap")
             if (extension and extension not in current_bm) or (not extension and ("-2x" in current_bm or "-2y" in current_bm)):
                 bm = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
-                self.canvas.itemconfigure(self.spritebitmaps[snum], bitmap=bm)
+                configure["bitmap"] = bm
+            if configure:
+                # reconfigure all changed properties in one go
+                self.canvas.itemconfigure(self.spritebitmaps[snum], **configure)
 
     def screencor(self, cc):
         return 64 + cc[0] * 16, 64 + cc[1] * 16

@@ -87,23 +87,39 @@ class ScreenAndMemory:
             self._fix_cursor(False)
         self._cursor_enabled = enabled
 
-    def getspritecolors(self):
-        return self._memory[0xd027:0xd02f]
+    class Sprite:
+        x = 0
+        y = 0
+        enabled = False
+        doublex = False
+        doubley = False
+        color = 0
+
+    def getsprites(self):
+        # return all data of all sprites in one list of 8 Sprite objects
+        colors = self._memory[0xd027:0xd02f]
+        pos = self._memory[0xd000:0xd010]
+        xmsb = self._memory[0xd010]
+        doublex = self._memory[0xd01d]
+        doubley = self._memory[0xd017]
+        enabled = self._memory[0xd015]
+
+        result = []
+        for i in range(8):
+            s = ScreenAndMemory.Sprite()
+            s.color = colors[i]
+            s.x = pos[i * 2] + (256 if xmsb & 1 << i else 0)
+            s.y = pos[1 + i * 2]
+            s.doublex = bool(doublex & 1 << i)
+            s.doubley = bool(doubley & 1 << i)
+            s.enabled = bool(enabled & 1 << i)
+            result.append(s)
+        return result
 
     def setspritecolor(self, spritenum, color):
         assert 0 <= spritenum <= 7
         assert 0 <= color <= 255
         self._memory[0xd027 + spritenum] = color
-
-    def getspritepositions(self):
-        pos = self._memory[0xd000:0xd010]
-        xmsb = self._memory[0xd010]
-        return ((pos[i * 2] + (256 if xmsb & 1 << i else 0), pos[1 + i * 2]) for i in range(8))
-
-    def getspritedoubles(self):
-        doublex = self._memory[0xd01d]
-        doubley = self._memory[0xd017]
-        return ((bool(doublex & 1 << i), bool(doubley & 1 << i)) for i in range(8))
 
     def setspritepos(self, spritenum, x, y):
         assert 0 <= spritenum <= 7
