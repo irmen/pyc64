@@ -8,8 +8,10 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 """
 
+import io
 import os
 import tkinter
+import pkgutil
 from PIL import Image
 from .memory import ScreenAndMemory, colorpalette
 from .basic import BasicInterpreter, ResetMachineException, HandleBufferedKeysException
@@ -17,9 +19,13 @@ from .python import PythonInterpreter
 
 
 class EmulatorWindow(tkinter.Tk):
+    temp_graphics_folder = "temp_gfx"
+
     def __init__(self, title):
         super().__init__()
         self.wm_title(title)
+        self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "icon.png"))
+        self.wm_iconphoto(self, self.appicon)
         self.geometry("+200+100")
         self.screen = ScreenAndMemory()
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
@@ -33,13 +39,13 @@ class EmulatorWindow(tkinter.Tk):
         topleft = self.screencor((0, 0))
         botright = self.screencor((40, 25))
         self.screenrect = self.canvas.create_rectangle(topleft[0], topleft[1], botright[0], botright[1], outline="")
-        self.create_charsets()
+        self.create_bitmaps()
         # create the 1000 character bitmaps fixed on the canvas:
         self.charbitmaps = []
         for y in range(25):
             for x in range(40):
                 cor = self.screencor((x, y))
-                bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@charset/normal-20.xbm",
+                bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@"+self.temp_graphics_folder+"/char-20.xbm",
                                                foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
                 self.charbitmaps.append(bm)
         self.bind("<KeyPress>", lambda event: self.keypress(*self._keyevent(event)))
@@ -49,7 +55,7 @@ class EmulatorWindow(tkinter.Tk):
         self._cyclic_blink_cursor()
         self._cyclic_repaint()
         introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180,
-                                           text="pyc64 basic & function keys active\n\nuse 'gopy' to enter Pytho mode", fill="white")
+                                           text="pyc64 basic & function keys active\n\nuse 'gopy' to enter Python mode", fill="white")
         self.after(2500, lambda: self.canvas.delete(introtxt))
         self._cyclic_interpret_after = self.after(10, self.basic_interpret_loop)
 
@@ -198,27 +204,30 @@ class EmulatorWindow(tkinter.Tk):
         # print("keyrelease", repr(char), state, keycode)
         pass
 
-    def create_charsets(self):
+    def create_bitmaps(self):
+        os.makedirs(self.temp_graphics_folder, exist_ok=True)
+        with open(self.temp_graphics_folder + "/readme.txt", "w") as f:
+            f.write("this is a temporary folder to cache pyc64 files for tkinter graphics bitmaps.\n")
         # normal
-        source_chars = Image.open("charset/charset-normal.png")
-        for i in range(256):
-            filename = "charset/normal-{:02x}.xbm".format(i)
-            if not os.path.isfile(filename):
-                chars = source_chars.copy()
-                row, col = divmod(i, 40)
-                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                ci = ci.convert(mode="1", dither=None)
-                ci.save(filename, "xbm")
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/charset-normal.png"))) as source_chars:
+            for i in range(256):
+                filename = self.temp_graphics_folder + "/char-{:02x}.xbm".format(i)
+                if not os.path.isfile(filename):
+                    chars = source_chars.copy()
+                    row, col = divmod(i, 40)
+                    ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                    ci = ci.convert(mode="1", dither=None)
+                    ci.save(filename, "xbm")
         # shifted
-        source_chars = Image.open("charset/charset-shifted.png")
-        for i in range(256):
-            filename = "charset/shifted-{:02x}.xbm".format(i)
-            if not os.path.isfile(filename):
-                chars = source_chars.copy()
-                row, col = divmod(i, 40)
-                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                ci = ci.convert(mode="1", dither=None)
-                ci.save(filename, "xbm")
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/charset-shifted.png"))) as source_chars:
+            for i in range(256):
+                filename = self.temp_graphics_folder + "/char-sh-{:02x}.xbm".format(i)
+                if not os.path.isfile(filename):
+                    chars = source_chars.copy()
+                    row, col = divmod(i, 40)
+                    ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                    ci = ci.convert(mode="1", dither=None)
+                    ci.save(filename, "xbm")
 
     def repaint(self):
         # set border color and screen color
@@ -228,7 +237,7 @@ class EmulatorWindow(tkinter.Tk):
             self.canvas["bg"] = bordercolor
         if self.canvas.itemcget(self.screenrect, "fill") != screencolor:
             self.canvas.itemconfigure(self.screenrect, fill=screencolor)
-        style = "shifted" if self.screen.shifted else "normal"
+        prefix = "char-sh" if self.screen.shifted else "char"
         if self.repaint_only_dirty:
             dirty = iter(self.screen.getdirty())
         else:
@@ -237,7 +246,7 @@ class EmulatorWindow(tkinter.Tk):
         for index, (char, color) in dirty:
             forecol = self.tkcolor(color)
             bm = self.charbitmaps[index]
-            bitmap = "@charset/{:s}-{:02x}.xbm".format(style, char)
+            bitmap = "@" + self.temp_graphics_folder + "/{:s}-{:02x}.xbm".format(prefix, char)
             self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
 
     def screencor(self, cc):

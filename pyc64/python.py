@@ -172,7 +172,7 @@ class PythonInterpreter:
         if not arg.endswith(".py"):
             arg += ".py"
         self.screen.writestr("\nsaving " + arg)
-        with open(os.path.join("drive8", arg), "w", encoding="utf8") as file:
+        with open("drive8/" + arg, "w", encoding="utf8") as file:
             file.write(self.program)
 
     def execute_run(self, arg=None):

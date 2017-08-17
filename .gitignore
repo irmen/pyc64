@@ -12,4 +12,4 @@
 /.mypy_cache/
 *.xbm
 *.directory
-
+/temp_gfx/

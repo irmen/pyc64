@@ -12,7 +12,7 @@ def do_dos(screen, arg):
     if arg != "$":
         raise ValueError("only \"$\" understood for now")
     files = sorted(os.listdir("drive8"))
-    catalog = ((file, os.path.getsize(os.path.join("drive8", file))) for file in files)
+    catalog = ((file, os.path.getsize("drive8/" + file)) for file in files if os.path.isfile("drive8/" + file))
     header = "\"floppy contents \" ** 2a"
     screen.writestr("\n0 \x12" + header + "\x92\n")
     for file, size in sorted(catalog):
@@ -35,21 +35,21 @@ def do_load(screen, arg):
             raise ValueError("missing filename")
     filename = match.groups()[0]
     screen.writestr("searching for " + filename + "\n")
-    if not os.path.isfile(os.path.join("drive8", filename)):
+    if not os.path.isfile("drive8/" + filename):
         filename = filename + ".*"
     if filename.endswith('*'):
         # take the first file in the directory matching the pattern
-        filename = glob.glob(os.path.join("drive8", filename))
+        filename = glob.glob("drive8/" + filename)
         if not filename:
             raise FileNotFoundError("file not found")
         filename = os.path.basename(list(sorted(filename))[0])
     if filename.endswith((".py", ".PY")):
-        with open(os.path.join("drive8", filename), "r", newline=None, encoding="utf8") as file:
+        with open("drive8/" + filename, "r", newline=None, encoding="utf8") as file:
             screen.writestr("loading " + filename + "\n")
             return file.read()
     if filename.endswith((".bas", ".BAS")):
         newprogram = {}
-        with open(os.path.join("drive8", filename), "r", newline=None, encoding="utf8") as file:
+        with open("drive8/" + filename, "r", newline=None, encoding="utf8") as file:
             screen.writestr("loading " + filename + "\n")
             for line in file:
                 line = line.rstrip()

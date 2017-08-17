@@ -527,7 +527,7 @@ class BasicInterpreter:
         if not cmd.endswith(".bas"):
             cmd += ".bas"
         self.screen.writestr("\nsaving " + cmd)
-        with open(os.path.join("drive8", cmd), "w", encoding="utf8") as file:
+        with open("drive8/" + cmd, "w", encoding="utf8") as file:
             file.writelines("{:d} {:s}\n".format(num, line) for num, line in sorted(self.program.items()))
 
     def execute_load(self, cmd):
