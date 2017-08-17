@@ -14,6 +14,7 @@ slow down the thing at certain points.
 Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 """
+
 import os
 import math
 import hashlib
@@ -26,8 +27,8 @@ import traceback
 import re
 import time
 import numbers
-import glob
 from collections import deque
+from .shared import do_load, do_dos
 
 
 class BasicError(Exception):
@@ -53,6 +54,12 @@ class HandleBufferedKeysException(FlowcontrolException):
 
 
 class BasicInterpreter:
+    F1_list_command = "list:"
+    F3_run_command = "run:"
+    F5_load_command = "load "
+    F6_load_command = "load \"*\",8: "
+    F7_dir_command = "\fdos\"$"
+
     def __init__(self, screen):
         self.screen = screen
         self.program = {}
@@ -91,11 +98,18 @@ class BasicInterpreter:
         self.sleep_until = None
         self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
         self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
-        self.screen.writestr("\nready.\n")
+        self.write_prompt("\n")
         self.stop_run()
 
+    @property
+    def running_program(self):
+        return self.next_run_line_idx is not None
+
+    def write_prompt(self, prefix=""):
+        self.screen.writestr(prefix + "ready.\n")
+
     def execute_line(self, line):
-        in_program = self.next_run_line_idx is not None
+        in_program = self.running_program
         try:
             if in_program:
                 # we're running in a program, REM and DATA do nothing
@@ -110,7 +124,7 @@ class BasicInterpreter:
                 if self.process_programline_entry(line):
                     return
                 if line.startswith(("#", "rem")):
-                    self.screen.writestr("\nready.\n")
+                    self.write_prompt("\n")
                     return
                 if line.startswith(("dA", "data")):
                     raise BasicError("illegal direct")
@@ -123,9 +137,9 @@ class BasicInterpreter:
                     do_more = self._execute_cmd(cmd, parts)
                     if not do_more:
                         break
-                if self.next_run_line_idx is None:
-                    self.screen.writestr("\nready.\n")
-            if self.next_run_line_idx is not None:
+                if not self.running_program:
+                    self.write_prompt("\n")
+            if self.running_program:
                 # schedule next line to be executed
                 self.next_run_line_idx += 1
         except GotoLineException as gx:
@@ -137,21 +151,24 @@ class BasicInterpreter:
             raise
         except BasicError as bx:
             traceback.print_exc()
-            if self.next_run_line_idx is None:
-                self.screen.writestr("\n?" + bx.args[0].lower() + "  error\nready.\n")
+            if not self.running_program:
+                self.screen.writestr("\n?" + bx.args[0].lower() + "  error\n")
+                self.write_prompt()
             else:
                 line = self.program_lines[self.next_run_line_idx]
-                self.screen.writestr("\n?" + bx.args[0].lower() + "  error in {line:d}\nready.\n".format(line=line))
+                self.screen.writestr("\n?" + bx.args[0].lower() + "  error in {line:d}\n".format(line=line))
+                self.write_prompt()
             self.stop_run(True)
         except Exception as ex:
             traceback.print_exc()
-            self.screen.writestr("\n?" + str(ex).lower() + "  error\nready.\n")
+            self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
+            self.write_prompt()
             self.stop_run(True)
 
     def process_programline_entry(self, line):
         match = re.match("(\d+)(\s*.*)", line)
         if match:
-            if self.next_run_line_idx is not None:
+            if self.running_program:
                 raise BasicError("cannot define lines while running")
             linenum, line = match.groups()
             line = line.strip()
@@ -240,7 +257,7 @@ class BasicInterpreter:
 
     def execute_help(self, cmd):
         self.screen.writestr("\nknown statements:\n")
-        known = ["?", "print", "cls", "color", "cursor", "data","dos", "end", "for", "get",
+        known = ["?", "print", "cls", "color", "cursor", "data", "dos", "end", "for", "get", "gopy",
                  "goto", "if", "list", "load", "new", "next", "peek", "wpeek", "poke", "wpoke",
                  "read", "rem", "restore", "run", "save", "scroll", "sleep", "stop", "sys", "help"]
         for kw in sorted(known):
@@ -277,7 +294,7 @@ class BasicInterpreter:
         cmd = cmd.strip()
         match = re.match("(\w+)\s*=\s*(\S+)\s*to\s*(\S+)\s*(?:step\s*(\S+))?$", cmd)
         if match:
-            if self.next_run_line_idx is None:
+            if not self.running_program:
                 raise BasicError("illegal direct")    # we only support for loops in a program (with line numbers), not on the screen
             if all_cmds_on_line and len(all_cmds_on_line) > 1:
                 raise BasicError("for not alone on line")    # we only can loop to for statements that are alone on their own line
@@ -312,7 +329,7 @@ class BasicInterpreter:
         elif cmd.startswith("next"):
             cmd = cmd[4:]
         varname = cmd.strip()
-        if self.next_run_line_idx is None:
+        if not self.running_program:
             raise BasicError("illegal direct")  # we only support for loops in a program (with line numbers), not on the screen
         if not varname:
             raise BasicError("next without varname")    # we require the varname for now
@@ -333,7 +350,7 @@ class BasicInterpreter:
             cmd = cmd[2:]
         elif cmd.startswith("get"):
             cmd = cmd[3:]
-        if self.next_run_line_idx is None:
+        if not self.running_program:
             raise BasicError("illegal direct")
         varname = cmd.strip()
         if self.keybuffer:
@@ -352,7 +369,7 @@ class BasicInterpreter:
         elif cmd.startswith("goto"):
             cmd = cmd[4:]
         line = eval(cmd, self.symbols)    # allows jump tables via GOTO VAR
-        if self.next_run_line_idx is None:
+        if not self.running_program:
             # do a run instead
             self.execute_run("run " + str(line))
         else:
@@ -371,7 +388,7 @@ class BasicInterpreter:
         if howlong == 0:
             return
         if 0 < howlong <= 60:       # sleep value must be between 0 and 60 seconds
-            if self.next_run_line_idx is None:
+            if not self.running_program:
                 self.screen.cursor_enabled = False
                 time.sleep(howlong)
             else:
@@ -404,7 +421,7 @@ class BasicInterpreter:
     def execute_end(self, cmd):
         if cmd not in ("eN", "end", "sT", "stop"):
             raise BasicError("syntax")
-        if self.next_run_line_idx is not None:
+        if self.running_program:
             if cmd in ("sT", "stop"):
                 self.screen.writestr("\nbreak in {:d}\n".format(self.program_lines[self.next_run_line_idx]))
             self.stop_run()
@@ -518,62 +535,18 @@ class BasicInterpreter:
             cmd = cmd[2:]
         elif cmd.startswith("load"):
             cmd = cmd[4:]
-        cmd = cmd.strip()
-        if cmd.startswith("\"$\""):
-            raise BasicError("use dos\"$ instead")
-        if cmd.endswith(",8,1"):
-            cmd = cmd[:-4]
-        elif cmd.endswith(",8"):
-            cmd = cmd[:-2]
-        cmd = cmd.strip()
-        if not (cmd.startswith('"') and cmd.endswith('"')):
-            raise BasicError("syntax")
-        filename = cmd[1:-1]
-        self.screen.writestr("searching for " + filename + "\n")
-        if not os.path.isfile(os.path.join("drive8", filename)):
-            filename = filename + ".*"
-        if filename.endswith('*'):
-            # take the first file in the directory matching the pattern
-            filename = glob.glob(os.path.join("drive8", filename))
-            if not filename:
-                raise BasicError("file not found")
-            filename = os.path.basename(list(sorted(filename))[0])
-        newprogram = {}
-        num = 1
         try:
-            with open(os.path.join("drive8", filename), "r", newline=None, encoding="utf8") as file:
-                self.screen.writestr("loading " + filename + "\n")
-                for line in file:
-                    line = line.rstrip()
-                    if not line:
-                        continue
-                    if filename.endswith((".bas", ".BAS")):
-                        num, line = line.split(maxsplit=1)
-                        newprogram[int(num)] = line
-                    else:
-                        newprogram[num] = line.rstrip()
-                        num += 1
-        except FileNotFoundError:
-            raise BasicError("file not found")
-        self.program = newprogram
-        return
+            program = do_load(self.screen, cmd)
+        except Exception as x:
+            raise BasicError(str(x))
+        if not isinstance(program, dict):
+            raise BasicError("invalid file type")
+        self.program = program
 
     def execute_dos(self, cmd):
         # to show floppy contents without clobbering basic program like LOAD"$",8 would
         cmd = cmd[4:]
-        if cmd == "$":
-            # show disk directory
-            files = sorted(os.listdir("drive8"))
-            catalog = ((file, os.path.getsize(os.path.join("drive8", file))) for file in files)
-            header = "\"floppy contents \" ** 2a"
-            self.screen.writestr("\n0 \x12" + header + "\x92\n")
-            for file, size in sorted(catalog):
-                name, suff = os.path.splitext(file)
-                name = '"' + name + '"'
-                self.screen.writestr("{:<5d}{:19s}{:3s}\n".format(size // 256, name, suff[1:]))
-            self.screen.writestr("9999 blocks free.\n")
-            return
-        raise BasicError("dos command")
+        do_dos(self.screen, cmd)
 
     def execute_run(self, cmd):
         cmd = cmd[3:]
@@ -667,7 +640,7 @@ class BasicInterpreter:
         raise BasicError("syntax")
 
     def stop_run(self, error=False):
-        in_program = self.next_run_line_idx is not None
+        in_program = self.running_program
         if in_program:
             self.next_run_line_idx = None
         if self.keybuffer and not error:
@@ -703,7 +676,7 @@ class BasicInterpreter:
             return eval(value)
 
     def interpret_program_step(self):
-        if self.next_run_line_idx is None:
+        if not self.running_program:
             return   # no program currently running
         if self.sleep_until is not None:
             # we're in a sleep call!
@@ -711,7 +684,7 @@ class BasicInterpreter:
                 return []
             self.sleep_until = None
         if self.next_run_line_idx >= len(self.program_lines):
-            self.screen.writestr("\nready.\n")
+            self.write_prompt("\n")
             self.stop_run()
         else:
             linenum = self.program_lines[self.next_run_line_idx]

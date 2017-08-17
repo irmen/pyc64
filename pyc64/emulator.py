@@ -7,13 +7,13 @@ and screen drawing via tkinter bitmaps.
 Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 """
-import sys
+
 import os
 import tkinter
-import time
 from PIL import Image
 from .memory import ScreenAndMemory, colorpalette
 from .basic import BasicInterpreter, ResetMachineException, HandleBufferedKeysException
+from .python import PythonInterpreter
 
 
 class EmulatorWindow(tkinter.Tk):
@@ -23,7 +23,8 @@ class EmulatorWindow(tkinter.Tk):
         self.geometry("+200+100")
         self.screen = ScreenAndMemory()
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
-        self.basic = BasicInterpreter(self.screen)
+        self._cyclic_interpret_after = None
+        self.switch_interpreter("basic")
         self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
         self.buttonbar = tkinter.Frame(self)
         resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
@@ -45,11 +46,20 @@ class EmulatorWindow(tkinter.Tk):
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
         self.repaint()
         self.canvas.pack()
-        self.cyclic(self.screen.blink_cursor, self.screen.cursor_blink_rate)
-        self.cyclic(self.repaint, self.screen.update_rate)
-        introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180, text="pyc64 basic & function keys active", fill="white")
+        self._cyclic_blink_cursor()
+        self._cyclic_repaint()
+        introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180,
+                                           text="pyc64 basic & function keys active\n\nuse 'gopy' to enter Pytho mode", fill="white")
         self.after(2500, lambda: self.canvas.delete(introtxt))
-        self.after(1, self.basic_interpret_loop)
+        self._cyclic_interpret_after = self.after(10, self.basic_interpret_loop)
+
+    def _cyclic_blink_cursor(self):
+        self.screen.blink_cursor()
+        self.cyclic_blink_after = self.after(self.screen.cursor_blink_rate, self._cyclic_blink_cursor)
+
+    def _cyclic_repaint(self):
+        self.repaint()
+        self.cyclic_repaint_after = self.after(self.screen.update_rate, self._cyclic_repaint)
 
     def _keyevent(self, event):
         c = event.char
@@ -68,7 +78,7 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.shifted = not self.screen.shifted
                 return
 
-        if self.basic.next_run_line_idx is not None:
+        if self.basic.running_program:
             # we're running a program, only the break key should do something!
             if char == '\x03' and with_control:  # ctrl+C
                 self.runstop()
@@ -123,44 +133,56 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.insert()
                 self.repaint()
             elif char == 'F7':      # directory shortcut key
-                self.screen.clearscreen()
-                dir_cmd = "dos\"$"
-                self.screen.writestr(dir_cmd + "\n")
-                self.execute_direct_line(dir_cmd)
+                self.screen.writestr(self.basic.F7_dir_command + "\n")
+                self.execute_direct_line(self.basic.F7_dir_command)
             elif char == 'F5':      # load file shortcut key
                 if with_shift:
-                    load_cmd = "load \"*\",8: "
-                    self.screen.writestr(load_cmd + "\n")
-                    self.execute_direct_line(load_cmd)
+                    self.screen.writestr(self.basic.F6_load_command + "\n")
+                    self.execute_direct_line(self.basic.F6_load_command)
                 else:
-                    self.screen.writestr("load ")
-                    x, y = self.screen.cursorpos()
-                    self.screen.cursormove(x + 17, y)
-                    self.screen.writestr(",8:   ")
+                    self.screen.writestr(self.basic.F5_load_command)
                     line = self.screen.current_line(1)
                     self.screen.return_key()
                     self.execute_direct_line(line)
             elif char == "F3":      # run program shortcut key
-                self.screen.writestr("run: \n")
-                self.execute_direct_line("run")
+                self.screen.writestr(self.basic.F3_run_command + "\n")
+                self.execute_direct_line(self.basic.F3_run_command)
             elif char == "F1":      # list program shortcut key
-                self.screen.writestr("list: \n")
-                self.execute_direct_line("list")
+                self.screen.writestr(self.basic.F1_list_command + "\n")
+                self.execute_direct_line(self.basic.F1_list_command)
             elif char == "Prior":     # pageup = RESTORE (outside running program)
-                if self.basic.next_run_line_idx is None:
+                if not self.basic.running_program:
                     self.screen.reset()
-                    self.execute_direct_line("? \"\";")
+                    self.basic.write_prompt("\n")
 
     def execute_direct_line(self, line):
         try:
+            line = line.strip()
+            if line.startswith("gopy"):
+                self.switch_interpreter("python")
+                return
+            elif line.startswith((">>> go64", "go64")):
+                self.switch_interpreter("basic")
+                return
             self.basic.execute_line(line)
         except ResetMachineException:
             self.reset_machine()
         finally:
-            pass
+            self.screen.cursor_enabled = True
+
+    def switch_interpreter(self, interpreter):
+        self.screen.reset()
+        self.update()
+        if interpreter == "basic":
+            self.basic = BasicInterpreter(self.screen)
+            self.basic_interpret_loop()
+        elif interpreter == "python":
+            self.basic = PythonInterpreter(self.screen)
+        else:
+            raise ValueError("invalid interpreter")
 
     def runstop(self):
-        if self.basic.next_run_line_idx is not None:
+        if self.basic.running_program:
             if self.basic.sleep_until:
                 line = self.basic.program_lines[self.basic.next_run_line_idx - 1]
             else:
@@ -224,18 +246,15 @@ class EmulatorWindow(tkinter.Tk):
     def tkcolor(self, color):
         return "#{:06x}".format(colorpalette[color % 16])
 
-    def cyclic(self, callable, rate, initial=True):
-        if not initial:
-            callable()
-        self.after(rate, lambda: self.cyclic(callable, rate, False))
-
     def reset_machine(self):
         self.screen.reset()
-        self.basic.reset()
+        self.switch_interpreter("basic")
         self.update()
 
     def basic_interpret_loop(self):
-        self.screen.cursor_enabled = self.basic.next_run_line_idx is None
+        if not isinstance(self.basic, BasicInterpreter):
+            return
+        self.screen.cursor_enabled = not self.basic.running_program
         try:
             self.basic.interpret_program_step()
         except ResetMachineException:
@@ -247,7 +266,7 @@ class EmulatorWindow(tkinter.Tk):
         # Introduce an artificial delay here, to get at least *some* sense of the old times.
         # note: after_update makes it a lot faster, but is really slow on some systems
         # (windows) and it interferes with normal event handling (buttons etc, on osx)
-        self.after(1, self.basic_interpret_loop)
+        self._cyclic_interpret_after = self.after(1, self.basic_interpret_loop)
 
 
 def start():

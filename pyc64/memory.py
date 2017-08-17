@@ -97,11 +97,13 @@ class ScreenAndMemory:
 
     def getchar(self, x, y):
         """get the character AND color value at position x,y"""
+        assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
         offset = x + y * 40
         return self._memory[0x0400 + offset], self._memory[0xd800 + offset]
 
     def getmem(self, address, word=False):
         # update various special registers:
+        assert 0 <= address <= 65535, "invalid address"
         if address == 646:
             self._memory[646] = self.text
         elif address == 53280:
@@ -114,21 +116,22 @@ class ScreenAndMemory:
             return self._memory[address] + 256 * self._memory[address + 1]
         return self._memory[address]
 
-    def setmem(self, addr, value, word=False):
+    def setmem(self, address, value, word=False):
+        assert 0 <= address <= 65535, "invalid address"
         if word:
             hi, lo = divmod(value, 256)
-            self._memory[addr] = lo
-            self._memory[addr + 1] = hi
+            self._memory[address] = lo
+            self._memory[address + 1] = hi
         else:
-            self._memory[addr] = value
+            self._memory[address] = value
         # now trigger various special registers
-        if addr == 646:
+        if address == 646:
             self.text = value
-        elif addr == 53280:
+        elif address == 53280:
             self.border = value
-        elif addr == 53281:
+        elif address == 53281:
             self.screen = value
-        elif addr == 53272:
+        elif address == 53272:
             self.shifted = bool(value & 2)
 
     def blink_cursor(self):
@@ -140,6 +143,7 @@ class ScreenAndMemory:
     # ASCII-to-PETSCII translation table
     # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )
     ascii_to_petscii_trans = str.maketrans({
+        '\f': 147,  # form feed becomes ClearScreen
         '\n': 13,   # line feed becomes a RETURN
         '\r': 17,   # CR becomes CursorDown
         'a': 65,
