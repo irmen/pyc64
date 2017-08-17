@@ -37,3 +37,8 @@ the program needs to do some charset bitmap conversions at startup for tkinter.
 
 
 ![Screenshot two](demo_screenshot2.png)
+
+Python mode:
+
+![Screenshot two](demo_screenshot3.png)
+
