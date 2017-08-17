@@ -15,14 +15,16 @@ import pkgutil
 import threading
 import queue
 import time
+from collections import deque
 from PIL import Image
 from .memory import ScreenAndMemory, colorpalette
-from .basic import BasicInterpreter, ResetMachineException, HandleBufferedKeysException
+from .basic import BasicInterpreter, ResetMachineException
 from .python import PythonInterpreter
 
 
 class EmulatorWindow(tkinter.Tk):
     temp_graphics_folder = "temp_gfx"
+    update_rate = 1000//20    # 20 hz screen refresh rate
 
     def __init__(self, title):
         super().__init__()
@@ -31,6 +33,7 @@ class EmulatorWindow(tkinter.Tk):
         self.wm_iconphoto(self, self.appicon)
         self.geometry("+200+100")
         self.screen = ScreenAndMemory()
+        self.screen.setmem(0xfb, self.update_rate)   # zero page $fb is unused, we use it for screen refresh speed setting
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
         self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
         self.buttonbar = tkinter.Frame(self)
@@ -71,9 +74,12 @@ class EmulatorWindow(tkinter.Tk):
         introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180,
                                            text="pyc64 basic & function keys active\n\nuse 'gopy' to enter Python mode", fill="white")
         self.after(2500, lambda: self.canvas.delete(introtxt))
-        self.basic = BasicInterpreter(self.screen)
-        self.interpret_thread = InterpretThread(self.basic, self)
-        self.interpret_thread.start()
+        self.interpret_thread = None
+        self.switch_interpreter("basic")
+        # self.basic = BasicInterpreter(self.screen)
+        # self.interpret_thread = InterpretThread(self.basic, self)
+        # self.basic.interactive = self.interpret_thread
+        # self.interpret_thread.start()
 
     def _cyclic_blink_cursor(self):
         self.screen.blink_cursor()
@@ -81,7 +87,8 @@ class EmulatorWindow(tkinter.Tk):
 
     def _cyclic_repaint(self):
         self.repaint()
-        self.cyclic_repaint_after = self.after(self.screen.update_rate, self._cyclic_repaint)
+        update_rate = max(10, self.screen.getmem(0xfb))
+        self.cyclic_repaint_after = self.after(update_rate, self._cyclic_repaint)
 
     def _keyevent(self, event):
         c = event.char
@@ -100,14 +107,16 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.shifted = not self.screen.shifted
                 return
 
-        if self.interpret_thread.running_program:
-            # we're running a program, only the break key should do something!
+        if self.interpret_thread.running_something:
+            # we're running something so only the break key should do something!
             if char == '\x03' and with_control:  # ctrl+C
                 self.interpret_thread.runstop()
             elif char == '\x1b':    # esc
                 self.interpret_thread.runstop()
             else:
-                self.interpret_thread.buffer_keyevent((char, state, mousex, mousey))
+                # buffer the keypress (if it's not the pgup=RESTORE key)
+                if char != 'Prior':
+                    self.interpret_thread.buffer_keypress(char, state, mousex, mousey)
             return
 
         if len(char) == 1:
@@ -172,8 +181,9 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.writestr(self.basic.F1_list_command + "\n")
                 self.execute_direct_line(self.basic.F1_list_command)
             elif char == "Prior":     # pageup = RESTORE (outside running program)
-                if not self.interpret_thread.running_program:
+                if not self.interpret_thread.running_something:
                     self.screen.reset()
+                    self.screen.setmem(0xfb, self.update_rate)
                     self.basic.write_prompt("\n")
 
     def execute_direct_line(self, line):
@@ -187,16 +197,19 @@ class EmulatorWindow(tkinter.Tk):
         self.interpret_thread.submit_line(line)
 
     def switch_interpreter(self, interpreter):
-        self.interpret_thread.stop()
+        if self.interpret_thread:
+            self.interpret_thread.stop()
         self.screen.reset()
         self.update()
         if interpreter == "basic":
             self.basic = BasicInterpreter(self.screen)
             self.interpret_thread = InterpretThread(self.basic, self)
+            self.basic.interactive = self.interpret_thread
             self.interpret_thread.start()
         elif interpreter == "python":
             self.basic = PythonInterpreter(self.screen)
             self.interpret_thread = InterpretThread(self.basic, self)
+            self.basic.interactive = self.interpret_thread
             self.interpret_thread.start()
         else:
             raise ValueError("invalid interpreter")
@@ -313,77 +326,114 @@ class EmulatorWindow(tkinter.Tk):
 
     def reset_machine(self):
         self.screen.reset()
+        self.screen.setmem(0xfb, self.update_rate)
         self.switch_interpreter("basic")
         self.update()
 
-    def basic_interpret_loop(self):     # XXX remove
-        if not isinstance(self.basic, BasicInterpreter):
-            return
-        self.screen.cursor_enabled = not self.interpret_thread.running_program
-        try:
-            self.basic.program_step()
-        except ResetMachineException:
-            self.reset_machine()
-        except HandleBufferedKeysException as kx:
-            key_events = kx.args[0]
-            for char, state, mousex, mousey in key_events:
-                self.keypress(char, state, mousex, mousey)
-        # Introduce an artificial delay here, to get at least *some* sense of the old times.
-        # note: after_update makes it a lot faster, but is really slow on some systems
-        # (windows) and it interferes with normal event handling (buttons etc, on osx)
-        self._cyclic_interpret_after = self.after(1, self.basic_interpret_loop)
-
 
 class InterpretThread(threading.Thread):
+    # basic interpreter runs in a worker thread so the GUI can continue handling its events normally.
     def __init__(self, interpreter, window):
         super(InterpretThread, self).__init__(name="interpreter", daemon=True)
         self.direct_queue = queue.Queue()
         self.interpreter = interpreter
         self.interpret_lock = threading.Lock()
+        self.keybuffer_lock = threading.Lock()
         self.running_program = False
+        self.executing_line = False
         self.must_stop = False
         self.window = window
+        self.keybuffer = deque(maxlen=16)
+
+    @property
+    def running_something(self):
+        return self.running_program or self.executing_line or self.interpreter.sleep_until is not None
 
     def run(self):
         while not self.must_stop:
             try:
+                # see if we have buffered keys to be handled
+                if not self.running_something:
+                    with self.keybuffer_lock:
+                        keys = list(self.keybuffer)
+                        self.keybuffer.clear()
+                    for when, key in enumerate(keys, start=1):
+                        self.window.after(when, self.window.keypress(*key))
+                # look for work
                 if self.running_program:
                     with self.interpret_lock:
-                        print("PROGRAMSTEP", time.time(), command)  # XXX
                         self.interpreter.program_step()
-                        self.running_program = self.interpreter.running_program   # XXX double?
-                        time.sleep(0.001)    # artificial delay
+                        self.running_program = self.interpreter.running_program
+                        time.sleep(0.0001)    # artificial delay
+                        if not self.running_program:
+                            self.window.screen.cursor_enabled = True
                 else:
+                    # check if interpreter is doing a sleep instruction
+                    if self.interpreter.sleep_until is not None:
+                        time_left = self.interpreter.sleep_until - time.time()
+                        if time_left > 0:
+                            time.sleep(min(0.1, time_left))
+                            continue
+                        self.interpreter.sleep_until = None
+                        if not self.running_program:
+                            self.window.screen.cursor_enabled = True
+                            self.interpreter.write_prompt("\n")
+                            self.executing_line = False
+                            continue
+                    # check for direct line commands
                     command = self.direct_queue.get()
                     if command is None:
                         break
+                    self.window.screen.cursor_enabled = False
+                    self.executing_line = True
                     with self.interpret_lock:
-                        print("INTERPRET", time.time(), command)  # XXX
                         self.interpreter.execute_line(command)
-                        self.running_program = self.interpreter.running_program   # XXX double?
-                        time.sleep(0.001)    # artificial delay
-            except HandleBufferedKeysException as kx:
-                key_events = kx.args[0]
-                for event in key_events:
-                    self.window.after(1, lambda e=event: self.window.keypress(*e))   # @todo dont buffer in interpreter
-        print("END INTERPRET LOOP")  # XXX
+                        self.running_program = self.interpreter.running_program
+                        time.sleep(0.0001)    # artificial delay
+                        if not self.running_program and not self.interpreter.sleep_until:
+                            self.window.screen.cursor_enabled = True
+                    self.executing_line = False
+            except ResetMachineException:
+                self.window.after(1, self.window.reset_machine)
 
     def stop(self):
         self.must_stop = True
         self.direct_queue.put(None)  # sentinel
         time.sleep(0.1)
 
+    def buffer_keypress(self, *params):
+        with self.keybuffer_lock:
+            self.keybuffer.append(params)
+
+    def get_bufferedkey(self):
+        try:
+            with self.keybuffer_lock:
+                return self.keybuffer.popleft()
+        except IndexError:
+            return None
+
+    def do_get_command(self):
+        event = self.get_bufferedkey()
+        if event:
+            char, state, mousex, mousey = event
+            if len(char) == 1:
+                return char
+            else:
+                pass  # @todo handle control characters? (F1  etc)
+        return ''
+
     def submit_line(self, line):
         self.direct_queue.put(line)
 
-    def buffer_keyevent(self, event):
-        with self.interpret_lock:
-            self.interpreter.keybuffer.append(event)
-
     def runstop(self):
-        if self.running_program:
-            with self.interpret_lock:
-                self.interpreter.runstop()
+        with self.interpret_lock:
+            if (self.executing_line or self.interpreter.sleep_until) and not self.running_program:
+                self.window.screen.writestr("\n?break  error")
+            if self.interpreter.sleep_until:
+                self.interpreter.sleep_until = 1
+            with self.keybuffer_lock:
+                self.keybuffer.clear()
+            self.interpreter.runstop()
 
 
 def start():

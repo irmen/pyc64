@@ -27,7 +27,6 @@ import traceback
 import re
 import time
 import numbers
-from collections import deque
 from .shared import do_load, do_dos
 
 
@@ -48,11 +47,6 @@ class ResetMachineException(FlowcontrolException):
     pass
 
 
-class HandleBufferedKeysException(FlowcontrolException):
-    def __init__(self, key_events):
-        self.key_events = key_events
-
-
 class BasicInterpreter:
     F1_list_command = "list:"
     F3_run_command = "run:"
@@ -62,8 +56,8 @@ class BasicInterpreter:
 
     def __init__(self, screen):
         self.screen = screen
+        self.interactive = None   # will be set later, externally
         self.program = {}
-        self.keybuffer = deque(maxlen=16)
         self.reset()
 
     def reset(self):
@@ -137,7 +131,7 @@ class BasicInterpreter:
                     do_more = self._execute_cmd(cmd, parts)
                     if not do_more:
                         break
-                if not self.running_program:
+                if not self.running_program and not self.sleep_until:
                     self.write_prompt("\n")
             if self.running_program:
                 # schedule next line to be executed
@@ -176,26 +170,25 @@ class BasicInterpreter:
             if not line:
                 if linenum in self.program:
                     del self.program[linenum]
-                    del self.program[linenum]
             else:
                 self.program[linenum] = line
             return True
         return False
 
     def runstop(self):
-        print("RUNSTOP")  # XXX
+        if not self.running_program:
+            return
         if self.sleep_until:
+            self.sleep_until = None
             line = self.program_lines[self.next_run_line_idx - 1]
         else:
             line = self.program_lines[self.next_run_line_idx]
-        try:
-            self.stop_running_program()
-        except HandleBufferedKeysException:
-            pass  # when breaking, no buffered keys will be processed
-        self.screen.writestr("\nbreak in {:d}\nready.\n".format(line))
+        self.stop_running_program()
+        self.screen.writestr("\nbreak in {:d}\n".format(line))
+        self.write_prompt()
 
     def _execute_cmd(self, cmd, all_cmds_on_line=None):
-        print("RUN CMD:", repr(cmd))   # XXX   # XXX
+        # print("RUN CMD:", repr(cmd))   # XXX
         if cmd.startswith(("read", "rE")):
             self.execute_read(cmd)
         elif cmd.startswith(("restore", "reS")):
@@ -365,15 +358,9 @@ class BasicInterpreter:
         if not self.running_program:
             raise BasicError("illegal direct")
         varname = cmd.strip()
-        if self.keybuffer:
-            char, state, mousex, mousey = self.keybuffer.popleft()
-            if len(char) == 1:
-                self.symbols[varname] = char
-                return
-            else:
-                # @todo handle control chars ???
-                pass
-        self.symbols[varname] = ""
+        if not varname:
+            raise BasicError("syntax")
+        self.symbols[varname] = self.interactive.do_get_command()
 
     def execute_goto(self, cmd):
         if cmd.startswith("gO"):
@@ -400,10 +387,7 @@ class BasicInterpreter:
         if howlong == 0:
             return
         if 0 < howlong <= 60:       # sleep value must be between 0 and 60 seconds
-            if not self.running_program:
-                time.sleep(howlong)
-            else:
-                self.sleep_until = time.time() + howlong
+            self.sleep_until = time.time() + howlong
         else:
             raise BasicError("illegal quantity")
 
@@ -656,11 +640,7 @@ class BasicInterpreter:
         in_program = self.running_program
         if in_program:
             self.next_run_line_idx = None
-        if self.keybuffer and not error:
-            # return buffered keys during program execution
-            keys = list(self.keybuffer)
-            self.keybuffer.clear()
-            raise HandleBufferedKeysException(keys)
+        self.sleep_until = None
 
     def get_next_data(self):
         if self.data_line is None:

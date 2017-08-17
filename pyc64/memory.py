@@ -39,7 +39,6 @@ class ScreenAndMemory:
         self.reset(True)
 
     def reset(self, hard=False):
-        self.update_rate = 75
         self._full_repaint = True
         self._shifted = False
         self.inversevid = False
