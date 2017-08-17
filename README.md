@@ -14,6 +14,7 @@ Some VIC-II registers are also working:
 - 646 cursor color ($0286)
 - 1024-2023 the screen buffer characters ($0400-$07e7) 
 - 55296-56295 the screen buffer colors ($d800-$dbe7)
+- sprites! (no multicolor though, and no priority register and collision detection)
 - and some others, see the implementation of the ``execute_poke`` method.
 
 A few function keys are remapped as wel for convenience, like the fastloader cartridges of old:
@@ -31,6 +32,8 @@ For instance, try ``print 5**123``  or ``print sys.platform`` or ``print sum(log
 Note that it is not supported to do any blocking operation such as INPUT or WAIT.
 However, GET is supported (which gets one keypress from the keyboard buffer)
 So simple interactive programs can be created.
+
+Enter the 'gopy' command to switch to a Python REPL, and use 'go64' to switch back to BASIC.
 
 You'll need the [pillow](https://pillow.readthedocs.io) library because 
 the program needs to do some charset bitmap conversions at startup for tkinter.
