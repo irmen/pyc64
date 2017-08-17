@@ -1,5 +1,5 @@
 """
-'fast' Commodore-64 'emulator' in 100% pure Python 3.x :)
+Commodore-64 'emulator' in 100% pure Python 3.x :)
 
 This module is the GUI window logic, handling keyboard input
 and screen drawing via tkinter bitmaps.
@@ -12,7 +12,7 @@ import io
 import os
 import tkinter
 import pkgutil
-from PIL import Image, ImageDraw
+from PIL import Image
 from .memory import ScreenAndMemory, colorpalette
 from .basic import BasicInterpreter, ResetMachineException, HandleBufferedKeysException
 from .python import PythonInterpreter
@@ -39,6 +39,8 @@ class EmulatorWindow(tkinter.Tk):
         topleft = self.screencor((0, 0))
         botright = self.screencor((40, 25))
         self.screenrect = self.canvas.create_rectangle(topleft[0], topleft[1], botright[0], botright[1], outline="")
+        self.spritebitmapbytes = [None] * 8
+        self.spritebitmaps = []
         self.create_bitmaps()
         # create the 1000 character bitmaps fixed on the canvas:
         self.charbitmaps = []
@@ -48,8 +50,7 @@ class EmulatorWindow(tkinter.Tk):
                 bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@"+self.temp_graphics_folder+"/char-20.xbm",
                                                foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
                 self.charbitmaps.append(bm)
-        # create the 8 sprite bitmaps:
-        self.spritebitmaps = []
+        # create the 8 sprite tkinter bitmaps:
         for i in range(7, -1, -1):
             cor = self.screencor_sprite((30 + i * 20, 140 + i * 10))
             bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@{:s}/sprite-{:d}.xbm".format(self.temp_graphics_folder, i),
@@ -243,18 +244,10 @@ class EmulatorWindow(tkinter.Tk):
                     ci = ci.convert(mode="1", dither=None)
                     ci.save(filename, "xbm")
         # 8 monochrome sprites (including their double-size variants)
-        for i in range(8):
-            with Image.new("1", (24, 21), color=1) as si:
-                draw = ImageDraw.Draw(si)
-                draw.text((8, 4), str(i))
-                si = si.resize((48, 42), 0)
-                si.save(self.temp_graphics_folder + "/sprite-{:d}.xbm".format(i), "xbm")
-                dx = si.resize((96, 42), 0)
-                dx.save(self.temp_graphics_folder + "/sprite-{:d}-2x.xbm".format(i), "xbm")
-                dy = si.resize((48, 84), 0)
-                dy.save(self.temp_graphics_folder + "/sprite-{:d}-2y.xbm".format(i), "xbm")
-                dxy = si.resize((96, 84), 0)
-                dxy.save(self.temp_graphics_folder + "/sprite-{:d}-2x-2y.xbm".format(i), "xbm")
+        sprites = self.screen.getsprites()
+        for i, sprite in enumerate(sprites):
+            self.create_sprite_bitmap(i, sprite.bitmap)
+            self.spritebitmapbytes[i] = sprite.bitmap
 
     def repaint(self):
         # set bordercolor, done by setting the 4 border rectangles
@@ -281,6 +274,21 @@ class EmulatorWindow(tkinter.Tk):
         sprites = self.screen.getsprites()
         for snum, sprite in enumerate(sprites):
             configure = {}
+            # sprite double sizes
+            extension = "-2x" if sprite.doublex else ""
+            extension += "-2y" if sprite.doubley else ""
+            current_bm = self.canvas.itemcget(self.spritebitmaps[snum], "bitmap")
+            if (extension and extension not in current_bm) or (not extension and ("-2x" in current_bm or "-2y" in current_bm)):
+                configure["bitmap"] = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
+            # bitmapdata
+            if sprite.bitmap != self.spritebitmapbytes[snum]:
+                # regenerate sprite bitmap
+                self.create_sprite_bitmap(snum, sprite.bitmap)
+                self.spritebitmapbytes[snum] = sprite.bitmap
+                # first, configure another bitmap to force the old one out
+                self.canvas.itemconfigure(self.spritebitmaps[snum], bitmap="@{:s}/char-00.xbm".format(self.temp_graphics_folder))
+                # schedule reloading the sprite bitmap:
+                configure["bitmap"] = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
             # sprite enabled
             tkstate = tkinter.NORMAL if sprite.enabled else tkinter.HIDDEN
             if self.canvas.itemcget(self.spritebitmaps[snum], "state") != tkstate:
@@ -292,16 +300,20 @@ class EmulatorWindow(tkinter.Tk):
             # sprite positions
             x, y = self.screencor_sprite((sprite.x, sprite.y))
             self.canvas.coords(self.spritebitmaps[snum], x, y)
-            # sprite double sizes
-            extension = "-2x" if sprite.doublex else ""
-            extension += "-2y" if sprite.doubley else ""
-            current_bm = self.canvas.itemcget(self.spritebitmaps[snum], "bitmap")
-            if (extension and extension not in current_bm) or (not extension and ("-2x" in current_bm or "-2y" in current_bm)):
-                bm = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
-                configure["bitmap"] = bm
             if configure:
                 # reconfigure all changed properties in one go
                 self.canvas.itemconfigure(self.spritebitmaps[snum], **configure)
+
+    def create_sprite_bitmap(self, spritenum, bitmapbytes):
+        with Image.frombytes("1", (24, 21), bytes(bitmapbytes)) as si:
+            si = si.resize((48, 42), 0)
+            si.save(self.temp_graphics_folder + "/sprite-{:d}.xbm".format(spritenum), "xbm")
+            dx = si.resize((96, 42), 0)
+            dx.save(self.temp_graphics_folder + "/sprite-{:d}-2x.xbm".format(spritenum), "xbm")
+            dy = si.resize((48, 84), 0)
+            dy.save(self.temp_graphics_folder + "/sprite-{:d}-2y.xbm".format(spritenum), "xbm")
+            dxy = si.resize((96, 84), 0)
+            dxy.save(self.temp_graphics_folder + "/sprite-{:d}-2x-2y.xbm".format(spritenum), "xbm")
 
     def screencor(self, cc):
         return 64 + cc[0] * 16, 64 + cc[1] * 16
@@ -338,7 +350,7 @@ class EmulatorWindow(tkinter.Tk):
 
 def start():
     ScreenAndMemory.test_screencode_mappings()
-    emu = EmulatorWindow("Fast Commodore-64 'emulator' in pure Python!")
+    emu = EmulatorWindow("Commodore-64 'emulator' in pure Python!")
     emu.mainloop()
 
 

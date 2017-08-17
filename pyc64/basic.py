@@ -554,6 +554,8 @@ class BasicInterpreter:
         if start is not None and start not in self.program:
             raise BasicError("undef'd statement")
         if self.program:
+            self.data_line = None
+            self.data_index = None
             self.program_lines = list(sorted(self.program))
             raise GotoLineException(0 if start is None else self.program_lines.index(start))
 

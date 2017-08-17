@@ -36,7 +36,7 @@ class ScreenAndMemory:
         # screen chars     $0400-$07ff
         # screen colors    $d800-$dbff
         self._memory = bytearray(65536)    # 64Kb of 'RAM'
-        self.reset()
+        self.reset(True)
 
     def reset(self, hard=False):
         self.update_rate = 75
@@ -52,11 +52,15 @@ class ScreenAndMemory:
         self._memory[0:256] = bytearray(256)   # clear zeropage
         if hard:
             self._memory[0:65536] = bytearray(65536)   # wipe all of the memory
+            # from $0800-$d000 we have a 00/FF pattern alternating every 64 bytes
+            for m in range(0x0840, 0xd000, 128):
+                self._memory[m: m+64] = b"\xff" * 64
         self.border = 14
         self._screen = 6
         self.text = 14
         self._memory[0xd000:0xd031] = bytearray(0x31)   # wipe VIC registers
         self._memory[0xd027:0xd02f] = [1, 2, 3, 4, 5, 6, 7, 12]    # initial sprite colors
+        self._memory[0x07f8:0x0800] = [255, 255, 255, 255, 255, 255, 255, 255]   # sprite pointers
         self.clearscreen()
 
     @property
@@ -94,6 +98,7 @@ class ScreenAndMemory:
         doublex = False
         doubley = False
         color = 0
+        bitmap = None
 
     def getsprites(self):
         # return all data of all sprites in one list of 8 Sprite objects
@@ -103,6 +108,7 @@ class ScreenAndMemory:
         doublex = self._memory[0xd01d]
         doubley = self._memory[0xd017]
         enabled = self._memory[0xd015]
+        pointers = self._memory[0x07f8:0x0800]
 
         result = []
         for i in range(8):
@@ -113,6 +119,8 @@ class ScreenAndMemory:
             s.doublex = bool(doublex & 1 << i)
             s.doubley = bool(doubley & 1 << i)
             s.enabled = bool(enabled & 1 << i)
+            pointer = pointers[i] * 64
+            s.bitmap = self._memory[pointer: pointer+63]
             result.append(s)
         return result
 
