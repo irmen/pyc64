@@ -107,7 +107,13 @@ class PythonInterpreter:
         self.screen.shifted = True
         self.keybuffer = deque(maxlen=16)
         self.reset()
+
+    def start(self):
+        self.orig_stdout = sys.stdout
         sys.stdout = StdoutWrapper(self.screen)
+
+    def stop(self):
+        sys.stdout = self.orig_stdout
 
     def reset(self):
         self.program = ""

@@ -99,7 +99,7 @@ class BasicInterpreter:
         self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
         self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
         self.write_prompt("\n")
-        self.stop_run()
+        self.stop_running_program()
 
     @property
     def running_program(self):
@@ -158,12 +158,12 @@ class BasicInterpreter:
                 line = self.program_lines[self.next_run_line_idx]
                 self.screen.writestr("\n?" + bx.args[0].lower() + "  error in {line:d}\n".format(line=line))
                 self.write_prompt()
-            self.stop_run(True)
+            self.stop_running_program(True)
         except Exception as ex:
             traceback.print_exc()
             self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
             self.write_prompt()
-            self.stop_run(True)
+            self.stop_running_program(True)
 
     def process_programline_entry(self, line):
         match = re.match("(\d+)(\s*.*)", line)
@@ -182,8 +182,20 @@ class BasicInterpreter:
             return True
         return False
 
+    def runstop(self):
+        print("RUNSTOP")  # XXX
+        if self.sleep_until:
+            line = self.program_lines[self.next_run_line_idx - 1]
+        else:
+            line = self.program_lines[self.next_run_line_idx]
+        try:
+            self.stop_running_program()
+        except HandleBufferedKeysException:
+            pass  # when breaking, no buffered keys will be processed
+        self.screen.writestr("\nbreak in {:d}\nready.\n".format(line))
+
     def _execute_cmd(self, cmd, all_cmds_on_line=None):
-        # print("RUN CMD:", repr(cmd))   # XXX
+        print("RUN CMD:", repr(cmd))   # XXX   # XXX
         if cmd.startswith(("read", "rE")):
             self.execute_read(cmd)
         elif cmd.startswith(("restore", "reS")):
@@ -389,7 +401,6 @@ class BasicInterpreter:
             return
         if 0 < howlong <= 60:       # sleep value must be between 0 and 60 seconds
             if not self.running_program:
-                self.screen.cursor_enabled = False
                 time.sleep(howlong)
             else:
                 self.sleep_until = time.time() + howlong
@@ -424,7 +435,7 @@ class BasicInterpreter:
         if self.running_program:
             if cmd in ("sT", "stop"):
                 self.screen.writestr("\nbreak in {:d}\n".format(self.program_lines[self.next_run_line_idx]))
-            self.stop_run()
+            self.stop_running_program()
 
     def execute_poke(self, cmd):
         if cmd.startswith("pO"):
@@ -641,7 +652,7 @@ class BasicInterpreter:
                 return
         raise BasicError("syntax")
 
-    def stop_run(self, error=False):
+    def stop_running_program(self, error=False):
         in_program = self.running_program
         if in_program:
             self.next_run_line_idx = None
@@ -677,7 +688,8 @@ class BasicInterpreter:
             self.data_index += 1
             return eval(value)
 
-    def interpret_program_step(self):
+    def program_step(self):
+        # perform a discrete step of the running program
         if not self.running_program:
             return   # no program currently running
         if self.sleep_until is not None:
@@ -687,7 +699,7 @@ class BasicInterpreter:
             self.sleep_until = None
         if self.next_run_line_idx >= len(self.program_lines):
             self.write_prompt("\n")
-            self.stop_run()
+            self.stop_running_program()
         else:
             linenum = self.program_lines[self.next_run_line_idx]
             line = self.program[linenum]
