@@ -24,7 +24,7 @@ class EmulatorWindow(tkinter.Tk):
     def __init__(self, title):
         super().__init__()
         self.wm_title(title)
-        self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "icon.png"))
+        self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "icon.gif"))
         self.wm_iconphoto(self, self.appicon)
         self.geometry("+200+100")
         self.screen = ScreenAndMemory()
@@ -191,6 +191,8 @@ class EmulatorWindow(tkinter.Tk):
     def switch_interpreter(self, interpreter):
         self.screen.reset()
         self.update()
+        if self._cyclic_interpret_after is not None:
+            self.after_cancel(self._cyclic_interpret_after)
         if interpreter == "basic":
             self.basic = BasicInterpreter(self.screen)
             self.basic_interpret_loop()
@@ -253,7 +255,6 @@ class EmulatorWindow(tkinter.Tk):
                 dy.save(self.temp_graphics_folder + "/sprite-{:d}-2y.xbm".format(i), "xbm")
                 dxy = si.resize((96, 84), 0)
                 dxy.save(self.temp_graphics_folder + "/sprite-{:d}-2x-2y.xbm".format(i), "xbm")
-
 
     def repaint(self):
         # set bordercolor, done by setting the 4 border rectangles
