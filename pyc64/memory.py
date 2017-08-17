@@ -32,17 +32,6 @@ colorpalette = (
 
 class ScreenAndMemory:
     def __init__(self):
-        self.border = 0
-        self._screen = 0
-        self.text = 0
-        self._shifted = False
-        self.inversevid = False
-        self.cursor = 0
-        self.cursor_state = False
-        self.cursor_blink_rate = 300
-        self._cursor_enabled = True
-        self._full_repaint = True
-        self.update_rate = 75
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
         # screen colors    $d800-$dbff
@@ -50,10 +39,8 @@ class ScreenAndMemory:
         self.reset()
 
     def reset(self, hard=False):
-        self.border = 14
-        self._screen = 6
+        self.update_rate = 75
         self._full_repaint = True
-        self.text = 14
         self._shifted = False
         self.inversevid = False
         self.cursor = 0
@@ -65,6 +52,10 @@ class ScreenAndMemory:
         self._memory[0:256] = bytearray(256)   # clear zeropage
         if hard:
             self._memory[0:65536] = bytearray(65536)   # wipe all of the memory
+        self.border = 14
+        self._screen = 6
+        self.text = 14
+        self._memory[0xd027:0xd02f] = [1, 2, 3, 4, 5, 6, 7, 12]    # initial sprite colors
         self.clearscreen()
 
     @property
@@ -94,6 +85,33 @@ class ScreenAndMemory:
         if not enabled:
             self._fix_cursor(False)
         self._cursor_enabled = enabled
+
+    def getspritecolors(self):
+        return self._memory[0xd027:0xd02f]
+
+    def setspritecolor(self, spritenum, color):
+        assert 0 <= spritenum <= 7
+        assert 0 <= color <= 255
+        self._memory[0xd027 + spritenum] = color
+
+    def getspritepositions(self):
+        pos = self._memory[0xd000:0xd010]
+        xmsb = self._memory[0xd010]
+        return ((pos[i * 2] + (256 if xmsb & 1 << i else 0), pos[1 + i * 2]) for i in range(8))
+
+    def getspritedoubles(self):
+        doublex = self._memory[0xd01d]
+        doubley = self._memory[0xd017]
+        return ((bool(doublex & 1 << i), bool(doubley & 1 << i)) for i in range(8))
+
+    def setspritepos(self, spritenum, x, y):
+        assert 0 <= spritenum <= 7
+        self._memory[0xd000 + spritenum] = x & 255
+        self._memory[0xd001 + spritenum] = y
+        if x > 255:
+            self._memory[0xd010] |= 1 << spritenum
+        else:
+            self._memory[0xd010] &= ~ (1 << spritenum)
 
     def getchar(self, x, y):
         """get the character AND color value at position x,y"""

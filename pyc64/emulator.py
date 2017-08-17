@@ -12,7 +12,7 @@ import io
 import os
 import tkinter
 import pkgutil
-from PIL import Image
+from PIL import Image, ImageDraw
 from .memory import ScreenAndMemory, colorpalette
 from .basic import BasicInterpreter, ResetMachineException, HandleBufferedKeysException
 from .python import PythonInterpreter
@@ -48,6 +48,18 @@ class EmulatorWindow(tkinter.Tk):
                 bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@"+self.temp_graphics_folder+"/char-20.xbm",
                                                foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
                 self.charbitmaps.append(bm)
+        # create the 8 sprite bitmaps:
+        self.spritebitmaps = []
+        for i in range(7, -1, -1):
+            cor = self.screencor_sprite((30 + i * 20, 140 + i * 10))
+            bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@{:s}/sprite-{:d}.xbm".format(self.temp_graphics_folder, i),
+                                           foreground=self.tkcolor(i+8), background=None, anchor=tkinter.NW, tags="spritebitmap")
+            self.spritebitmaps.insert(0, bm)
+        # the borders:
+        self.border1 = self.canvas.create_rectangle(0, 0, 128 + 40 * 16, 64, outline="", fill="#000")
+        self.border2 = self.canvas.create_rectangle(64 + 40 * 16, 64, 128 + 40 * 16, 64 + 25 * 16, outline="", fill="#000")
+        self.border3 = self.canvas.create_rectangle(0, 64 + 25 * 16, 128 + 40 * 16, 128 + 25 * 16, outline="", fill="#000")
+        self.border4 = self.canvas.create_rectangle(0, 64, 64, 64 + 25 * 16, outline="", fill="#000")
         self.bind("<KeyPress>", lambda event: self.keypress(*self._keyevent(event)))
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
         self.repaint()
@@ -228,29 +240,67 @@ class EmulatorWindow(tkinter.Tk):
                     ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
                     ci = ci.convert(mode="1", dither=None)
                     ci.save(filename, "xbm")
+        # 8 monochrome sprites (including their double-size variants)
+        for i in range(8):
+            with Image.new("1", (24, 21), color=1) as si:
+                draw = ImageDraw.Draw(si)
+                draw.text((8, 4), str(i))
+                si = si.resize((48, 42), 0)
+                si.save(self.temp_graphics_folder + "/sprite-{:d}.xbm".format(i), "xbm")
+                dx = si.resize((96, 42), 0)
+                dx.save(self.temp_graphics_folder + "/sprite-{:d}-2x.xbm".format(i), "xbm")
+                dy = si.resize((48, 84), 0)
+                dy.save(self.temp_graphics_folder + "/sprite-{:d}-2y.xbm".format(i), "xbm")
+                dxy = si.resize((96, 84), 0)
+                dxy.save(self.temp_graphics_folder + "/sprite-{:d}-2x-2y.xbm".format(i), "xbm")
+
 
     def repaint(self):
-        # set border color and screen color
+        # set bordercolor, done by setting the 4 border rectangles
+        # (screen color done by setting the background color of all character bitmaps,
+        #  this is a lot faster than using many transparent bitmaps!)
         bordercolor = self.tkcolor(self.screen.border)
-        screencolor = self.tkcolor(self.screen.screen)
-        if self.canvas["bg"] != bordercolor:
-            self.canvas["bg"] = bordercolor
-        if self.canvas.itemcget(self.screenrect, "fill") != screencolor:
-            self.canvas.itemconfigure(self.screenrect, fill=screencolor)
+        if self.canvas.itemcget(self.border1, "fill") != bordercolor:
+            self.canvas.itemconfigure(self.border1, fill=bordercolor)
+            self.canvas.itemconfigure(self.border2, fill=bordercolor)
+            self.canvas.itemconfigure(self.border3, fill=bordercolor)
+            self.canvas.itemconfigure(self.border4, fill=bordercolor)
         prefix = "char-sh" if self.screen.shifted else "char"
         if self.repaint_only_dirty:
             dirty = iter(self.screen.getdirty())
         else:
             chars, colors = self.screen.getscreencopy()
             dirty = enumerate(zip(chars, colors))
+        screencolor = self.tkcolor(self.screen.screen)
         for index, (char, color) in dirty:
             forecol = self.tkcolor(color)
             bm = self.charbitmaps[index]
             bitmap = "@" + self.temp_graphics_folder + "/{:s}-{:02x}.xbm".format(prefix, char)
             self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
+        # sprite colors
+        for snum, scol in enumerate(self.screen.getspritecolors()):
+            spritecolor = self.tkcolor(scol)
+            if self.canvas.itemcget(self.spritebitmaps[snum], "foreground") != spritecolor:
+                self.canvas.itemconfigure(self.spritebitmaps[snum], foreground=spritecolor)
+        # sprite positions
+        for snum, spos in enumerate(self.screen.getspritepositions()):
+            x, y = self.screencor_sprite(spos)
+            self.canvas.coords(self.spritebitmaps[snum], x, y)
+        # sprite double sizes
+        for snum, (dx, dy) in enumerate(self.screen.getspritedoubles()):
+            extension = "-2x" if dx else ""
+            extension += "-2y" if dy else ""
+            current_bm = self.canvas.itemcget(self.spritebitmaps[snum], "bitmap")
+            if (extension and extension not in current_bm) or (not extension and ("-2x" in current_bm or "-2y" in current_bm)):
+                bm = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
+                self.canvas.itemconfigure(self.spritebitmaps[snum], bitmap=bm)
 
     def screencor(self, cc):
         return 64 + cc[0] * 16, 64 + cc[1] * 16
+
+    def screencor_sprite(self, cc):
+        # sprite upper left = (24, 50) so subtract this from regular origin (64, 64)
+        return 16 + cc[0] * 2, cc[1] * 2 - 36
 
     def tkcolor(self, color):
         return "#{:06x}".format(colorpalette[color % 16])
