@@ -60,6 +60,12 @@ class BasicInterpreter:
         self.program = {}
         self.reset()
 
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
     def reset(self):
         self.symbols = {
             "md5": hashlib.md5,

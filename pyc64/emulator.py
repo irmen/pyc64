@@ -75,11 +75,8 @@ class EmulatorWindow(tkinter.Tk):
                                            text="pyc64 basic & function keys active\n\nuse 'gopy' to enter Python mode", fill="white")
         self.after(2500, lambda: self.canvas.delete(introtxt))
         self.interpret_thread = None
+        self.interpreter = None
         self.switch_interpreter("basic")
-        # self.basic = BasicInterpreter(self.screen)
-        # self.interpret_thread = InterpretThread(self.basic, self)
-        # self.basic.interactive = self.interpret_thread
-        # self.interpret_thread.start()
 
     def _cyclic_blink_cursor(self):
         self.screen.blink_cursor()
@@ -163,28 +160,28 @@ class EmulatorWindow(tkinter.Tk):
                 self.screen.insert()
                 self.repaint()
             elif char == 'F7':      # directory shortcut key
-                self.screen.writestr(self.basic.F7_dir_command + "\n")
-                self.execute_direct_line(self.basic.F7_dir_command)
+                self.screen.writestr(self.interpreter.F7_dir_command + "\n")
+                self.execute_direct_line(self.interpreter.F7_dir_command)
             elif char == 'F5':      # load file shortcut key
                 if with_shift:
-                    self.screen.writestr(self.basic.F6_load_command + "\n")
-                    self.execute_direct_line(self.basic.F6_load_command)
+                    self.screen.writestr(self.interpreter.F6_load_command + "\n")
+                    self.execute_direct_line(self.interpreter.F6_load_command)
                 else:
-                    self.screen.writestr(self.basic.F5_load_command)
+                    self.screen.writestr(self.interpreter.F5_load_command)
                     line = self.screen.current_line(1)
                     self.screen.return_key()
                     self.execute_direct_line(line)
             elif char == "F3":      # run program shortcut key
-                self.screen.writestr(self.basic.F3_run_command + "\n")
-                self.execute_direct_line(self.basic.F3_run_command)
+                self.screen.writestr(self.interpreter.F3_run_command + "\n")
+                self.execute_direct_line(self.interpreter.F3_run_command)
             elif char == "F1":      # list program shortcut key
-                self.screen.writestr(self.basic.F1_list_command + "\n")
-                self.execute_direct_line(self.basic.F1_list_command)
+                self.screen.writestr(self.interpreter.F1_list_command + "\n")
+                self.execute_direct_line(self.interpreter.F1_list_command)
             elif char == "Prior":     # pageup = RESTORE (outside running program)
                 if not self.interpret_thread.running_something:
                     self.screen.reset()
                     self.screen.setmem(0xfb, self.update_rate)
-                    self.basic.write_prompt("\n")
+                    self.interpreter.write_prompt("\n")
 
     def execute_direct_line(self, line):
         line = line.strip()
@@ -199,17 +196,21 @@ class EmulatorWindow(tkinter.Tk):
     def switch_interpreter(self, interpreter):
         if self.interpret_thread:
             self.interpret_thread.stop()
+        if self.interpreter:
+            self.interpreter.stop()
         self.screen.reset()
         self.update()
         if interpreter == "basic":
-            self.basic = BasicInterpreter(self.screen)
-            self.interpret_thread = InterpretThread(self.basic, self)
-            self.basic.interactive = self.interpret_thread
+            self.interpreter = BasicInterpreter(self.screen)
+            self.interpret_thread = InterpretThread(self.interpreter, self)
+            self.interpreter.interactive = self.interpret_thread
+            self.interpreter.start()
             self.interpret_thread.start()
         elif interpreter == "python":
-            self.basic = PythonInterpreter(self.screen)
-            self.interpret_thread = InterpretThread(self.basic, self)
-            self.basic.interactive = self.interpret_thread
+            self.interpreter = PythonInterpreter(self.screen)
+            self.interpret_thread = InterpretThread(self.interpreter, self)
+            self.interpreter.interactive = self.interpret_thread
+            self.interpreter.start()
             self.interpret_thread.start()
         else:
             raise ValueError("invalid interpreter")

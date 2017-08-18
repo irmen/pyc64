@@ -7,7 +7,6 @@ License: MIT open-source.
 import os
 import sys
 import traceback
-from collections import deque
 from .shared import do_load, do_dos
 
 
@@ -105,7 +104,7 @@ class PythonInterpreter:
     def __init__(self, screen):
         self.screen = screen
         self.screen.shifted = True
-        self.keybuffer = deque(maxlen=16)
+        self.interactive = None   # will be set later, externally
         self.reset()
 
     def start(self):
@@ -116,6 +115,7 @@ class PythonInterpreter:
         sys.stdout = self.orig_stdout
 
     def reset(self):
+        self.sleep_until = None
         self.program = ""
         self.symbols = {
             "screen": self.screen,
@@ -163,6 +163,12 @@ class PythonInterpreter:
             traceback.print_exc()
             self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
             self.write_prompt()
+
+    def program_step(self):
+        raise NotImplementedError
+
+    def runstop(self):
+        raise NotImplementedError
 
     def execute_load(self, arg):
         program = do_load(self.screen, arg)
