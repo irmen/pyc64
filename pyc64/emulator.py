@@ -32,6 +32,8 @@ class EmulatorWindow(tkinter.Tk):
         self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "icon.gif"))
         self.wm_iconphoto(self, self.appicon)
         self.geometry("+200+100")
+        self.hertztick = threading.Event()
+        self.refreshtick = threading.Event()
         self.screen = ScreenAndMemory()
         self.screen.setmem(0xfb, self.update_rate)   # zero page $fb is unused, we use it for screen refresh speed setting
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
@@ -77,15 +79,20 @@ class EmulatorWindow(tkinter.Tk):
         self.interpret_thread = None
         self.interpreter = None
         self.switch_interpreter("basic")
+        self.after(1000//60, self.hertztimer)
+
+    def hertztimer(self):
+        self.after(1000//60, self.hertztimer)
+        self.hertztick.set()
 
     def _cyclic_blink_cursor(self):
-        self.screen.blink_cursor()
         self.cyclic_blink_after = self.after(self.screen.cursor_blink_rate, self._cyclic_blink_cursor)
+        self.screen.blink_cursor()
 
     def _cyclic_repaint(self):
-        self.repaint()
         update_rate = max(10, self.screen.getmem(0xfb))
         self.cyclic_repaint_after = self.after(update_rate, self._cyclic_repaint)
+        self.repaint()
 
     def _keyevent(self, event):
         c = event.char
@@ -198,7 +205,9 @@ class EmulatorWindow(tkinter.Tk):
             self.interpret_thread.stop()
         if self.interpreter:
             self.interpreter.stop()
+        self.hertztick.set()
         self.screen.reset()
+        self.repaint()
         self.update()
         if interpreter == "basic":
             self.interpreter = BasicInterpreter(self.screen)
@@ -303,6 +312,7 @@ class EmulatorWindow(tkinter.Tk):
             if configure:
                 # reconfigure all changed properties in one go
                 self.canvas.itemconfigure(self.spritebitmaps[snum], **configure)
+        self.refreshtick.set()
 
     def create_sprite_bitmap(self, spritenum, bitmapbytes):
         with Image.frombytes("1", (24, 21), bytes(bitmapbytes)) as si:
@@ -329,7 +339,7 @@ class EmulatorWindow(tkinter.Tk):
         self.screen.reset()
         self.screen.setmem(0xfb, self.update_rate)
         self.switch_interpreter("basic")
-        self.update()
+        self.repaint()
 
 
 class InterpretThread(threading.Thread):
@@ -345,6 +355,7 @@ class InterpretThread(threading.Thread):
         self.must_stop = False
         self.window = window
         self.keybuffer = deque(maxlen=16)
+        self.step_counter = 0
 
     @property
     def running_something(self):
@@ -365,9 +376,12 @@ class InterpretThread(threading.Thread):
                     with self.interpret_lock:
                         self.interpreter.program_step()
                         self.running_program = self.interpreter.running_program
+                    self.step_counter += 1
+                    if self.step_counter > 200:     # control program execution speed with this
+                        self.step_counter = 0
                         self._microsleep()
-                        if not self.running_program:
-                            self.window.screen.cursor_enabled = True
+                    if not self.running_program:
+                        self.window.screen.cursor_enabled = True
                 else:
                     # check if interpreter is doing a sleep instruction
                     if self.interpreter.sleep_until is not None:
@@ -393,27 +407,22 @@ class InterpretThread(threading.Thread):
                     with self.interpret_lock:
                         self.interpreter.execute_line(command)
                         self.running_program = self.interpreter.running_program
-                        self._microsleep()
-                        if not self.running_program and not self.interpreter.sleep_until:
-                            self.window.screen.cursor_enabled = True
+                    self._microsleep()
+                    if not self.running_program and not self.interpreter.sleep_until:
+                        self.window.screen.cursor_enabled = True
                     self.executing_line = False
             except ResetMachineException:
                 self.window.after(1, self.window.reset_machine)
 
     def _microsleep(self):
         # artificial microscopic delay to yield the thread and allow screen to refresh
-        if os.name == "nt":
-            # ugly hack on Windows because time.sleep's resolution
-            # is not small enough to delay for a very short time.
-            # so we need another means to release the thread for a bit: disk I/O does the trick
-            time.sleep(0)
-            os.listdir("."); os.listdir("."); os.listdir(".")
-        else:
-            time.sleep(0.0001)
+        self.window.hertztick.wait(1)
+        self.window.hertztick.clear()
 
     def stop(self):
         self.must_stop = True
         self.direct_queue.put(None)  # sentinel
+        self.window.hertztick.set()
         time.sleep(0.1)
 
     def buffer_keypress(self, *params):
@@ -436,6 +445,11 @@ class InterpretThread(threading.Thread):
             else:
                 pass  # @todo handle control characters? (F1  etc)
         return ''
+
+    def do_sync_command(self):
+        update_rate = max(10, self.window.screen.getmem(0xfb))
+        self.window.refreshtick.wait(2/update_rate)
+        self.window.refreshtick.clear()
 
     def submit_line(self, line):
         self.direct_queue.put(line)

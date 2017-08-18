@@ -3,7 +3,7 @@
 30 next s
 40 poke 53277,204 : poke 53271, 240: poke 53269, 255
 45 poke 53280,11: poke 53281,0: poke 646,6
-46 poke 251,1000/50: rem 50 hz refresh
+46 poke 251,1000/60: rem 60 hz refresh
 50 cls: list
 60 print: print"   dalek sprite demo!!!";
 70 for i=0 to 62
@@ -17,7 +17,8 @@
 140 poke 53264, peek(53264) & ~(1<<s): goto 160
 150 poke 53264, peek(53264) | 1<<s
 160 next s
-180 r=r+0.02: goto 110
+170 sync: rem sync to refresh hz
+180 r=r+0.05: goto 110
 1040 data 0,3,240,0,255,248,0,7,252
 1050 data 0,15,252
 1060 data 0,4,136,0,15,252,0,4,136
