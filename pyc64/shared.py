@@ -4,7 +4,23 @@ commands shared by BASIC V2 and Python interpreter.
 
 import re
 import os
+import struct
 import glob
+
+
+class StdoutWrapper:
+    def __init__(self, screen, duplicate=None):
+        self.screen = screen
+        self.duplicate = duplicate
+
+    def write(self, text):
+        self.screen.writestr(text)
+        if self.duplicate:
+            self.duplicate.write(text)
+
+    def flush(self):
+        if self.duplicate:
+            self.duplicate.flush()
 
 
 class FlowcontrolException(Exception):
@@ -31,7 +47,7 @@ def do_dos(screen, arg):
 
 
 def do_load(screen, arg):
-    # load a BASIC .bas or Python .py file
+    # load a BASIC .bas or Python .py or C64 .prg file
     if not arg:
         raise ValueError("missing filename")
     if arg.startswith("\"$\""):
@@ -51,11 +67,11 @@ def do_load(screen, arg):
         if not filename:
             raise FileNotFoundError("file not found")
         filename = os.path.basename(list(sorted(filename))[0])
-    if filename.endswith((".py", ".PY")):
+    if filename.endswith(".py"):
         with open("drive8/" + filename, "r", newline=None, encoding="utf8") as file:
             screen.writestr("loading " + filename + "\n")
             return file.read()
-    if filename.endswith((".bas", ".BAS")):
+    elif filename.endswith(".bas"):
         newprogram = {}
         with open("drive8/" + filename, "r", newline=None, encoding="utf8") as file:
             screen.writestr("loading " + filename + "\n")
@@ -66,10 +82,31 @@ def do_load(screen, arg):
                 num, line = line.split(maxsplit=1)
                 newprogram[int(num)] = line
         return newprogram
-    raise IOError("unknown file type")
+    elif filename.endswith(".prg"):
+        with open("drive8/" + filename, "rb") as file:
+            address = struct.unpack("<H", file.read(2))[0]
+            prog = file.read()
+        screen.writestr("loading from ${:04x} to ${:04x}...\n".format(address, address+len(prog)))
+        screen.memory[address: address+len(prog)] = prog
+        visible = b" abcdefghijklmnopqrstuvwxyz1234567890-=`~!@#$%^&*()_+[];:'\",.<>/?"
+        return {
+            0: "list 3-",
+            1: "end",
+            3: "---------------",
+            4: "a .prg has been loaded.",
+            5: "no support for listing these!",
+            6: "maybe it contains machine code",
+            7: "that you can call via sys...",
+            8: "the first 30 printable chars are:",
+            9: ">>> "+"".join(chr(x) if x in visible else ' ' for x in screen.memory[address: address+30]),
+            10: "(usually a sys address is shown)",
+            11: "---------------",
+        }
+    else:
+        raise IOError("unknown file type")
 
 
-def do_sys(screen, addr):
+def do_sys(screen, addr, microsleep=None):
     if addr < 0 or addr > 0xffff:
         raise ValueError("illegal quantity")
     if addr in (64738, 64760):
@@ -78,4 +115,6 @@ def do_sys(screen, addr):
         x, y = screen.memory[211], screen.memory[214]
         screen.cursormove(x, y)
     else:
-        raise NotImplementedError("no machine language support")
+        from .cputools import CPU
+        cpu = CPU(memory=screen.memory, pc=addr)
+        cpu.run(microsleep=microsleep)

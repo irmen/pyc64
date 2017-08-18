@@ -8,7 +8,7 @@ License: MIT open-source.
 import os
 import sys
 import traceback
-from .shared import do_load, do_dos, do_sys, FlowcontrolException
+from .shared import StdoutWrapper, do_load, do_dos, do_sys, FlowcontrolException
 
 
 class ColorsProxy:
@@ -55,17 +55,6 @@ class CharsProxy:
             x, y = int(item[0]), int(item[1])
             assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
             self.screen.memory[0x0400 + x + 40 * y] = value
-
-
-class StdoutWrapper:
-    def __init__(self, screen):
-        self.screen = screen
-
-    def write(self, text):
-        self.screen.writestr(text)
-
-    def flush(self):
-        pass
 
 
 class PythonInterpreter:

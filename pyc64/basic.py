@@ -27,7 +27,7 @@ import traceback
 import re
 import time
 import numbers
-from .shared import do_load, do_dos, do_sys, FlowcontrolException
+from .shared import StdoutWrapper, do_load, do_dos, do_sys, FlowcontrolException
 
 
 class BasicError(Exception):
@@ -243,6 +243,8 @@ class BasicInterpreter:
             self.screen.clear()    # basic V2:  ?chr$(147);
         elif cmd == "sync":
             self.interactive.do_sync_command()
+        elif cmd == "monitor":
+            self.execute_monitor(cmd)
         elif cmd.startswith("dos\""):
             self.execute_dos(cmd)
             return False
@@ -263,7 +265,8 @@ class BasicInterpreter:
         self.screen.writestr("\nknown statements:\n")
         known = ["?", "print", "cls", "color", "cursor", "data", "dos", "end", "for", "get", "gopy",
                  "goto", "if", "list", "load", "new", "next", "peek", "peekw", "poke", "pokew",
-                 "read", "rem", "restore", "run", "save", "scroll", "sleep", "stop", "sys", "help"]
+                 "read", "rem", "restore", "run", "save", "scroll", "sleep", "stop", "sys", "help",
+                 "monitor", "sync"]
         for kw in sorted(known):
             self.screen.writestr("{:10s}".format(kw))
         self.screen.writestr("\n")
@@ -450,7 +453,7 @@ class BasicInterpreter:
             raise BasicError("syntax")
         addr = eval(cmd, self.symbols)
         try:
-            do_sys(self.screen, addr)
+            do_sys(self.screen, addr, self.interactive._microsleep)
         except FlowcontrolException:
             raise
         except Exception as x:
@@ -477,7 +480,7 @@ class BasicInterpreter:
             to = to.strip()
         if not self.program:
             return
-        if start and not to:
+        if start and not to and not sep:
             to = start
         start = int(start) if start else 0
         to = int(to) if to else None
@@ -530,7 +533,7 @@ class BasicInterpreter:
             program = do_load(self.screen, cmd)
         except Exception as x:
             raise BasicError(str(x))
-        if not isinstance(program, dict):
+        if program and not isinstance(program, dict):
             raise BasicError("invalid file type")
         self.program = program
 
@@ -631,6 +634,18 @@ class BasicInterpreter:
                 self.screen.cursormove(x, y)
                 return
         raise BasicError("syntax")
+
+    def execute_monitor(self, cmd):
+        if cmd.startswith("monitor"):
+            cmd = cmd[7:]
+        self.screen.writestr("starting monitor...(see console window)\n")
+        self.screen.shifted = True
+        from .cputools import Monitor
+        stdout = StdoutWrapper(self.screen, duplicate=sys.stdout)
+        mon = Monitor(memory=self.screen.memory, stdout=stdout)
+        mon.onecmd("version")
+        mon.cmdloop()
+        self.screen.writestr("...back from monitor.\n")
 
     def stop_running_program(self, error=False):
         in_program = self.running_program

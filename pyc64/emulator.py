@@ -74,9 +74,11 @@ class EmulatorWindow(tkinter.Tk):
         self.canvas.pack()
         self._cyclic_blink_cursor()
         self._cyclic_repaint()
-        introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180,
-                                           text="pyc64 basic & function keys active\n\nuse 'gopy' to enter Python mode", fill="white")
-        self.after(2500, lambda: self.canvas.delete(introtxt))
+        introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180, fill="white", justify=tkinter.CENTER,
+                                           text="pyc64 basic & function keys active\n\n"
+                                                "use 'gopy' to enter Python mode\n\n\n\n"
+                                                "(install the py64 library to be able to execute 6502 machine code)")
+        self.after(4000, lambda: self.canvas.delete(introtxt))
         self.interpret_thread = None
         self.interpreter = None
         self.switch_interpreter("basic")
@@ -102,7 +104,7 @@ class EmulatorWindow(tkinter.Tk):
         return c, event.state, event.x, event.y
 
     def keypress(self, char, state, mousex, mousey):
-        # print("keypress", repr(char), state)  # XXX
+        # print("keypress", repr(char), state)
         with_shift = state & 1
         with_control = state & 4
         with_alt = state & 8
