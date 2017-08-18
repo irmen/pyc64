@@ -44,7 +44,7 @@ mem[12288: 12288+63] = [
 
 # setup sprites
 for s in range(8):
-    sprite(s, x=0, y=0, dx=s>3, dy=s&1, color=s+8, pointer=12288, enabled=True)
+    sprite(s, x=0, y=0, dx=s&2, dy=s&4, color=s+8, pointer=12288, enabled=True)
 
 # animate sprites
 r = 0.0

@@ -17,29 +17,21 @@ class ColorsProxy:
 
     def __getitem__(self, item):
         if type(item) is slice:
-            return [self.screen.memory[0x0400 + i] for i in range(*item.indices(1000))]
+            item = slice(item.start + 0xd800, item.stop + 0xd800, item.step)
+            return self.screen.memory[item]
         x, y = int(item[0]), int(item[1])
         assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
         _, color = self.screen.getchar(x, y)
         return color
 
     def __setitem__(self, item, value):
-        # @todo optimize
         if type(item) is slice:
-            assert 0 <= item.start <= 1000 and 0 <= item.stop <= 1000, "position out of range"
-            try:
-                if len(value) > 1:
-                    for vi, i in enumerate(range(*item.indices(1000))):
-                        self.screen.memory[0xd800 + i] = value[vi]
-                    return
-            except TypeError:
-                pass
-            for i in range(*item.indices(1000)):
-                self.screen.memory[0xd800 + i] = value
-            return
-        x, y = int(item[0]), int(item[1])
-        assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
-        self.screen.memory[0xd800 + x + 40 * y] = value
+            item = slice(item.start + 0xd800, item.stop + 0xd800, item.step)
+            self.screen.memory[item] = value
+        else:
+            x, y = int(item[0]), int(item[1])
+            assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
+            self.screen.memory[0xd800 + x + 40 * y] = value
 
 
 class CharsProxy:
@@ -48,29 +40,21 @@ class CharsProxy:
 
     def __getitem__(self, item):
         if type(item) is slice:
-            return [self.screen.memory[0x0400 + i] for i in range(*item.indices(1000))]
+            item = slice(item.start + 0x0400, item.stop + 0x0400, item.step)
+            return self.screen.memory[item]
         x, y = int(item[0]), int(item[1])
         assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
         char, _ = self.screen.getchar(x, y)
         return char
 
     def __setitem__(self, item, value):
-        # @todo optimize
         if type(item) is slice:
-            assert 0 <= item.start <= 1000 and 0 <= item.stop <= 1000, "position out of range"
-            try:
-                if len(value) > 1:
-                    for vi, i in enumerate(range(*item.indices(1000))):
-                        self.screen.memory[0x0400 + i] = value[vi]
-                    return
-            except TypeError:
-                pass
-            for i in range(*item.indices(1000)):
-                self.screen.memory[0x0400 + i] = value
-            return
-        x, y = int(item[0]), int(item[1])
-        assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
-        self.screen.memory[0x0400 + x + 40 * y] = value
+            item = slice(item.start + 0x0400, item.stop + 0x0400, item.step)
+            self.screen.memory[item] = value
+        else:
+            x, y = int(item[0]), int(item[1])
+            assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
+            self.screen.memory[0x0400 + x + 40 * y] = value
 
 
 class StdoutWrapper:

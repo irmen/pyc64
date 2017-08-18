@@ -143,6 +143,7 @@ class ScreenAndMemory:
         self.memory[0xd000:0xd031] = bytearray(0x31)   # wipe VIC registers
         self.memory[0xd027:0xd02f] = [1, 2, 3, 4, 5, 6, 7, 12]    # initial sprite colors
         self.memory[0x07f8:0x0800] = [255, 255, 255, 255, 255, 255, 255, 255]   # sprite pointers
+        self.memory[0xd018] = 21
         self.border = 14
         self._screen = 6
         self.text = 14

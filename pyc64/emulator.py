@@ -286,10 +286,11 @@ class EmulatorWindow(tkinter.Tk):
         for snum, sprite in sprites.items():
             configure = {}
             # sprite double sizes
+            current_bm = self.canvas.itemcget(self.spritebitmaps[snum], "bitmap")
             extension = "-2x" if sprite.doublex else ""
             extension += "-2y" if sprite.doubley else ""
-            current_bm = self.canvas.itemcget(self.spritebitmaps[snum], "bitmap")
-            if (extension and extension not in current_bm) or (not extension and ("-2x" in current_bm or "-2y" in current_bm)):
+            if sprite.doublex != ("-2x" in current_bm) or sprite.doubley != ("-2y" in current_bm):
+                # size change
                 configure["bitmap"] = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
             # bitmapdata
             if sprite.bitmap != self.spritebitmapbytes[snum]:
@@ -414,6 +415,7 @@ class InterpretThread(threading.Thread):
                         self.window.screen.cursor_enabled = True
                     self.executing_line = False
             except ResetMachineException:
+                self.stop()
                 self.window.after(1, self.window.reset_machine)
 
     def _microsleep(self):
@@ -422,6 +424,7 @@ class InterpretThread(threading.Thread):
         self.window.hertztick.clear()
 
     def stop(self):
+        self.interpreter.runstop()
         self.must_stop = True
         self.direct_queue.put(None)  # sentinel
         self.window.hertztick.set()
