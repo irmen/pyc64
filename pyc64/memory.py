@@ -60,7 +60,7 @@ class ScreenAndMemory:
         self._memory[0xd000:0xd031] = bytearray(0x31)   # wipe VIC registers
         self._memory[0xd027:0xd02f] = [1, 2, 3, 4, 5, 6, 7, 12]    # initial sprite colors
         self._memory[0x07f8:0x0800] = [255, 255, 255, 255, 255, 255, 255, 255]   # sprite pointers
-        self.clearscreen()
+        self.clear()
 
     @property
     def screen(self):
@@ -363,7 +363,7 @@ class ScreenAndMemory:
             elif c == '\x94':
                 self.insert()
             elif c == '\x93':
-                self.clearscreen()
+                self.clear()
             else:
                 return False
             return True
@@ -499,7 +499,8 @@ class ScreenAndMemory:
             self.cursor += 1
             self._fix_cursor(on=True)
 
-    def clearscreen(self):
+    def clear(self):
+        # clear the screen buffer
         self._memory[0x0400: 0x0400 + 1000] = [32] * 1000
         self._memory[0xd800: 0xd800 + 1000] = [self.text] * 1000
         self.cursor = 0

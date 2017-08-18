@@ -159,7 +159,7 @@ class EmulatorWindow(tkinter.Tk):
                 self.repaint()
             elif char == 'Home':
                 if with_shift:
-                    self.screen.clearscreen()
+                    self.screen.clear()
                 else:
                     self.screen.cursormove(0, 0)
                 self.repaint()
@@ -207,6 +207,7 @@ class EmulatorWindow(tkinter.Tk):
             self.interpreter.stop()
         self.hertztick.set()
         self.screen.reset()
+        self.screen.setmem(0xfb, self.update_rate)
         self.repaint()
         self.update()
         if interpreter == "basic":
@@ -448,13 +449,14 @@ class InterpretThread(threading.Thread):
 
     def do_sync_command(self):
         update_rate = max(10, self.window.screen.getmem(0xfb))
-        self.window.refreshtick.wait(2/update_rate)
+        self.window.refreshtick.wait(update_rate/1000*2)
         self.window.refreshtick.clear()
 
     def submit_line(self, line):
         self.direct_queue.put(line)
 
     def runstop(self):
+        self.interpreter.runstop()
         with self.interpret_lock:
             if (self.executing_line or self.interpreter.sleep_until) and not self.running_program:
                 self.window.screen.writestr("\n?break  error")
@@ -462,7 +464,6 @@ class InterpretThread(threading.Thread):
                 self.interpreter.sleep_until = 1
             with self.keybuffer_lock:
                 self.keybuffer.clear()
-            self.interpreter.runstop()
 
 
 def start():

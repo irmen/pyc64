@@ -75,10 +75,24 @@ class MemoryProxy:
         self.screen = screen
 
     def __getitem__(self, item):
+        if type(item) is slice:
+            return [self.screen.getmem(i) for i in range(*item.indices(65536))]
         item = int(item)
         return self.screen.getmem(item)
 
     def __setitem__(self, item, value):
+        if type(item) is slice:
+            assert 0 <= item.start <= 65536 and 0 <= item.stop <= 65536, "address out of range"
+            try:
+                if len(value) > 1:
+                    for vi, i in enumerate(range(*item.indices(65536))):
+                        self.screen.setmem(i, value[vi])
+                    return
+            except TypeError:
+                pass
+            for i in range(*item.indices(65536)):
+                self.screen.setmem(i, value)
+            return
         item = int(item)
         self.screen.setmem(item, value)
 
@@ -116,6 +130,7 @@ class PythonInterpreter:
 
     def reset(self):
         self.sleep_until = None
+        self.code_to_run = None
         self.program = ""
         self.symbols = {
             "screen": self.screen,
@@ -129,8 +144,8 @@ class PythonInterpreter:
             "save": self.execute_save,
             "lprg": self.execute_listprogram,
             "run": self.execute_run,
-            "cls": self.screen.clearscreen,
-            'new': self.execute_new
+            "new": self.execute_new,
+            "sync": lambda: self.interactive.do_sync_command(),
         }
         self.screen.writestr("\n  **** COMMODORE 64 PYTHON {:d}.{:d}.{:d} ****\n".format(*sys.version_info[:3]))
         self.screen.writestr("\n 64K RAM TOTAL  63536 MEMORY BYTES FREE\n")
@@ -139,7 +154,7 @@ class PythonInterpreter:
 
     @property
     def running_program(self):
-        return False
+        return self.code_to_run is not None
 
     def write_prompt(self, prefix="\n"):
         self.screen.writestr(prefix + ">>> ")
@@ -165,10 +180,18 @@ class PythonInterpreter:
             self.write_prompt()
 
     def program_step(self):
-        raise NotImplementedError
+        try:
+            code = compile(self.code_to_run, "<program>", "exec")
+            exec(code, self.symbols)
+        except Exception as ex:
+            traceback.print_exc()
+            self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
+        finally:
+            self.code_to_run = None
 
     def runstop(self):
-        raise NotImplementedError
+        print("RUNSTOP!!!!!")
+        # raise NotImplementedError
 
     def execute_load(self, arg):
         program = do_load(self.screen, arg)
@@ -191,12 +214,7 @@ class PythonInterpreter:
         arg = arg or self.program
         if not arg:
             return
-        try:
-            code = compile(arg, "<program>", "exec")
-            exec(code, self.symbols)
-        except Exception as ex:
-            traceback.print_exc()
-            self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
+        self.code_to_run = arg or None
 
     def execute_new(self):
         self.program = ""

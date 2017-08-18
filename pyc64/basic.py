@@ -249,7 +249,7 @@ class BasicInterpreter:
         elif cmd.startswith(("cursor", "cU")):
             self.execute_cursor(cmd)
         elif cmd == "cls":
-            self.screen.clearscreen()    # basic V2:  ?chr$(147);
+            self.screen.clear()    # basic V2:  ?chr$(147);
         elif cmd == "sync":
             self.interactive.do_sync_command()
         elif cmd.startswith("dos\""):
