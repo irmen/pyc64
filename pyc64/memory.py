@@ -35,11 +35,14 @@ class Memory:
     A memoryblock (bytes) with read/write intercept possibility,
     to simulate memory-mapped I/O for instance.
     """
-    def __init__(self, size=0x10000):
+    def __init__(self, size=0x10000, endian="little"):
         self.mem = bytearray(size)
-        self.endian = "little"     # first LSB then MSB
+        self.endian = endian     # little or big
         self.write_hooks = {}
         self.read_hooks = {}
+
+    def __len__(self):
+        return len(self.mem)
 
     def getword(self, address):
         if self.endian == "little":
@@ -60,22 +63,16 @@ class Memory:
 
     def __getitem__(self, address):
         if type(address) is int:
-            value = self.mem[address]
             if address in self.read_hooks:
+                value = self.mem[address]
                 for hook in self.read_hooks[address]:
-                    value = hook(address, value)
+                    newvalue = hook(address, value)
+                    if newvalue is not None:
+                        value = newvalue
                 self.mem[address] = value
-            return value
+            return self.mem[address]
         elif type(address) is slice:
-            results = []
-            for addr in range(*address.indices(len(self.mem))):
-                value = self.mem[addr]
-                if addr in self.read_hooks:
-                    for hook in self.read_hooks[addr]:
-                        value = hook(addr, value)
-                    self.mem[addr] = value
-                results.append(value)
-            return results
+            return [self[addr] for addr in range(*address.indices(len(self.mem)))]
         else:
             raise TypeError("invalid address type")
 
@@ -83,22 +80,17 @@ class Memory:
         if type(address) is int:
             if address in self.write_hooks:
                 for hook in self.write_hooks[address]:
-                    value = hook(address, self.mem[address], value)
+                    newvalue = hook(address, self.mem[address], value)
+                    if newvalue is not None:
+                        value = newvalue
             self.mem[address] = value
         elif type(address) is slice:
             if type(value) is int:
                 for addr in range(*address.indices(len(self.mem))):
-                    if addr in self.write_hooks:
-                        for hook in self.write_hooks[addr]:
-                            value = hook(addr, self.mem[addr], value)
-                    self.mem[addr] = value
+                    self[addr] = value
             else:
-                for i, addr in enumerate(range(*address.indices(len(self.mem)))):
-                    v = value[i]
-                    if addr in self.write_hooks:
-                        for hook in self.write_hooks[addr]:
-                            v = hook(addr, self.mem[addr], v)
-                    self.mem[addr] = v
+                for addr, value in zip(range(*address.indices(len(self.mem))), value):
+                    self[addr] = value
         else:
             raise TypeError("invalid address type")
 
