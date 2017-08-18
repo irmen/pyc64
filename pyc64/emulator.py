@@ -365,7 +365,7 @@ class InterpretThread(threading.Thread):
                     with self.interpret_lock:
                         self.interpreter.program_step()
                         self.running_program = self.interpreter.running_program
-                        time.sleep(0.0001)    # artificial delay
+                        self._microsleep()
                         if not self.running_program:
                             self.window.screen.cursor_enabled = True
                 else:
@@ -373,7 +373,10 @@ class InterpretThread(threading.Thread):
                     if self.interpreter.sleep_until is not None:
                         time_left = self.interpreter.sleep_until - time.time()
                         if time_left > 0:
-                            time.sleep(min(0.1, time_left))
+                            if os.name == "nt" and time_left <= 0.016:
+                                self._microsleep()    # because on Windows, sleep() takes too long
+                            else:
+                                time.sleep(min(0.1, time_left))
                             continue
                         self.interpreter.sleep_until = None
                         if not self.running_program:
@@ -390,12 +393,23 @@ class InterpretThread(threading.Thread):
                     with self.interpret_lock:
                         self.interpreter.execute_line(command)
                         self.running_program = self.interpreter.running_program
-                        time.sleep(0.0001)    # artificial delay
+                        self._microsleep()
                         if not self.running_program and not self.interpreter.sleep_until:
                             self.window.screen.cursor_enabled = True
                     self.executing_line = False
             except ResetMachineException:
                 self.window.after(1, self.window.reset_machine)
+
+    def _microsleep(self):
+        # artificial microscopic delay to yield the thread and allow screen to refresh
+        if os.name == "nt":
+            # ugly hack on Windows because time.sleep's resolution
+            # is not small enough to delay for a very short time.
+            # so we need another means to release the thread for a bit: disk I/O does the trick
+            time.sleep(0)
+            os.listdir("."); os.listdir("."); os.listdir(".")
+        else:
+            time.sleep(0.0001)
 
     def stop(self):
         self.must_stop = True
