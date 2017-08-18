@@ -27,24 +27,16 @@ import traceback
 import re
 import time
 import numbers
-from .shared import do_load, do_dos
+from .shared import do_load, do_dos, do_sys, FlowcontrolException
 
 
 class BasicError(Exception):
     pass
 
 
-class FlowcontrolException(Exception):
-    pass
-
-
 class GotoLineException(FlowcontrolException):
     def __init__(self, line_idx):
         self.line_idx = line_idx
-
-
-class ResetMachineException(FlowcontrolException):
-    pass
 
 
 class BasicInterpreter:
@@ -457,16 +449,15 @@ class BasicInterpreter:
             cmd = cmd[2:]
         elif cmd.startswith("sys"):
             cmd = cmd[3:]
+        if not cmd:
+            raise BasicError("syntax")
         addr = eval(cmd, self.symbols)
-        if addr < 0 or addr > 0xffff:
-            raise BasicError("illegal quantity")
-        if addr in (64738, 64760):
-            raise ResetMachineException()
-        if addr == 58640:       # set cursorpos
-            x, y = self.screen.getmem(211), self.screen.getmem(214)
-            self.screen.cursormove(x, y)
-        else:
-            raise BasicError("no machine language support")
+        try:
+            do_sys(self.screen, addr)
+        except FlowcontrolException:
+            raise
+        except Exception as x:
+            raise BasicError(str(x))
 
     def peek_func(self, address):
         if address < 0 or address > 0xffff:

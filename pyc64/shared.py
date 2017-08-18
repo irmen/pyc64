@@ -7,6 +7,14 @@ import os
 import glob
 
 
+class FlowcontrolException(Exception):
+    pass
+
+
+class ResetMachineException(FlowcontrolException):
+    pass
+
+
 def do_dos(screen, arg):
     # show disk directory
     if arg != "$":
@@ -59,3 +67,15 @@ def do_load(screen, arg):
                 newprogram[int(num)] = line
         return newprogram
     raise IOError("unknown file type")
+
+
+def do_sys(screen, addr):
+    if addr < 0 or addr > 0xffff:
+        raise ValueError("illegal quantity")
+    if addr in (64738, 64760):
+        raise ResetMachineException()
+    if addr == 58640:       # set cursorpos
+        x, y = screen.getmem(211), screen.getmem(214)
+        screen.cursormove(x, y)
+    else:
+        raise NotImplementedError("no machine language support")

@@ -7,7 +7,7 @@ License: MIT open-source.
 import os
 import sys
 import traceback
-from .shared import do_load, do_dos
+from .shared import do_load, do_dos, do_sys, FlowcontrolException
 
 
 class ColorsProxy:
@@ -131,6 +131,7 @@ class PythonInterpreter:
     def reset(self):
         self.sleep_until = None
         self.code_to_run = None
+        self.must_run_stop = False
         self.program = ""
         self.symbols = {
             "screen": self.screen,
@@ -145,7 +146,9 @@ class PythonInterpreter:
             "lprg": self.execute_listprogram,
             "run": self.execute_run,
             "new": self.execute_new,
-            "sync": lambda: self.interactive.do_sync_command(),
+            "call": self.execute_sys,
+            "sync": lambda: self.check_run_stop(self.interactive.do_sync_command),
+            "sprite": self.execute_sprite
         }
         self.screen.writestr("\n  **** COMMODORE 64 PYTHON {:d}.{:d}.{:d} ****\n".format(*sys.version_info[:3]))
         self.screen.writestr("\n 64K RAM TOTAL  63536 MEMORY BYTES FREE\n")
@@ -174,6 +177,8 @@ class PythonInterpreter:
             code = compile(line, "<input>", "single")
             exec(code, self.symbols)
             self.write_prompt()
+        except FlowcontrolException:
+            raise
         except Exception as ex:
             traceback.print_exc()
             self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
@@ -183,6 +188,10 @@ class PythonInterpreter:
         try:
             code = compile(self.code_to_run, "<program>", "exec")
             exec(code, self.symbols)
+        except KeyboardInterrupt:
+            self.screen.writestr("\naborted.\n")
+            self.write_prompt()
+            self.must_run_stop = False
         except Exception as ex:
             traceback.print_exc()
             self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
@@ -190,8 +199,7 @@ class PythonInterpreter:
             self.code_to_run = None
 
     def runstop(self):
-        print("RUNSTOP!!!!!")
-        # raise NotImplementedError
+        self.must_run_stop = True
 
     def execute_load(self, arg):
         program = do_load(self.screen, arg)
@@ -218,3 +226,50 @@ class PythonInterpreter:
 
     def execute_new(self):
         self.program = ""
+
+    def execute_sys(self, addr):
+        do_sys(self.screen, addr)
+
+    def sprite(self, spritenum, x=None, y=None, dx=None, dy=None, color=None, enabled=None, pointer=None):
+        assert 0 <= spritenum <= 7
+        if x is not None:
+            x = int(x)
+            self.screen.setmem(53248 + spritenum * 2, x & 255)
+            xmsb = self.screen.getmem(53264)
+            if x > 255:
+                self.screen.setmem(53264, xmsb | 1<<spritenum)
+            else:
+                self.screen.setmem(53264, xmsb & ~(1<<spritenum))
+        if y is not None:
+            self.screen.setmem(53249 + spritenum * 2, int(y) & 255)
+        if dx is not None:
+            flag = self.screen.getmem(53277)
+            if dx:
+                self.screen.setmem(53277, flag | 1<<spritenum)
+            else:
+                self.screen.setmem(53277, flag & ~(1<<spritenum))
+        if dy is not None:
+            flag = self.screen.getmem(53271)
+            if dy:
+                self.screen.setmem(53271, flag | 1<<spritenum)
+            else:
+                self.screen.setmem(53271, flag & ~(1<<spritenum))
+        if color is not None:
+            self.screen.setmem(53287 + spritenum, int(color))
+        if enabled is not None:
+            flag = self.screen.getmem(53269)
+            if enabled:
+                self.screen.setmem(53269, flag | 1<<spritenum)
+            else:
+                self.screen.setmem(53269, flag & ~(1<<spritenum))
+        if pointer is not None:
+            if pointer & 63:
+                raise ValueError("sprite pointer must be 64-byte aligned")
+            self.screen.setmem(2040 + spritenum, pointer // 64)
+
+
+    def check_run_stop(self, continuation, *args, **kwargs):
+        if self.must_run_stop:
+            self.must_run_stop = False
+            raise KeyboardInterrupt("run/stop")
+        continuation(*args, **kwargs)

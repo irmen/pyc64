@@ -15,17 +15,22 @@ for i in range(30):
     print(f, end=", ")
 print("")
 
+
+mem[251] = 1000//60  # set 60hz refresh
+
+# eyes
+colors[13 + 3 * 40:13 + 8 * 40:40] = 15
+chars[13 + 3 * 40:13 + 8 * 40:40] = 81
+colors[26 + 3 * 40:26 + 8 * 40:40] = 15
+chars[26 + 3 * 40:26 + 8 * 40:40] = 81
+
+# mouth
 for i in range(91, 269, 4):
     ri = radians(i)
     x, y = sin(ri) * 14 + 20, 13 - cos(ri) * 10
     colors[x, y] = 1
     chars[x, y] = 81   # circle
     sync()
-
-colors[13 + 3 * 40:13 + 8 * 40:40] = 15
-chars[13 + 3 * 40:13 + 8 * 40:40] = 81
-colors[26 + 3 * 40:26 + 8 * 40:40] = 15
-chars[26 + 3 * 40:26 + 8 * 40:40] = 81
 
 # define spritedata
 mem[12288: 12288+63] = [

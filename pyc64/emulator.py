@@ -18,7 +18,8 @@ import time
 from collections import deque
 from PIL import Image
 from .memory import ScreenAndMemory, colorpalette
-from .basic import BasicInterpreter, ResetMachineException
+from .basic import BasicInterpreter
+from .shared import ResetMachineException
 from .python import PythonInterpreter
 
 
