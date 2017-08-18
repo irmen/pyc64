@@ -72,8 +72,7 @@ class BasicInterpreter:
             "π": math.pi,
             "peek": self.peek_func,
             "pE": self.peek_func,
-            "wpeek": self.wpeek_func,
-            "wpE": self.wpeek_func,
+            "peekw": self.peekw_func,
             "rnd": lambda *args: random.random(),
             "rndi": random.randrange,
             "asc": ord
@@ -199,10 +198,10 @@ class BasicInterpreter:
             return False
         elif cmd.startswith(("print", "?")):
             self.execute_print(cmd)
+        elif cmd.startswith("pokew"):
+            self.execute_pokew(cmd)
         elif cmd.startswith(("poke", "pO")):
             self.execute_poke(cmd)
-        elif cmd.startswith(("wpoke", "wpO")):
-            self.execute_wpoke(cmd)
         elif cmd.startswith(("list", "lI")):
             self.execute_list(cmd)
             return False
@@ -263,7 +262,7 @@ class BasicInterpreter:
     def execute_help(self, cmd):
         self.screen.writestr("\nknown statements:\n")
         known = ["?", "print", "cls", "color", "cursor", "data", "dos", "end", "for", "get", "gopy",
-                 "goto", "if", "list", "load", "new", "next", "peek", "wpeek", "poke", "wpoke",
+                 "goto", "if", "list", "load", "new", "next", "peek", "peekw", "poke", "pokew",
                  "read", "rem", "restore", "run", "save", "scroll", "sleep", "stop", "sys", "help"]
         for kw in sorted(known):
             self.screen.writestr("{:10s}".format(kw))
@@ -430,19 +429,17 @@ class BasicInterpreter:
         addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
         if addr < 0 or addr > 0xffff or value < 0 or value > 0xff:
             raise BasicError("illegal quantity")
-        self.screen.setmem(int(addr), int(value))
+        self.screen.memory[int(addr)] = int(value)
 
-    def execute_wpoke(self, cmd):
+    def execute_pokew(self, cmd):
         # 16-bits poke
-        if cmd.startswith("wpO"):
-            cmd = cmd[3:]
-        elif cmd.startswith("wpoke"):
+        if cmd.startswith("pokew"):
             cmd = cmd[5:]
         addr, value = cmd.split(',', maxsplit=1)
         addr, value = eval(addr, self.symbols), int(eval(value, self.symbols))
         if addr < 0 or addr > 0xffff or addr & 1 or value < 0 or value > 0xffff:
             raise BasicError("illegal quantity")
-        self.screen.setmem(int(addr), int(value), True)
+        self.screen.memory.setword(int(addr), int(value))
 
     def execute_sys(self, cmd):
         if cmd.startswith("sY"):
@@ -462,12 +459,12 @@ class BasicInterpreter:
     def peek_func(self, address):
         if address < 0 or address > 0xffff:
             raise BasicError("illegal quantity")
-        return self.screen.getmem(address)
+        return self.screen.memory[address]
 
-    def wpeek_func(self, address):
+    def peekw_func(self, address):
         if address < 0 or address > 0xffff or address & 1:
             raise BasicError("illegal quantity")
-        return self.screen.getmem(address, True)
+        return self.screen.memory.getword(address)
 
     def execute_list(self, cmd):
         if cmd.startswith("lI"):

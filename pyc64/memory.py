@@ -30,12 +30,98 @@ colorpalette = (
 )
 
 
+class Memory:
+    """
+    A memoryblock (bytes) with read/write intercept possibility,
+    to simulate memory-mapped I/O for instance.
+    """
+    def __init__(self, size=0x10000):
+        self.mem = bytearray(size)
+        self.endian = "little"     # first LSB then MSB
+        self.write_hooks = {}
+        self.read_hooks = {}
+
+    def getword(self, address):
+        if self.endian == "little":
+            return self[address] + 256 * self[address + 1]
+        elif self.endian == "big":
+            return self[address + 1] + 256 * self[address]
+        else:
+            raise ValueError("invalid endian")
+
+    def setword(self, address, value):
+        hi, lo = divmod(value, 256)
+        if self.endian == "little":
+            self[address], self[address + 1] = lo, hi
+        elif self.endian == "big":
+            self[address], self[address + 1] = hi, lo
+        else:
+            raise ValueError("invalid endian")
+
+    def __getitem__(self, address):
+        if type(address) is int:
+            value = self.mem[address]
+            if address in self.read_hooks:
+                for hook in self.read_hooks[address]:
+                    value = hook(address, value)
+                self.mem[address] = value
+            return value
+        elif type(address) is slice:
+            results = []
+            for addr in range(*address.indices(len(self.mem))):
+                value = self.mem[addr]
+                if addr in self.read_hooks:
+                    for hook in self.read_hooks[addr]:
+                        value = hook(addr, value)
+                    self.mem[addr] = value
+                results.append(value)
+            return results
+        else:
+            raise TypeError("invalid address type")
+
+    def __setitem__(self, address, value):
+        if type(address) is int:
+            if address in self.write_hooks:
+                for hook in self.write_hooks[address]:
+                    value = hook(address, self.mem[address], value)
+            self.mem[address] = value
+        elif type(address) is slice:
+            if type(value) is int:
+                for addr in range(*address.indices(len(self.mem))):
+                    if addr in self.write_hooks:
+                        for hook in self.write_hooks[addr]:
+                            value = hook(addr, self.mem[addr], value)
+                    self.mem[addr] = value
+            else:
+                for i, addr in enumerate(range(*address.indices(len(self.mem)))):
+                    v = value[i]
+                    if addr in self.write_hooks:
+                        for hook in self.write_hooks[addr]:
+                            v = hook(addr, self.mem[addr], v)
+                    self.mem[addr] = v
+        else:
+            raise TypeError("invalid address type")
+
+    def intercept_write(self, address, hook):
+        if address in self.write_hooks:
+            self.write_hooks[address].append(hook)
+        else:
+            self.write_hooks[address] = [hook]
+
+    def intercept_read(self, address, hook):
+        if address in self.read_hooks:
+            self.read_hooks[address].append(hook)
+        else:
+            self.read_hooks[address] = [hook]
+
+
 class ScreenAndMemory:
     def __init__(self):
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
         # screen colors    $d800-$dbff
-        self._memory = bytearray(65536)    # 64Kb of 'RAM'
+        self.memory = Memory(65536)    # 64 Kb
+        self.install_memory_hooks()
         self.reset(True)
 
     def reset(self, hard=False):
@@ -48,18 +134,18 @@ class ScreenAndMemory:
         self._cursor_enabled = True
         self._previous_checked_chars = bytearray(1000)
         self._previous_checked_colors = bytearray(1000)
-        self._memory[0:256] = bytearray(256)   # clear zeropage
+        self.memory[0:256] = bytearray(256)   # clear zeropage
         if hard:
-            self._memory[0:65536] = bytearray(65536)   # wipe all of the memory
+            self.memory[0:65536] = bytearray(65536)   # wipe all of the memory
             # from $0800-$d000 we have a 00/FF pattern alternating every 64 bytes
             for m in range(0x0840, 0xd000, 128):
-                self._memory[m: m+64] = b"\xff" * 64
+                self.memory[m: m + 64] = b"\xff" * 64
+        self.memory[0xd000:0xd031] = bytearray(0x31)   # wipe VIC registers
+        self.memory[0xd027:0xd02f] = [1, 2, 3, 4, 5, 6, 7, 12]    # initial sprite colors
+        self.memory[0x07f8:0x0800] = [255, 255, 255, 255, 255, 255, 255, 255]   # sprite pointers
         self.border = 14
         self._screen = 6
         self.text = 14
-        self._memory[0xd000:0xd031] = bytearray(0x31)   # wipe VIC registers
-        self._memory[0xd027:0xd02f] = [1, 2, 3, 4, 5, 6, 7, 12]    # initial sprite colors
-        self._memory[0x07f8:0x0800] = [255, 255, 255, 255, 255, 255, 255, 255]   # sprite pointers
         self.clear()
 
     @property
@@ -102,13 +188,13 @@ class ScreenAndMemory:
 
     def getsprites(self, which=None, bitmap=True):
         # return all data of one or more sprites (in a dict)
-        colors = self._memory[0xd027:0xd02f]
-        pos = self._memory[0xd000:0xd010]
-        xmsb = self._memory[0xd010]
-        doublex = self._memory[0xd01d]
-        doubley = self._memory[0xd017]
-        enabled = self._memory[0xd015]
-        pointers = self._memory[0x07f8:0x0800]
+        colors = self.memory[0xd027:0xd02f]
+        pos = self.memory[0xd000:0xd010]
+        xmsb = self.memory[0xd010]
+        doublex = self.memory[0xd01d]
+        doubley = self.memory[0xd017]
+        enabled = self.memory[0xd015]
+        pointers = self.memory[0x07f8:0x0800]
         if which is None:
             which = range(8)
         else:
@@ -124,68 +210,65 @@ class ScreenAndMemory:
             s.enabled = bool(enabled & 1 << i)
             s.pointer = pointers[i] * 64
             if bitmap:
-                s.bitmap = self._memory[s.pointer: s.pointer+63]
+                s.bitmap = self.memory[s.pointer: s.pointer + 63]
             result[i] = s
         return result
 
     def setspritecolor(self, spritenum, color):
         assert 0 <= spritenum <= 7
         assert 0 <= color <= 255
-        self._memory[0xd027 + spritenum] = color
+        self.memory[0xd027 + spritenum] = color
 
     def setspritepos(self, spritenum, x, y):
         assert 0 <= spritenum <= 7
-        self._memory[0xd000 + spritenum] = x & 255
-        self._memory[0xd001 + spritenum] = y
+        self.memory[0xd000 + spritenum] = x & 255
+        self.memory[0xd001 + spritenum] = y
         if x > 255:
-            self._memory[0xd010] |= 1 << spritenum
+            self.memory[0xd010] |= 1 << spritenum
         else:
-            self._memory[0xd010] &= ~ (1 << spritenum)
+            self.memory[0xd010] &= ~ (1 << spritenum)
 
     def getchar(self, x, y):
         """get the character AND color value at position x,y"""
         assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
         offset = x + y * 40
-        return self._memory[0x0400 + offset], self._memory[0xd800 + offset]
+        return self.memory[0x0400 + offset], self.memory[0xd800 + offset]
 
-    def getmem(self, address, word=False):
-        # update various special registers:
-        assert 0 <= address <= 65535, "invalid address"
-        if address == 646:
-            self._memory[646] = self.text
-        elif address == 53280:
-            self._memory[53280] = self.border
-        elif address == 53281:
-            self._memory[53281] = self._screen
-        elif address == 53272:
-            self._memory[53272] = 23 if self._shifted else 21
-        if word:
-            return self._memory[address] + 256 * self._memory[address + 1]
-        return self._memory[address]
-
-    def setmem(self, address, value, word=False):
-        assert 0 <= address <= 65535, "invalid address"
-        if word:
-            hi, lo = divmod(value, 256)
-            self._memory[address] = lo
-            self._memory[address + 1] = hi
-        else:
-            self._memory[address] = value
-        # now trigger various special registers
-        if address == 646:
-            self.text = value
-        elif address == 53280:
-            self.border = value
-        elif address == 53281:
-            self.screen = value
-        elif address == 53272:
-            self.shifted = bool(value & 2)
+    def install_memory_hooks(self):
+        def read_textcolor(address, value):
+            return self.text
+        def read_bordercolor(address, value):
+            return self.border
+        def read_screencolor(address, value):
+            return self._screen
+        def read_shifted(address, value):
+            return value | 2 if self._shifted else value & ~2
+        def write_textcolor(address, oldval, newval):
+            self.text = newval
+            return newval
+        def write_bordercolor(address, oldval, newval):
+            self.border = newval
+            return newval
+        def write_screencolor(address, oldval, newval):
+            self.screen = newval
+            return newval
+        def write_shifted(address, oldval, newval):
+            self.shifted = bool(newval & 2)
+            return newval
+        self.memory.intercept_read(646, read_textcolor)
+        self.memory.intercept_read(53280, read_bordercolor)
+        self.memory.intercept_read(53281, read_screencolor)
+        self.memory.intercept_read(53272, read_shifted)
+        self.memory.intercept_write(646, write_textcolor)
+        self.memory.intercept_write(53280, write_bordercolor)
+        self.memory.intercept_write(53281, write_screencolor)
+        self.memory.intercept_write(53272, write_shifted)
 
     def blink_cursor(self):
         if self.cursor_enabled:
             self.cursor_state = not self.cursor_state
-            self._memory[0x0400 + self.cursor] ^= 0x80
-            self._memory[0xd800 + self.cursor] = self.text      # @todo preserve char color
+            self.memory[0x0400 + self.cursor] ^= 0x80
+            self.memory[0xd800 + self.cursor] = self.text      # @todo preserve char color
 
     # ASCII-to-PETSCII translation table
     # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )
@@ -377,8 +460,8 @@ class ScreenAndMemory:
         self._cursor_enabled = False
         for c in txt:
             if not handle_special(c):
-                self._memory[0x0400 + self.cursor] = self._petscii2screen(ord(c), self.inversevid)
-                self._memory[0xd800 + self.cursor] = self.text
+                self.memory[0x0400 + self.cursor] = self._petscii2screen(ord(c), self.inversevid)
+                self.memory[0xd800 + self.cursor] = self.text
                 self.cursor += 1
                 if self.cursor >= 1000:
                     self._scroll_up()
@@ -390,50 +473,50 @@ class ScreenAndMemory:
         if on and not self.cursor_enabled:
             return
         if not on and self.cursor_state:
-            self._memory[0x0400 + self.cursor] &= 0x7f
-            self._memory[0xd800 + self.cursor] = self.text
+            self.memory[0x0400 + self.cursor] &= 0x7f
+            self.memory[0xd800 + self.cursor] = self.text
         if on and not self.cursor_state:
-            self._memory[0x0400 + self.cursor] |= 0x80
-            self._memory[0xd800 + self.cursor] = self.text
+            self.memory[0x0400 + self.cursor] |= 0x80
+            self.memory[0xd800 + self.cursor] = self.text
         self.cursor_state = on
 
     def _scroll_up(self, fill=(32, None)):
         # scroll the screen up one line
-        self._memory[0x0400: 0x0400 + 960] = self._memory[0x0400 + 40: 0x0400 + 1000]
-        self._memory[0xd800: 0xd800 + 960] = self._memory[0xd800 + 40: 0xd800 + 1000]
+        self.memory[0x0400: 0x0400 + 960] = self.memory[0x0400 + 40: 0x0400 + 1000]
+        self.memory[0xd800: 0xd800 + 960] = self.memory[0xd800 + 40: 0xd800 + 1000]
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        self._memory[0x0400 + 960: 0x0400 + 1000] = [fillchar] * 40
-        self._memory[0xd800 + 960: 0xd800 + 1000] = [fillcolor] * 40
+        self.memory[0x0400 + 960: 0x0400 + 1000] = [fillchar] * 40
+        self.memory[0xd800 + 960: 0xd800 + 1000] = [fillcolor] * 40
 
     def _scroll_down(self, fill=(32, None)):
         # scroll the screen down one line
-        self._memory[0x0400 + 40: 0x0400 + 1000] = self._memory[0x0400: 0x0400 + 960]
-        self._memory[0xd800 + 40: 0xd800 + 1000] = self._memory[0xd800: 0xd800 + 960]
+        self.memory[0x0400 + 40: 0x0400 + 1000] = self.memory[0x0400: 0x0400 + 960]
+        self.memory[0xd800 + 40: 0xd800 + 1000] = self.memory[0xd800: 0xd800 + 960]
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        self._memory[0x0400: 0x0400 + 40] = [fillchar] * 40
-        self._memory[0xd800: 0xd800 + 40] = [fillcolor] * 40
+        self.memory[0x0400: 0x0400 + 40] = [fillchar] * 40
+        self.memory[0xd800: 0xd800 + 40] = [fillcolor] * 40
 
     def _scroll_left(self, fill=(32, None)):
         # scroll the screen left one colum
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
         for y in range(0, 1000, 40):
-            self._memory[0x0400 + y: 0x0400 + y + 39] = self._memory[0x0400 + y + 1: 0x0400 + y + 40]
-            self._memory[0xd800 + y: 0xd800 + y + 39] = self._memory[0xd800 + y + 1: 0xd800 + y + 40]
-        self._memory[0x0400 + 39: 0x0400 + 1000: 40] = [fillchar] * 25
-        self._memory[0xd800 + 39: 0xd800 + 1000: 40] = [fillcolor] * 25
+            self.memory[0x0400 + y: 0x0400 + y + 39] = self.memory[0x0400 + y + 1: 0x0400 + y + 40]
+            self.memory[0xd800 + y: 0xd800 + y + 39] = self.memory[0xd800 + y + 1: 0xd800 + y + 40]
+        self.memory[0x0400 + 39: 0x0400 + 1000: 40] = [fillchar] * 25
+        self.memory[0xd800 + 39: 0xd800 + 1000: 40] = [fillcolor] * 25
 
     def _scroll_right(self, fill=(32, None)):
         # scroll the screen right one colum
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
         for y in range(0, 1000, 40):
-            self._memory[0x0400 + y + 1:0x0400 + y + 40] = self._memory[0x0400 + y:0x0400 + y + 39]
-            self._memory[0xd800 + y + 1:0xd800 + y + 40] = self._memory[0xd800 + y:0xd800 + y + 39]
-        self._memory[0x0400:0x0400 + 1000:40] = [fillchar] * 25
-        self._memory[0xd800:0xd800 + 1000:40] = [fillcolor] * 25
+            self.memory[0x0400 + y + 1:0x0400 + y + 40] = self.memory[0x0400 + y:0x0400 + y + 39]
+            self.memory[0xd800 + y + 1:0xd800 + y + 40] = self.memory[0xd800 + y:0xd800 + y + 39]
+        self.memory[0x0400:0x0400 + 1000:40] = [fillchar] * 25
+        self.memory[0xd800:0xd800 + 1000:40] = [fillcolor] * 25
 
     def scroll(self, up=False, down=False, left=False, right=False, fill=(32, None)):
         self._fix_cursor()
@@ -460,20 +543,20 @@ class ScreenAndMemory:
             self._fix_cursor()
             self.cursor -= 1
             end = 40 * (self.cursor // 40) + 39
-            self._memory[0x0400 + self.cursor: 0x0400 + end] = self._memory[0x0400 + self.cursor + 1: 0x0400 + end + 1]
-            self._memory[0xd800 + self.cursor: 0xd800 + end] = self._memory[0xd800 + self.cursor + 1: 0xd800 + end + 1]
-            self._memory[0x0400 + end] = 32
-            self._memory[0xd800 + end] = self.text
+            self.memory[0x0400 + self.cursor: 0x0400 + end] = self.memory[0x0400 + self.cursor + 1: 0x0400 + end + 1]
+            self.memory[0xd800 + self.cursor: 0xd800 + end] = self.memory[0xd800 + self.cursor + 1: 0xd800 + end + 1]
+            self.memory[0x0400 + end] = 32
+            self.memory[0xd800 + end] = self.text
             self._fix_cursor(on=True)
 
     def insert(self):
         if self.cursor < 999:
             self._fix_cursor()
             end = 40 * (self.cursor // 40) + 40
-            self._memory[0x0400 + self.cursor + 1: 0x0400 + end] = self._memory[0x0400 + self.cursor: 0x0400 + end - 1]
-            self._memory[0xd800 + self.cursor + 1: 0xd800 + end] = self._memory[0xd800 + self.cursor: 0xd800 + end - 1]
-            self._memory[0x0400 + self.cursor] = 32
-            self._memory[0xd800 + self.cursor] = self.text
+            self.memory[0x0400 + self.cursor + 1: 0x0400 + end] = self.memory[0x0400 + self.cursor: 0x0400 + end - 1]
+            self.memory[0xd800 + self.cursor + 1: 0xd800 + end] = self.memory[0xd800 + self.cursor: 0xd800 + end - 1]
+            self.memory[0x0400 + self.cursor] = 32
+            self.memory[0xd800 + self.cursor] = self.text
             self._fix_cursor(on=True)
 
     def up(self):
@@ -506,8 +589,8 @@ class ScreenAndMemory:
 
     def clear(self):
         # clear the screen buffer
-        self._memory[0x0400: 0x0400 + 1000] = [32] * 1000
-        self._memory[0xd800: 0xd800 + 1000] = [self.text] * 1000
+        self.memory[0x0400: 0x0400 + 1000] = [32] * 1000
+        self.memory[0xd800: 0xd800 + 1000] = [self.text] * 1000
         self.cursor = 0
         self._fix_cursor(on=True)
 
@@ -525,7 +608,7 @@ class ScreenAndMemory:
             raise ValueError("select only one result type")
         start = 0x0400 + 40 * (self.cursor // 40)
         self._fix_cursor()
-        screencodes = self._memory[start:min(0x07e8, start + 40 * amount)]
+        screencodes = self.memory[start:min(0x07e8, start + 40 * amount)]
         self._fix_cursor()
         if petscii:
             return "".join(self._screen2ascii(c) for c in screencodes)
@@ -545,16 +628,16 @@ class ScreenAndMemory:
     def getdirty(self):
         if self._full_repaint:
             self._full_repaint = False
-            result = [(i, (self._memory[0x0400 + i], self._memory[0xd800 + i])) for i in range(1000)]
+            result = [(i, (self.memory[0x0400 + i], self.memory[0xd800 + i])) for i in range(1000)]
         else:
-            result = [(i, (self._memory[0x0400 + i], self._memory[0xd800 + i]))
+            result = [(i, (self.memory[0x0400 + i], self.memory[0xd800 + i]))
                       for i in range(1000)
-                      if self._memory[0x0400 + i] != self._previous_checked_chars[i] or
-                      self._memory[0xd800 + i] != self._previous_checked_colors[i]]
+                      if self.memory[0x0400 + i] != self._previous_checked_chars[i] or
+                      self.memory[0xd800 + i] != self._previous_checked_colors[i]]
         if result:
-            self._previous_checked_chars = self._memory[0x0400:0x07e8]
-            self._previous_checked_colors = self._memory[0xd800:0xdbe8]
+            self._previous_checked_chars = self.memory[0x0400:0x07e8]
+            self._previous_checked_colors = self.memory[0xd800:0xdbe8]
         return result
 
     def getscreencopy(self):
-        return self._memory[0x0400:0x07e8], self._memory[0xd800:0xdbe8]
+        return self.memory[0x0400:0x07e8], self.memory[0xd800:0xdbe8]

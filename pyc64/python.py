@@ -4,6 +4,7 @@ Python REPL and program runner.
 Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 """
+
 import os
 import sys
 import traceback
@@ -16,28 +17,29 @@ class ColorsProxy:
 
     def __getitem__(self, item):
         if type(item) is slice:
-            return [self.screen.getmem(0x0400 + i) for i in range(*item.indices(1000))]
+            return [self.screen.memory[0x0400 + i] for i in range(*item.indices(1000))]
         x, y = int(item[0]), int(item[1])
         assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
         _, color = self.screen.getchar(x, y)
         return color
 
     def __setitem__(self, item, value):
+        # @todo optimize
         if type(item) is slice:
             assert 0 <= item.start <= 1000 and 0 <= item.stop <= 1000, "position out of range"
             try:
                 if len(value) > 1:
                     for vi, i in enumerate(range(*item.indices(1000))):
-                        self.screen.setmem(0xd800 + i, value[vi])
+                        self.screen.memory[0xd800 + i] = value[vi]
                     return
             except TypeError:
                 pass
             for i in range(*item.indices(1000)):
-                self.screen.setmem(0xd800 + i, value)
+                self.screen.memory[0xd800 + i] = value
             return
         x, y = int(item[0]), int(item[1])
         assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
-        self.screen.setmem(0xd800 + x + 40 * y, value)
+        self.screen.memory[0xd800 + x + 40 * y] = value
 
 
 class CharsProxy:
@@ -46,55 +48,29 @@ class CharsProxy:
 
     def __getitem__(self, item):
         if type(item) is slice:
-            return [self.screen.getmem(0x0400 + i) for i in range(*item.indices(1000))]
+            return [self.screen.memory[0x0400 + i] for i in range(*item.indices(1000))]
         x, y = int(item[0]), int(item[1])
         assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
         char, _ = self.screen.getchar(x, y)
         return char
 
     def __setitem__(self, item, value):
+        # @todo optimize
         if type(item) is slice:
             assert 0 <= item.start <= 1000 and 0 <= item.stop <= 1000, "position out of range"
             try:
                 if len(value) > 1:
                     for vi, i in enumerate(range(*item.indices(1000))):
-                        self.screen.setmem(0x0400 + i, value[vi])
+                        self.screen.memory[0x0400 + i] = value[vi]
                     return
             except TypeError:
                 pass
             for i in range(*item.indices(1000)):
-                self.screen.setmem(0x0400 + i, value)
+                self.screen.memory[0x0400 + i] = value
             return
         x, y = int(item[0]), int(item[1])
         assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
-        self.screen.setmem(0x0400 + x + 40 * y, value)
-
-
-class MemoryProxy:
-    def __init__(self, screen):
-        self.screen = screen
-
-    def __getitem__(self, item):
-        if type(item) is slice:
-            return [self.screen.getmem(i) for i in range(*item.indices(65536))]
-        item = int(item)
-        return self.screen.getmem(item)
-
-    def __setitem__(self, item, value):
-        if type(item) is slice:
-            assert 0 <= item.start <= 65536 and 0 <= item.stop <= 65536, "address out of range"
-            try:
-                if len(value) > 1:
-                    for vi, i in enumerate(range(*item.indices(65536))):
-                        self.screen.setmem(i, value[vi])
-                    return
-            except TypeError:
-                pass
-            for i in range(*item.indices(65536)):
-                self.screen.setmem(i, value)
-            return
-        item = int(item)
-        self.screen.setmem(item, value)
+        self.screen.memory[0x0400 + x + 40 * y] = value
 
 
 class StdoutWrapper:
@@ -137,7 +113,7 @@ class PythonInterpreter:
             "screen": self.screen,
             "colors": ColorsProxy(self.screen),
             "chars": CharsProxy(self.screen),
-            "mem": MemoryProxy(self.screen),
+            "mem": self.screen.memory,
             "os": os,
             "sys": sys,
             "dos": lambda arg: do_dos(self.screen, arg),
@@ -237,39 +213,38 @@ class PythonInterpreter:
             return self.screen.getsprites([spritenum], bitmap=False)[spritenum]
         if x is not None:
             x = int(x)
-            self.screen.setmem(53248 + spritenum * 2, x & 255)
-            xmsb = self.screen.getmem(53264)
+            self.screen.memory[53248 + spritenum * 2] = x & 255
+            xmsb = self.screen.memory[53264]
             if x > 255:
-                self.screen.setmem(53264, xmsb | 1<<spritenum)
+                self.screen.memory[53264] = xmsb | 1 << spritenum
             else:
-                self.screen.setmem(53264, xmsb & ~(1<<spritenum))
+                self.screen.memory[53264] = xmsb & ~(1 << spritenum)
         if y is not None:
-            self.screen.setmem(53249 + spritenum * 2, int(y) & 255)
+            self.screen.memory[53249 + spritenum * 2] = int(y) & 255
         if dx is not None:
-            flag = self.screen.getmem(53277)
+            flag = self.screen.memory[53277]
             if dx:
-                self.screen.setmem(53277, flag | 1<<spritenum)
+                self.screen.memory[53277] = flag | 1 << spritenum
             else:
-                self.screen.setmem(53277, flag & ~(1<<spritenum))
+                self.screen.memory[53277] = flag & ~(1 << spritenum)
         if dy is not None:
-            flag = self.screen.getmem(53271)
+            flag = self.screen.memory[53271]
             if dy:
-                self.screen.setmem(53271, flag | 1<<spritenum)
+                self.screen.memory[53271] = flag | 1 << spritenum
             else:
-                self.screen.setmem(53271, flag & ~(1<<spritenum))
+                self.screen.memory[53271] = flag & ~(1 << spritenum)
         if color is not None:
-            self.screen.setmem(53287 + spritenum, int(color))
+            self.screen.memory[53287 + spritenum] = int(color)
         if enabled is not None:
-            flag = self.screen.getmem(53269)
+            flag = self.screen.memory[53269]
             if enabled:
-                self.screen.setmem(53269, flag | 1<<spritenum)
+                self.screen.memory[53269] = flag | 1 << spritenum
             else:
-                self.screen.setmem(53269, flag & ~(1<<spritenum))
+                self.screen.memory[53269] = flag & ~(1 << spritenum)
         if pointer is not None:
             if pointer & 63:
                 raise ValueError("sprite pointer must be 64-byte aligned")
-            self.screen.setmem(2040 + spritenum, pointer // 64)
-
+            self.screen.memory[2040 + spritenum] = pointer // 64
 
     def check_run_stop(self, continuation, *args, **kwargs):
         if self.must_run_stop:

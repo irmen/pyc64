@@ -75,7 +75,7 @@ def do_sys(screen, addr):
     if addr in (64738, 64760):
         raise ResetMachineException()
     if addr == 58640:       # set cursorpos
-        x, y = screen.getmem(211), screen.getmem(214)
+        x, y = screen.memory[211], screen.memory[214]
         screen.cursormove(x, y)
     else:
         raise NotImplementedError("no machine language support")

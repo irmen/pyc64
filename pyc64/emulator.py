@@ -36,7 +36,7 @@ class EmulatorWindow(tkinter.Tk):
         self.hertztick = threading.Event()
         self.refreshtick = threading.Event()
         self.screen = ScreenAndMemory()
-        self.screen.setmem(0xfb, self.update_rate)   # zero page $fb is unused, we use it for screen refresh speed setting
+        self.screen.memory[0x00fb] = self.update_rate   # zero page $fb is unused, we use it for screen refresh speed setting
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
         self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
         self.buttonbar = tkinter.Frame(self)
@@ -91,7 +91,7 @@ class EmulatorWindow(tkinter.Tk):
         self.screen.blink_cursor()
 
     def _cyclic_repaint(self):
-        update_rate = max(10, self.screen.getmem(0xfb))
+        update_rate = max(10, self.screen.memory[0x00fb])
         self.cyclic_repaint_after = self.after(update_rate, self._cyclic_repaint)
         self.repaint()
 
@@ -188,7 +188,7 @@ class EmulatorWindow(tkinter.Tk):
             elif char == "Prior":     # pageup = RESTORE (outside running program)
                 if not self.interpret_thread.running_something:
                     self.screen.reset()
-                    self.screen.setmem(0xfb, self.update_rate)
+                    self.screen.memory[0x00fb] = self.update_rate
                     self.interpreter.write_prompt("\n")
 
     def execute_direct_line(self, line):
@@ -208,7 +208,7 @@ class EmulatorWindow(tkinter.Tk):
             self.interpreter.stop()
         self.hertztick.set()
         self.screen.reset()
-        self.screen.setmem(0xfb, self.update_rate)
+        self.screen.memory[0x00fb] = self.update_rate
         self.repaint()
         self.update()
         if interpreter == "basic":
@@ -339,7 +339,7 @@ class EmulatorWindow(tkinter.Tk):
 
     def reset_machine(self):
         self.screen.reset()
-        self.screen.setmem(0xfb, self.update_rate)
+        self.screen.memory[0x00fb] = self.update_rate
         self.switch_interpreter("basic")
         self.repaint()
 
@@ -449,7 +449,7 @@ class InterpretThread(threading.Thread):
         return ''
 
     def do_sync_command(self):
-        update_rate = max(10, self.window.screen.getmem(0xfb))
+        update_rate = max(10, self.window.screen.memory[0x00fb])
         self.window.refreshtick.wait(update_rate/1000*2)
         self.window.refreshtick.clear()
 
