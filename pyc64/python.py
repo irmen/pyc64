@@ -230,8 +230,11 @@ class PythonInterpreter:
     def execute_sys(self, addr):
         do_sys(self.screen, addr)
 
-    def sprite(self, spritenum, x=None, y=None, dx=None, dy=None, color=None, enabled=None, pointer=None):
+    def execute_sprite(self, spritenum, x=None, y=None, dx=None, dy=None, color=None, enabled=None, pointer=None):
         assert 0 <= spritenum <= 7
+        if x is None and y is None and dx is None and dy is None and color is None and enabled is None and pointer is None:
+            # return sprite info instead
+            return self.screen.getsprites([spritenum], bitmap=False)[spritenum]
         if x is not None:
             x = int(x)
             self.screen.setmem(53248 + spritenum * 2, x & 255)

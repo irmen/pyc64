@@ -256,7 +256,7 @@ class EmulatorWindow(tkinter.Tk):
                     ci.save(filename, "xbm")
         # 8 monochrome sprites (including their double-size variants)
         sprites = self.screen.getsprites()
-        for i, sprite in enumerate(sprites):
+        for i, sprite in sprites.items():
             self.create_sprite_bitmap(i, sprite.bitmap)
             self.spritebitmapbytes[i] = sprite.bitmap
 
@@ -283,7 +283,7 @@ class EmulatorWindow(tkinter.Tk):
             bitmap = "@" + self.temp_graphics_folder + "/{:s}-{:02x}.xbm".format(prefix, char)
             self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
         sprites = self.screen.getsprites()
-        for snum, sprite in enumerate(sprites):
+        for snum, sprite in sprites.items():
             configure = {}
             # sprite double sizes
             extension = "-2x" if sprite.doublex else ""

@@ -97,10 +97,11 @@ class ScreenAndMemory:
         doublex = False
         doubley = False
         color = 0
+        pointer = 0
         bitmap = None
 
-    def getsprites(self):
-        # return all data of all sprites in one list of 8 Sprite objects
+    def getsprites(self, which=None, bitmap=True):
+        # return all data of one or more sprites (in a dict)
         colors = self._memory[0xd027:0xd02f]
         pos = self._memory[0xd000:0xd010]
         xmsb = self._memory[0xd010]
@@ -108,9 +109,12 @@ class ScreenAndMemory:
         doubley = self._memory[0xd017]
         enabled = self._memory[0xd015]
         pointers = self._memory[0x07f8:0x0800]
-
-        result = []
-        for i in range(8):
+        if which is None:
+            which = range(8)
+        else:
+            assert all(0 <= i <= 7 for i in which)
+        result = {}
+        for i in which:
             s = ScreenAndMemory.Sprite()
             s.color = colors[i]
             s.x = pos[i * 2] + (256 if xmsb & 1 << i else 0)
@@ -118,9 +122,10 @@ class ScreenAndMemory:
             s.doublex = bool(doublex & 1 << i)
             s.doubley = bool(doubley & 1 << i)
             s.enabled = bool(enabled & 1 << i)
-            pointer = pointers[i] * 64
-            s.bitmap = self._memory[pointer: pointer+63]
-            result.append(s)
+            s.pointer = pointers[i] * 64
+            if bitmap:
+                s.bitmap = self._memory[s.pointer: s.pointer+63]
+            result[i] = s
         return result
 
     def setspritecolor(self, spritenum, color):

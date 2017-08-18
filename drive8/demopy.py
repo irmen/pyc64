@@ -42,26 +42,16 @@ mem[12288: 12288+63] = [
     0, 21, 84, 0, 42, 170, 0, 85, 84,
     0, 42, 170, 0, 85, 84]
 
-# set sprite colors and pointers
+# setup sprites
 for s in range(8):
-    mem[53287 + s] = s + 8
-    mem[2040 + s] = 12288//64
-
-# set sprite flags
-mem[53277] = 204
-mem[53271] = 240
-mem[53269] = 255
+    sprite(s, x=0, y=0, dx=s>3, dy=s&1, color=s+8, pointer=12288, enabled=True)
 
 # animate sprites
 r = 0.0
 while True:
-    mem[53264] = 0
     for s in range(8):
         sx = int(170 + cos(r * 1.345 - s * 0.25) * 120)
         sy = int(140 + sin(r - s * 0.2) * 80)
-        mem[53248 + s*2] = sx & 255
-        mem[53249 + s*2] = sy & 255
-        if sx > 255:
-            mem[53264] |= 1 << s    # x msb
+        sprite(s, x=sx, y=sy)
     sync()   # sync to refresh hz
     r += 0.05
