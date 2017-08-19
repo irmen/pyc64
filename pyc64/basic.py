@@ -108,6 +108,7 @@ class BasicInterpreter:
         self.next_run_line_idx = None
         self.program_lines = None
         self.sleep_until = None
+        self.must_run_stop = False
         self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
         self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
         self.write_prompt("\n")
@@ -194,6 +195,7 @@ class BasicInterpreter:
         return False
 
     def runstop(self):
+        self.must_run_stop = True
         if not self.running_program:
             return
         if self.sleep_until:
@@ -506,6 +508,7 @@ class BasicInterpreter:
             to = start
         start = int(start) if start else 0
         to = int(to) if to else None
+        self.must_run_stop = False
         self.screen.writestr("\n")
         for num, text in sorted(self.program.items()):
             if num < start:
@@ -513,6 +516,10 @@ class BasicInterpreter:
             if to is not None and num > to:
                 break
             self.screen.writestr("{:d} {:s}\n".format(num, text))
+            if self.must_run_stop:
+                self.screen.writestr("break\n")
+                break
+            self.interactive.do_sync_command()
 
     def execute_new(self, cmd):
         if cmd.startswith("nE"):

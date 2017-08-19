@@ -100,7 +100,6 @@ class PythonInterpreter:
             "sprite": self.execute_sprite
         }
         self.screen.writestr("\n  **** COMMODORE 64 PYTHON {:d}.{:d}.{:d} ****\n".format(*sys.version_info[:3]))
-        self.screen.writestr("\n 64K RAM TOTAL  63536 MEMORY BYTES FREE\n")
         self.screen.writestr("\n use 'go64' to return to C64 BASIC V2.\n")
         self.write_prompt()
 
@@ -112,7 +111,14 @@ class PythonInterpreter:
         self.screen.writestr(prefix + ">>> ")
 
     def execute_listprogram(self):
-        self.screen.writestr("\n" + self.program)
+        self.screen.writestr("\n")
+        self.must_run_stop = False
+        for line in self.program.splitlines(keepends=True):
+            self.screen.writestr(line)
+            if self.must_run_stop:
+                self.screen.writestr("break\n")
+                break
+            self.interactive.do_sync_command()
 
     def execute_line(self, line):
         line = line.lstrip()
@@ -171,6 +177,7 @@ class PythonInterpreter:
         arg = arg or self.program
         if not arg:
             return
+        self.must_run_stop = False
         self.code_to_run = arg or None
 
     def execute_new(self):
