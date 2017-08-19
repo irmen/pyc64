@@ -1,4 +1,4 @@
-0 rem --- ihasfloppy by genesis project ---
+0 rem --- ihasfloppy by redcrab of genesis project ---
 1 rem --- see http://csdb.dk/release/?id=122467 ---
 9 rem
 10 poke 53280,0: poke 53281,0: poke 53272,21: restore

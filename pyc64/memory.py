@@ -11,6 +11,7 @@ License: MIT open-source.
 """
 
 import time
+import struct
 from collections import defaultdict
 
 colorpalette = (
@@ -43,7 +44,7 @@ class Memory:
         self.mem = bytearray(size)
         self.hooked_reads = bytearray(size)   # 'bitmap' of addresses that have read-hooks, for fast checking
         self.hooked_writes = bytearray(size)  # 'bitmap' of addresses that have write-hooks, for fast checking
-        self.endian = endian     # little or big
+        self.endian = endian     # 'little' or 'big', affects the way 16-bit words are read/written
         self.write_hooks = defaultdict(list)
         self.read_hooks = defaultdict(list)
 
@@ -51,26 +52,35 @@ class Memory:
         return len(self.mem)
 
     def clear(self):
+        """set all memory values to 0."""
         self.mem = bytearray(self.size)
 
-    def getword(self, address):
-        if self.endian == "little":
-            return self[address] + 256 * self[address + 1]
-        elif self.endian == "big":
-            return self[address + 1] + 256 * self[address]
-        else:
-            raise ValueError("invalid endian")
+    def getword(self, address, signed=False):
+        """get a 16-bit (2 bytes) value from memory, no aligning restriction"""
+        e = "<" if self.endian == "little" else ">"
+        s = "h" if signed else "H"
+        return struct.unpack(e+s, self.mem[address:address+2])[0]
 
-    def setword(self, address, value):
-        hi, lo = divmod(value, 256)
-        if self.endian == "little":
-            self[address], self[address + 1] = lo, hi
-        elif self.endian == "big":
-            self[address], self[address + 1] = hi, lo
-        else:
-            raise ValueError("invalid endian")
+    def setword(self, address, value, signed=False):
+        """write a 16-bit (2 bytes) value to memory, no aligning restriction"""
+        e = "<" if self.endian == "little" else ">"
+        s = "h" if signed else "H"
+        self.mem[address:address+2] = struct.pack(e+s, value)
+
+    def getlong(self, address, signed=False):
+        """get a 32-bit (4 bytes) value from memory, no aligning restriction"""
+        e = "<" if self.endian == "little" else ">"
+        s = "i" if signed else "I"
+        return struct.unpack(e+s, self.mem[address:address+4])[0]
+
+    def setlong(self, address, value, signed=False):
+        """write a 32-bit (4 bytes) value to memory, no aligning restriction"""
+        e = "<" if self.endian == "little" else ">"
+        s = "i" if signed else "I"
+        self.mem[address:address+4] = struct.pack(e+s, value)
 
     def __getitem__(self, addr_or_slice):
+        """get the value of a memory location or range of locations (via slice)"""
         if type(addr_or_slice) is int:
             if self.hooked_reads[addr_or_slice]:
                 value = self.mem[addr_or_slice]
@@ -83,7 +93,6 @@ class Memory:
         elif type(addr_or_slice) is slice:
             if any(self.hooked_reads[addr_or_slice]):
                 # there's at least one address in the slice with a hook, so... slow mode
-                print("SLOW SLICE", addr_or_slice)  # XXX
                 return [self[addr] for addr in range(*addr_or_slice.indices(len(self.mem)))]
             else:
                 # there's no address in the slice that's hooked so we can return it fast
@@ -92,6 +101,7 @@ class Memory:
             raise TypeError("invalid address type")
 
     def __setitem__(self, addr_or_slice, value):
+        """set the value of a memory location or range of locations (via slice)"""
         if type(addr_or_slice) is int:
             if self.hooked_writes[addr_or_slice]:
                 for hook in self.write_hooks[addr_or_slice]:
@@ -102,7 +112,6 @@ class Memory:
         elif type(addr_or_slice) is slice:
             if any(self.hooked_writes[addr_or_slice]):
                 # there's at least one address in the slice with a hook, so... slow mode
-                print("SLOW SLICE", addr_or_slice)  # XXX
                 if type(value) is int:
                     for addr in range(*addr_or_slice.indices(len(self.mem))):
                         self[addr] = value
@@ -118,10 +127,18 @@ class Memory:
             raise TypeError("invalid address type")
 
     def intercept_write(self, address, hook):
+        """
+        Register a hook function to be called when a write occurs to the given memory address.
+        The function(addr, oldval, newval) can return a modified value to be written.
+        """
         self.write_hooks[address].append(hook)
         self.hooked_writes[address] = 1
 
     def intercept_read(self, address, hook):
+        """
+        Register a hook function to be called when a read occurs of the given memory address.
+        The function(addr, value) can return a modified value to be the result of the read.
+        """
         self.read_hooks[address].append(hook)
         self.hooked_reads[address] = 1
 
@@ -204,10 +221,16 @@ class ScreenAndMemory:
         self.memory.setword(0x002b, 0x0801)  # basic start
         self.memory.setword(0x0031, 0x0803)  # begin of free basic ram
         self.memory.setword(0x0033, 0xa000)  # end of free basic ram
+        self.memory.setword(0x0281, 0x0800)  # basic start
+        self.memory.setword(0x0283, 0xa000)  # basic end
+        self.memory[0x0288] = 0x0400 // 256   # screen buffer pointer
+        self.memory[0x02a6] = 1    # we're a PAL machine
+        self.memory[0xa000:0xc000] = 96    # basic ROM are all RTS instructions
+        self.memory[0xe000:0x10000] = 96     # kernal ROM are all RTS instructions
+        self.jiffieclock_epoch = time.perf_counter()
         self.border = 14
         self.screen = 6
         self.text = 14
-        self.jiffieclock_epoch = time.perf_counter()
         self.clear()
 
     @property
@@ -482,6 +505,8 @@ class ScreenAndMemory:
                 if self.cursor > 960:
                     self._scroll_up()
                     self.cursor = 960
+                # also, disable inverse-video
+                self.inversevid = False
             elif c == '\x0e':
                 self._shifted = True
             elif c == '\x8e':
