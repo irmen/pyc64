@@ -10,6 +10,8 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 """
 
+import time
+
 colorpalette = (
     0x000000,  # 0 = black
     0xFFFFFF,  # 1 = white
@@ -36,6 +38,7 @@ class Memory:
     to simulate memory-mapped I/O for instance.
     """
     def __init__(self, size=0x10000, endian="little"):
+        self.size = size
         self.mem = bytearray(size)
         self.endian = endian     # little or big
         self.write_hooks = {}
@@ -43,6 +46,9 @@ class Memory:
 
     def __len__(self):
         return len(self.mem)
+
+    def clear(self):
+        self.mem = bytearray(self.size)
 
     def getword(self, address):
         if self.endian == "little":
@@ -113,8 +119,86 @@ class ScreenAndMemory:
         # screen chars     $0400-$07ff
         # screen colors    $d800-$dbff
         self.memory = Memory(65536)    # 64 Kb
-        self.install_memory_hooks()
+        self.hz = 60        # NTSC
         self.reset(True)
+        self.install_memory_hooks()
+
+    def install_memory_hooks(self):
+        def read_textcolor(address, value):
+            return self.text
+
+        def read_bordercolor(address, value):
+            return self.border
+
+        def read_screencolor(address, value):
+            return self._screen
+
+        def read_shifted(address, value):
+            return value | 2 if self._shifted else value & ~2
+
+        def write_textcolor(address, oldval, newval):
+            self.text = newval
+            return newval
+
+        def write_bordercolor(address, oldval, newval):
+            self.border = newval
+            return newval
+
+        def write_screencolor(address, oldval, newval):
+            self.screen = newval
+            return newval
+
+        def write_shifted(address, oldval, newval):
+            self.shifted = bool(newval & 2)
+            return newval
+
+        def read_jiffieclock(address, value):
+            jiffies = int(self.hz * (time.perf_counter() - self.jiffieclock_epoch)) % (24*3600*self.hz)
+            if address == 160:
+                return (jiffies >> 16) & 0xff
+            if address == 161:
+                return (jiffies >> 8) & 0xff
+            return jiffies & 0xff
+
+        def write_jiffieclock(address, oldval, newval):
+            jiffies = int(self.hz * (time.perf_counter() - self.jiffieclock_epoch)) & 0xffffff
+            print("BEFORE WRITE: {:06x}".format(jiffies), address, newval)  # XXX
+            if address == 160:
+                jiffies = (jiffies & 0x00ffff) | (newval << 16)
+            elif address == 161:
+                jiffies = (jiffies & 0xff00ff) | (newval << 8)
+            else:
+                jiffies = (jiffies & 0xffff00) | newval
+            print("NEW JIFFIES1: {:06x}".format(jiffies))  # XXX
+            if jiffies > self.hz * 24 * 3600:
+                print("RESET JIFFIES!")   # XXX
+                jiffies = 0
+                newval = 0
+                if address == 160:
+                    self.memory[161], self.memory[162] = 0, 0
+                elif address == 161:
+                    self.memory[160], self.memory[162] = 0, 0
+                else:
+                    self.memory[160], self.memory[161] = 0, 0
+                self.jiffieclock_epoch = time.perf_counter()
+            print("NEW JIFFIES2: {:06x}".format(jiffies))  # XXX
+            self.jiffieclock_epoch = time.perf_counter() - jiffies / self.hz
+            return newval
+
+        self.memory.intercept_read(160, read_jiffieclock)
+        self.memory.intercept_read(161, read_jiffieclock)
+        self.memory.intercept_read(162, read_jiffieclock)
+        self.memory.intercept_read(646, read_textcolor)
+        self.memory.intercept_read(53280, read_bordercolor)
+        self.memory.intercept_read(53281, read_screencolor)
+        self.memory.intercept_read(53272, read_shifted)
+        self.memory.intercept_write(160, write_jiffieclock)
+        self.memory.intercept_write(161, write_jiffieclock)
+        self.memory.intercept_write(162, write_jiffieclock)
+        self.memory.intercept_write(646, write_textcolor)
+        self.memory.intercept_write(53280, write_bordercolor)
+        self.memory.intercept_write(53281, write_screencolor)
+        self.memory.intercept_write(53272, write_shifted)
 
     def reset(self, hard=False):
         self._full_repaint = True
@@ -126,19 +210,23 @@ class ScreenAndMemory:
         self._cursor_enabled = True
         self._previous_checked_chars = bytearray(1000)
         self._previous_checked_colors = bytearray(1000)
-        self.memory[0:256] = bytearray(256)   # clear zeropage
+        self.memory[0x000:0x0300] = bytearray(256*3)   # clear first 3 pages
         if hard:
-            self.memory[0:65536] = bytearray(65536)   # wipe all of the memory
-            # from $0800-$d000 we have a 00/FF pattern alternating every 64 bytes
-            for m in range(0x0840, 0xd000, 128):
+            self.memory.clear()
+            # from $0800-$ffff we have a 00/FF pattern alternating every 64 bytes
+            for m in range(0x0840, 0x10000, 128):
                 self.memory[m: m + 64] = b"\xff" * 64
         self.memory[0xd000:0xd031] = bytearray(0x31)   # wipe VIC registers
         self.memory[0xd027:0xd02f] = [1, 2, 3, 4, 5, 6, 7, 12]    # initial sprite colors
         self.memory[0x07f8:0x0800] = [255, 255, 255, 255, 255, 255, 255, 255]   # sprite pointers
         self.memory[0xd018] = 21
+        self.memory.setword(0x002b, 0x0801)  # basic start
+        self.memory.setword(0x0031, 0x0803)  # begin of free basic ram
+        self.memory.setword(0x0033, 0xa000)  # end of free basic ram
         self.border = 14
         self._screen = 6
         self.text = 14
+        self.jiffieclock_epoch = time.perf_counter()
         self.clear()
 
     @property
@@ -168,6 +256,10 @@ class ScreenAndMemory:
         if not enabled:
             self._fix_cursor(False)
         self._cursor_enabled = enabled
+
+    def hztick(self):
+        # called periodically, ideally 50hz or 60hz (PAL/NTSC) (but may be less)
+        pass
 
     class Sprite:
         x = 0
@@ -227,35 +319,7 @@ class ScreenAndMemory:
         offset = x + y * 40
         return self.memory[0x0400 + offset], self.memory[0xd800 + offset]
 
-    def install_memory_hooks(self):
-        def read_textcolor(address, value):
-            return self.text
-        def read_bordercolor(address, value):
-            return self.border
-        def read_screencolor(address, value):
-            return self._screen
-        def read_shifted(address, value):
-            return value | 2 if self._shifted else value & ~2
-        def write_textcolor(address, oldval, newval):
-            self.text = newval
-            return newval
-        def write_bordercolor(address, oldval, newval):
-            self.border = newval
-            return newval
-        def write_screencolor(address, oldval, newval):
-            self.screen = newval
-            return newval
-        def write_shifted(address, oldval, newval):
-            self.shifted = bool(newval & 2)
-            return newval
-        self.memory.intercept_read(646, read_textcolor)
-        self.memory.intercept_read(53280, read_bordercolor)
-        self.memory.intercept_read(53281, read_screencolor)
-        self.memory.intercept_read(53272, read_shifted)
-        self.memory.intercept_write(646, write_textcolor)
-        self.memory.intercept_write(53280, write_bordercolor)
-        self.memory.intercept_write(53281, write_screencolor)
-        self.memory.intercept_write(53272, write_shifted)
+
 
     def blink_cursor(self):
         if self.cursor_enabled:

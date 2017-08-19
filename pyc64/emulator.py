@@ -82,10 +82,11 @@ class EmulatorWindow(tkinter.Tk):
         self.interpret_thread = None
         self.interpreter = None
         self.switch_interpreter("basic")
-        self.after(1000//60, self.hertztimer)
+        self.after(1000//self.screen.hz, self.hertztimer)
 
     def hertztimer(self):
-        self.after(1000//60, self.hertztimer)
+        self.after(1000//self.screen.hz, self.hertztimer)
+        self.screen.hztick()
         self.hertztick.set()
 
     def _cyclic_blink_cursor(self):

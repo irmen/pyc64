@@ -39,6 +39,25 @@ class GotoLineException(FlowcontrolException):
         self.line_idx = line_idx
 
 
+class TimeValProxy:
+    def __init__(self, memory, hz):
+        self.memory = memory
+        self.hz = hz
+
+    def __str__(self):
+        secs = (self.memory[160] << 16) + (self.memory[161] << 8) + self.memory[162] / self.hz
+        h, secs = divmod(secs, 3600)
+        m, secs = divmod(secs, 60)
+        return "{:02d}{:02d}{:02d}".format(int(h), int(m), int(secs))
+
+    def __repr__(self):
+        return self.__str__()
+
+    def __int__(self):
+        jiffies = (self.memory[160] << 16) + (self.memory[161] << 8) + self.memory[162]
+        return jiffies
+
+
 class BasicInterpreter:
     F1_list_command = "list:"
     F3_run_command = "run:"
@@ -75,7 +94,9 @@ class BasicInterpreter:
             "peekw": self.peekw_func,
             "rnd": lambda *args: random.random(),
             "rndi": random.randrange,
-            "asc": ord
+            "asc": ord,
+            "ti": TimeValProxy(self.screen.memory, self.screen.hz),
+            "time": TimeValProxy(self.screen.memory, self.screen.hz),
         }
         for x in dir(math):
             if '_' not in x:
@@ -149,12 +170,12 @@ class BasicInterpreter:
                 line = self.program_lines[self.next_run_line_idx]
                 self.screen.writestr("\n?" + bx.args[0].lower() + "  error in {line:d}\n".format(line=line))
                 self.write_prompt()
-            self.stop_running_program(True)
+            self.stop_running_program()
         except Exception as ex:
             traceback.print_exc()
             self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
             self.write_prompt()
-            self.stop_running_program(True)
+            self.stop_running_program()
 
     def process_programline_entry(self, line):
         match = re.match("(\d+)(\s*.*)", line)
@@ -258,6 +279,7 @@ class BasicInterpreter:
                 self.symbols[symbol] = eval(value, self.symbols)
                 return True
             else:
+                print("Syntax error:", cmd, file=sys.stderr)
                 raise BasicError("syntax")
         return True
 
@@ -647,9 +669,8 @@ class BasicInterpreter:
         mon.cmdloop()
         self.screen.writestr("...back from monitor.\n")
 
-    def stop_running_program(self, error=False):
-        in_program = self.running_program
-        if in_program:
+    def stop_running_program(self):
+        if self.running_program:
             self.next_run_line_idx = None
         self.sleep_until = None
 
