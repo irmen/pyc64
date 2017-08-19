@@ -70,14 +70,6 @@ class Memory:
         else:
             raise ValueError("invalid endian")
 
-    def blockset(self, start, end, values, step=1):
-        # set a block of memory to given values quickly, WITHOUT DOING HOOK CHECKS
-        self.mem[start:end:step] = values
-
-    def blockget(self, start, end, step=1):
-        # retrieve a copy of a block of memory, WITHOUT DOING HOOK CHECKS
-        return self.mem[start:end:step]
-
     def __getitem__(self, addr_or_slice):
         if type(addr_or_slice) is int:
             if self.hooked_reads[addr_or_slice]:
@@ -302,7 +294,7 @@ class ScreenAndMemory:
             s.enabled = bool(enabled & 1 << i)
             s.pointer = pointers[i] * 64
             if bitmap:
-                s.bitmap = self.memory.blockget(s.pointer, s.pointer + 63)
+                s.bitmap = self.memory[s.pointer: s.pointer + 63]
             result[i] = s
         return result
 
@@ -544,41 +536,41 @@ class ScreenAndMemory:
 
     def _scroll_up(self, fill=(32, None)):
         # scroll the screen up one line
-        self.memory.blockset(0x0400, 0x0400 + 960, self.memory.blockget(0x0400 + 40, 0x0400 + 1000))
-        self.memory.blockset(0xd800, 0xd800 + 960, self.memory.blockget(0xd800 + 40, 0xd800 + 1000))
+        self.memory[0x0400: 0x0400 + 960] = self.memory[0x0400 + 40: 0x0400 + 1000]
+        self.memory[0xd800: 0xd800 + 960] = self.memory[0xd800 + 40: 0xd800 + 1000]
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        self.memory.blockset(0x0400 + 960, 0x0400 + 1000, [fillchar] * 40)
-        self.memory.blockset(0xd800 + 960, 0xd800 + 1000, [fillcolor] * 40)
+        self.memory[0x0400 + 960: 0x0400 + 1000] = fillchar
+        self.memory[0xd800 + 960: 0xd800 + 1000] = fillcolor
 
     def _scroll_down(self, fill=(32, None)):
         # scroll the screen down one line
-        self.memory.blockset(0x0400 + 40, 0x0400 + 1000, self.memory.blockget(0x0400, 0x0400 + 960))
-        self.memory.blockset(0xd800 + 40, 0xd800 + 1000, self.memory.blockget(0xd800, 0xd800 + 960))
+        self.memory[0x0400 + 40: 0x0400 + 1000] = self.memory[0x0400: 0x0400 + 960]
+        self.memory[0xd800 + 40: 0xd800 + 1000] = self.memory[0xd800: 0xd800 + 960]
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        self.memory.blockset(0x0400, 0x0400 + 40, [fillchar] * 40)
-        self.memory.blockset(0xd800, 0xd800 + 40, [fillcolor] * 40)
+        self.memory[0x0400: 0x0400 + 40] = fillchar
+        self.memory[0xd800: 0xd800 + 40] = fillcolor
 
     def _scroll_left(self, fill=(32, None)):
         # scroll the screen left one colum
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
         for y in range(0, 1000, 40):
-            self.memory.blockset(0x0400 + y, 0x0400 + y + 39, self.memory.blockget(0x0400 + y + 1, 0x0400 + y + 40))
-            self.memory.blockset(0xd800 + y, 0xd800 + y + 39, self.memory.blockget(0xd800 + y + 1, 0xd800 + y + 40))
-        self.memory.blockset(0x0400 + 39, 0x0400 + 1000, [fillchar] * 25, step=40)
-        self.memory.blockset(0xd800 + 39, 0xd800 + 1000, [fillcolor] * 25, step=40)
+            self.memory[0x0400 + y: 0x0400 + y + 39] = self.memory[0x0400 + y + 1: 0x0400 + y + 40]
+            self.memory[0xd800 + y: 0xd800 + y + 39] = self.memory[0xd800 + y + 1: 0xd800 + y + 40]
+        self.memory[0x0400 + 39: 0x0400 + 1000: 40] = fillchar
+        self.memory[0xd800 + 39: 0xd800 + 1000: 40] = fillcolor
 
     def _scroll_right(self, fill=(32, None)):
         # scroll the screen right one colum
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
         for y in range(0, 1000, 40):
-            self.memory.blockset(0x0400 + y + 1, 0x0400 + y + 40, self.memory.blockget(0x0400 + y, 0x0400 + y + 39))
-            self.memory.blockset(0xd800 + y + 1, 0xd800 + y + 40, self.memory.blockget(0xd800 + y, 0xd800 + y + 39))
-        self.memory.blockset(0x0400, 0x0400 + 1000, [fillchar] * 25, step=40)
-        self.memory.blockset(0xd800, 0xd800 + 1000, [fillcolor] * 25, step=40)
+            self.memory[0x0400 + y + 1: 0x0400 + y + 40] = self.memory[0x0400 + y: 0x0400 + y + 39]
+            self.memory[0xd800 + y + 1: 0xd800 + y + 40] = self.memory[0xd800 + y: 0xd800 + y + 39]
+        self.memory[0x0400: 0x0400 + 1000: 40] = fillchar
+        self.memory[0xd800: 0xd800 + 1000: 40] = fillcolor
 
     def scroll(self, up=False, down=False, left=False, right=False, fill=(32, None)):
         self._fix_cursor()
@@ -605,8 +597,8 @@ class ScreenAndMemory:
             self._fix_cursor()
             self.cursor -= 1
             end = 40 * (self.cursor // 40) + 39
-            self.memory.blockset(0x0400 + self.cursor, 0x0400 + end, self.memory.blockget(0x0400 + self.cursor + 1, 0x0400 + end + 1))
-            self.memory.blockset(0xd800 + self.cursor, 0xd800 + end, self.memory.blockget(0xd800 + self.cursor + 1, 0xd800 + end + 1))
+            self.memory[0x0400 + self.cursor: 0x0400 + end] = self.memory[0x0400 + self.cursor + 1: 0x0400 + end + 1]
+            self.memory[0xd800 + self.cursor: 0xd800 + end] = self.memory[0xd800 + self.cursor + 1: 0xd800 + end + 1]
             self.memory[0x0400 + end] = 32
             self.memory[0xd800 + end] = self.text
             self._fix_cursor(on=True)
@@ -615,8 +607,8 @@ class ScreenAndMemory:
         if self.cursor < 999:
             self._fix_cursor()
             end = 40 * (self.cursor // 40) + 40
-            self.memory.blockset(0x0400 + self.cursor + 1, 0x0400 + end, self.memory.blockget(0x0400 + self.cursor, 0x0400 + end - 1))
-            self.memory.blockset(0xd800 + self.cursor + 1, 0xd800 + end, self.memory.blockget(0xd800 + self.cursor, 0xd800 + end - 1))
+            self.memory[0x0400 + self.cursor + 1: 0x0400 + end] = self.memory[0x0400 + self.cursor: 0x0400 + end - 1]
+            self.memory[0xd800 + self.cursor + 1: 0xd800 + end] = self.memory[0xd800 + self.cursor: 0xd800 + end - 1]
             self.memory[0x0400 + self.cursor] = 32
             self.memory[0xd800 + self.cursor] = self.text
             self._fix_cursor(on=True)
@@ -670,7 +662,7 @@ class ScreenAndMemory:
             raise ValueError("select only one result type")
         start = 0x0400 + 40 * (self.cursor // 40)
         self._fix_cursor()
-        screencodes = self.memory.blockget(start, min(0x07e8, start + 40 * amount))
+        screencodes = self.memory[start: min(0x07e8, start + 40 * amount)]
         self._fix_cursor()
         if petscii:
             return "".join(self._screen2ascii(c) for c in screencodes)
@@ -700,6 +692,6 @@ class ScreenAndMemory:
         return result
 
     def getscreencopy(self):
-        chars = self.memory.blockget(0x0400, 0x0400 + 1000)
-        colors = self.memory.blockget(0xd800, 0xd800 + 1000)
+        chars = self.memory[0x0400: 0x0400 + 1000]
+        colors = self.memory[0xd800: 0xd800 + 1000]
         return chars, colors
