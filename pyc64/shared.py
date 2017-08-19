@@ -114,7 +114,24 @@ def do_sys(screen, addr, microsleep=None):
     if addr == 58640:       # set cursorpos
         x, y = screen.memory[211], screen.memory[214]
         screen.cursormove(x, y)
+    elif addr in (65520, 58634):    # kernel PLOT (get/set cursorpos)
+        if screen.memory[0x030f] & 1:
+            # carry set, read position
+            x, y = screen.cursorpos()
+            screen.memory[211], screen.memory[214] = x, y
+            screen.memory[0x030e], screen.memory[0x030d] = x, y
+        else:
+            # carry clear, set position
+            x, y = screen.memory[0x030e], screen.memory[0x030d]
+            screen.memory[211], screen.memory[214] = x, y
+            screen.cursormove(x, y)
     else:
         from .cputools import CPU
         cpu = CPU(memory=screen.memory, pc=addr)
-        cpu.run(microsleep=microsleep)
+        # read A,X,Y and P from the ram
+        cpu.a, cpu.x, cpu.y, cpu.p = screen.memory[0x030c:0x0310]
+        try:
+            cpu.run(microsleep=microsleep)
+        finally:
+            # store result A,X,Y and P back to ram
+            screen.memory[0x030c:0x0310] = cpu.a, cpu.x, cpu.y, cpu.p
