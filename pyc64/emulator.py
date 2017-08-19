@@ -29,6 +29,7 @@ class EmulatorWindow(tkinter.Tk):
     columns = 40
     rows = 25
     bordersize = 64
+    sprites = 8
     windowgeometry = "+200+100"
 
     def __init__(self, title):
@@ -39,7 +40,7 @@ class EmulatorWindow(tkinter.Tk):
         self.geometry(self.windowgeometry)
         self.hertztick = threading.Event()
         self.refreshtick = threading.Event()
-        self.screen = ScreenAndMemory(columns=self.columns, rows=self.rows)
+        self.screen = ScreenAndMemory(columns=self.columns, rows=self.rows, sprites=self.sprites)
         self.screen.memory[0x00fb] = self.update_rate   # zero page $fb is unused, we use it for screen refresh speed setting
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
         self.canvas = tkinter.Canvas(self, width=2*self.bordersize + self.columns * 16, height=2*self.bordersize + self.rows * 16, borderwidth=0, highlightthickness=0)
@@ -50,7 +51,7 @@ class EmulatorWindow(tkinter.Tk):
         topleft = self.screencor((0, 0))
         botright = self.screencor((self.columns, self.rows))
         self.screenrect = self.canvas.create_rectangle(topleft[0], topleft[1], botright[0], botright[1], outline="")
-        self.spritebitmapbytes = [None] * 8
+        self.spritebitmapbytes = [None] * self.sprites
         self.spritebitmaps = []
         self.create_bitmaps()
         # create the character bitmaps for all character tiles, fixed on the canvas:
@@ -61,8 +62,8 @@ class EmulatorWindow(tkinter.Tk):
                 bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@"+self.temp_graphics_folder+"/char-20.xbm",
                                                foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
                 self.charbitmaps.append(bm)
-        # create the 8 sprite tkinter bitmaps:
-        for i in range(7, -1, -1):
+        # create the sprite tkinter bitmaps:
+        for i in range(self.sprites - 1, -1, -1):
             cor = self.screencor_sprite((30 + i * 20, 140 + i * 10))
             bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@{:s}/sprite-{:d}.xbm".format(self.temp_graphics_folder, i),
                                            foreground=self.tkcolor(i+8), background=None, anchor=tkinter.NW, tags="spritebitmap")
@@ -252,7 +253,7 @@ class EmulatorWindow(tkinter.Tk):
                 filename = self.temp_graphics_folder + "/char-{:02x}.xbm".format(i)
                 if not os.path.isfile(filename):
                     chars = source_chars.copy()
-                    row, col = divmod(i, self.columns)
+                    row, col = divmod(i, 40)
                     ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
                     ci = ci.convert(mode="1", dither=None)
                     ci.save(filename, "xbm")
@@ -262,11 +263,11 @@ class EmulatorWindow(tkinter.Tk):
                 filename = self.temp_graphics_folder + "/char-sh-{:02x}.xbm".format(i)
                 if not os.path.isfile(filename):
                     chars = source_chars.copy()
-                    row, col = divmod(i, self.columns)
+                    row, col = divmod(i, 40)
                     ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
                     ci = ci.convert(mode="1", dither=None)
                     ci.save(filename, "xbm")
-        # 8 monochrome sprites (including their double-size variants)
+        # monochrome sprites (including their double-size variants)
         sprites = self.screen.getsprites()
         for i, sprite in sprites.items():
             self.create_sprite_bitmap(i, sprite.bitmap)

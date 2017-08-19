@@ -132,8 +132,8 @@ class BasicInterpreter:
             else:
                 # direct mode
                 # if there's no char on the last pos of the first line, only evaluate the first line
-                if len(line) >= 40 and line[39] == ' ':
-                    line = line[:40]
+                if len(line) >= self.screen.columns and line[self.screen.columns-1] == ' ':
+                    line = line[:self.screen.columns]
                 if self.process_programline_entry(line):
                     return
                 if line.startswith(("#", "rem")):
@@ -658,8 +658,8 @@ class BasicInterpreter:
             if isinstance(coords, tuple):
                 if len(coords) != 2:
                     raise BasicError("syntax")
-                x = int(coords[0]) % 40
-                y = int(coords[1]) % 25
+                x = int(coords[0]) % self.screen.columns
+                y = int(coords[1]) % self.screen.rows
                 self.screen.cursormove(x, y)
                 return
         raise BasicError("syntax")

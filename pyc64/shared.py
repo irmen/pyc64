@@ -114,6 +114,9 @@ def do_sys(screen, addr, microsleep=None):
     if addr == 58640:       # set cursorpos
         x, y = screen.memory[211], screen.memory[214]
         screen.cursormove(x, y)
+    elif addr in (58629, 65517):    # kernel SCREEN (get screen size X=colums Y=rows)
+        screen.memory[0x30d] = screen.columns
+        screen.memory[0x30e] = screen.rows
     elif addr in (65520, 58634):    # kernel PLOT (get/set cursorpos)
         if screen.memory[0x030f] & 1:
             # carry set, read position

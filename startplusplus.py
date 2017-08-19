@@ -7,6 +7,7 @@ class EmulatorPlusWindow(EmulatorWindow):
     rows = 50
     bordersize = 32
     windowgeometry = "+200+40"
+    sprites = 0   # for now, a larger screen will overwrite the sprite pointers so you can't use sprites. also y can not be >255
 
     def welcome_message(self):
         topleft = self.screencor((0, 0))

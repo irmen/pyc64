@@ -19,15 +19,18 @@ print("")
 mem[251] = 1000//60  # set 60hz refresh
 
 # eyes
-colors[13 + 3 * 40:13 + 8 * 40:40] = 15
-chars[13 + 3 * 40:13 + 8 * 40:40] = 81
-colors[26 + 3 * 40:26 + 8 * 40:40] = 15
-chars[26 + 3 * 40:26 + 8 * 40:40] = 81
+x1 = screen.columns//2 - 7
+x2 = screen.columns//2 + 6
+facey = screen.rows//2
+colors[x1 + (facey-9) * screen.columns:x1 + (facey-4) * screen.columns:screen.columns] = 15
+chars[x1 + (facey-9) * screen.columns:x1 + (facey-4) * screen.columns:screen.columns] = 81
+colors[x2 + (facey-9) * screen.columns:x2 + (facey-4) * screen.columns:screen.columns] = 15
+chars[x2 + (facey-9) * screen.columns:x2 + (facey-4) * screen.columns:screen.columns] = 81
 
 # mouth
 for i in range(91, 269, 4):
     ri = radians(i)
-    x, y = sin(ri) * 14 + 20, 13 - cos(ri) * 10
+    x, y = sin(ri) * 14 + screen.columns/2, facey - cos(ri) * 10
     colors[x, y] = 1
     chars[x, y] = 81   # circle
     sync()
@@ -42,14 +45,17 @@ mem[12288: 12288+63] = [
     0, 21, 84, 0, 42, 170, 0, 85, 84,
     0, 42, 170, 0, 85, 84]
 
+if not screen.sprites:
+    raise InterruptedError("no sprites")
+
 # setup sprites
-for s in range(8):
+for s in range(screen.sprites):
     sprite(s, x=0, y=0, dx=s&2, dy=s&4, color=s+8, pointer=12288, enabled=True)
 
 # animate sprites
 r = 0.0
 while True:
-    for s in range(8):
+    for s in range(screen.sprites):
         sx = int(170 + cos(r * 1.345 - s * 0.25) * 120)
         sy = int(140 + sin(r - s * 0.2) * 80)
         sprite(s, x=sx, y=sy)

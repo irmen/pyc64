@@ -1,4 +1,6 @@
 10 for s=0 to 7
+11 rem determine screen size
+12 sys 65517: centerx=peek(781)*8/2: centery=peek(782)*8/2
 20 poke 53287+s, s+8: poke 2040+s, 192
 30 next s
 40 poke 53277,204 : poke 53271, 240: poke 53269, 255
@@ -11,7 +13,8 @@
 90 next i
 100 r=0
 110 for s=0 to 7
-115 sx=170+cos(r*1.345-s*0.25)*120: sy = 140+sin(r-s*0.2)*80
+115 sx=centerx+cos(r*1.345-s*0.25)*centerx*0.8:
+116 sy=centery+25+sin(r-s*0.2)*centery*0.8
 120 poke 53248+s*2,int(sx)&255: poke 53249+s*2,int(sy)&255
 130 if sx > 255 goto 150
 140 poke 53264, peek(53264) & ~(1<<s): goto 160

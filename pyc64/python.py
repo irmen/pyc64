@@ -20,7 +20,7 @@ class ColorsProxy:
             item = slice(item.start + 0xd800, item.stop + 0xd800, item.step)
             return self.screen.memory[item]
         x, y = int(item[0]), int(item[1])
-        assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
+        assert 0 <= x <= self.screen.columns and 0 <= y <= self.screen.rows, "position out of range"
         _, color = self.screen.getchar(x, y)
         return color
 
@@ -30,8 +30,8 @@ class ColorsProxy:
             self.screen.memory[item] = value
         else:
             x, y = int(item[0]), int(item[1])
-            assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
-            self.screen.memory[0xd800 + x + 40 * y] = value
+            assert 0 <= x <= self.screen.columns and 0 <= y <= self.screen.rows, "position out of range"
+            self.screen.memory[0xd800 + x + self.screen.columns * y] = value
 
 
 class CharsProxy:
@@ -43,7 +43,7 @@ class CharsProxy:
             item = slice(item.start + 0x0400, item.stop + 0x0400, item.step)
             return self.screen.memory[item]
         x, y = int(item[0]), int(item[1])
-        assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
+        assert 0 <= x <= self.screen.columns and 0 <= y <= self.screen.rows, "position out of range"
         char, _ = self.screen.getchar(x, y)
         return char
 
@@ -53,8 +53,8 @@ class CharsProxy:
             self.screen.memory[item] = value
         else:
             x, y = int(item[0]), int(item[1])
-            assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
-            self.screen.memory[0x0400 + x + 40 * y] = value
+            assert 0 <= x <= self.screen.columns and 0 <= y <= self.screen.rows, "position out of range"
+            self.screen.memory[0x0400 + x + self.screen.columns * y] = value
 
 
 class PythonInterpreter:

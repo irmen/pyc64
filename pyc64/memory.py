@@ -144,7 +144,7 @@ class Memory:
 
 
 class ScreenAndMemory:
-    def __init__(self, columns=40, rows=25):
+    def __init__(self, columns=40, rows=25, sprites=8):
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
         # screen colors    $d800-$dbff
@@ -152,15 +152,16 @@ class ScreenAndMemory:
         self.hz = 60        # NTSC
         self.columns = columns
         self.rows = rows
+        self.sprites = sprites
         self.reset(True)
         self.install_memory_hooks()
 
     def install_memory_hooks(self):
         def write_screencolor(address, oldval, newval):
-            self._full_repaint = oldval != newval
+            self._full_repaint |= oldval != newval
 
         def write_shifted(address, oldval, newval):
-            self._full_repaint = bool((oldval & 2) ^ (newval & 2))
+            self._full_repaint |= bool((oldval & 2) ^ (newval & 2))
 
         def read_jiffieclock(address, value):
             jiffies = int(self.hz * (time.perf_counter() - self.jiffieclock_epoch)) % (24*3600*self.hz)
@@ -305,9 +306,9 @@ class ScreenAndMemory:
         enabled = self.memory[0xd015]
         pointers = self.memory[0x07f8:0x0800]
         if which is None:
-            which = range(8)
+            which = range(self.sprites)
         else:
-            assert all(0 <= i <= 7 for i in which)
+            assert all(0 <= i <= (self.sprites - 1) for i in which)
         result = {}
         for i in which:
             s = ScreenAndMemory.Sprite()
@@ -324,12 +325,12 @@ class ScreenAndMemory:
         return result
 
     def setspritecolor(self, spritenum, color):
-        assert 0 <= spritenum <= 7
+        assert 0 <= spritenum <= self.sprites - 1
         assert 0 <= color <= 255
         self.memory[0xd027 + spritenum] = color
 
     def setspritepos(self, spritenum, x, y):
-        assert 0 <= spritenum <= 7
+        assert 0 <= spritenum <= self.sprites - 1
         self.memory[0xd000 + spritenum] = x & 255
         self.memory[0xd001 + spritenum] = y
         if x > 255:
