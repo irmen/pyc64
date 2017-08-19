@@ -170,16 +170,13 @@ class ScreenAndMemory:
 
         def write_jiffieclock(address, oldval, newval):
             jiffies = int(self.hz * (time.perf_counter() - self.jiffieclock_epoch)) & 0xffffff
-            print("BEFORE WRITE: {:06x}".format(jiffies), address, newval)  # XXX
             if address == 160:
                 jiffies = (jiffies & 0x00ffff) | (newval << 16)
             elif address == 161:
                 jiffies = (jiffies & 0xff00ff) | (newval << 8)
             else:
                 jiffies = (jiffies & 0xffff00) | newval
-            print("NEW JIFFIES1: {:06x}".format(jiffies))  # XXX
             if jiffies > self.hz * 24 * 3600:
-                print("RESET JIFFIES!")   # XXX
                 jiffies = 0
                 newval = 0
                 if address == 160:
@@ -189,7 +186,6 @@ class ScreenAndMemory:
                 else:
                     self.memory[160], self.memory[161] = 0, 0
                 self.jiffieclock_epoch = time.perf_counter()
-            print("NEW JIFFIES2: {:06x}".format(jiffies))  # XXX
             self.jiffieclock_epoch = time.perf_counter() - jiffies / self.hz
             return newval
 

@@ -45,7 +45,7 @@ class TimeValProxy:
         self.hz = hz
 
     def __str__(self):
-        secs = (self.memory[160] << 16) + (self.memory[161] << 8) + self.memory[162] / self.hz
+        secs = ((self.memory[160] << 16) + (self.memory[161] << 8) + self.memory[162]) / self.hz
         h, secs = divmod(secs, 3600)
         m, secs = divmod(secs, 60)
         return "{:02d}{:02d}{:02d}".format(int(h), int(m), int(secs))
