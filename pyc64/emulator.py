@@ -31,6 +31,8 @@ class EmulatorWindow(tkinter.Tk):
     bordersize = 64
     sprites = 8
     windowgeometry = "+200+100"
+    charset_normal = "charset-normal.png"
+    charset_shifted = "charset-shifted.png"
 
     def __init__(self, title):
         super().__init__()
@@ -248,25 +250,23 @@ class EmulatorWindow(tkinter.Tk):
         with open(self.temp_graphics_folder + "/readme.txt", "w") as f:
             f.write("this is a temporary folder to cache pyc64 files for tkinter graphics bitmaps.\n")
         # normal
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/charset-normal.png"))) as source_chars:
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_normal))) as source_chars:
             for i in range(256):
                 filename = self.temp_graphics_folder + "/char-{:02x}.xbm".format(i)
-                if not os.path.isfile(filename):
-                    chars = source_chars.copy()
-                    row, col = divmod(i, 40)
-                    ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                    ci = ci.convert(mode="1", dither=None)
-                    ci.save(filename, "xbm")
+                chars = source_chars.copy()
+                row, col = divmod(i, source_chars.width//16)        # we assume 16x16 pixel chars (2x zoom)
+                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                ci = ci.convert(mode="1", dither=None)
+                ci.save(filename, "xbm")
         # shifted
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/charset-shifted.png"))) as source_chars:
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_shifted))) as source_chars:
             for i in range(256):
                 filename = self.temp_graphics_folder + "/char-sh-{:02x}.xbm".format(i)
-                if not os.path.isfile(filename):
-                    chars = source_chars.copy()
-                    row, col = divmod(i, 40)
-                    ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                    ci = ci.convert(mode="1", dither=None)
-                    ci.save(filename, "xbm")
+                chars = source_chars.copy()
+                row, col = divmod(i, source_chars.width//16)        # we assume 16x16 pixel chars (2x zoom)
+                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                ci = ci.convert(mode="1", dither=None)
+                ci.save(filename, "xbm")
         # monochrome sprites (including their double-size variants)
         sprites = self.screen.getsprites()
         for i, sprite in sprites.items():
