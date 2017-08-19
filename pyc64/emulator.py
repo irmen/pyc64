@@ -26,33 +26,37 @@ from .python import PythonInterpreter
 class EmulatorWindow(tkinter.Tk):
     temp_graphics_folder = "temp_gfx"
     update_rate = 1000//20    # 20 hz screen refresh rate
+    columns = 40
+    rows = 25
+    bordersize = 64
+    windowgeometry = "+200+100"
 
     def __init__(self, title):
         super().__init__()
         self.wm_title(title)
         self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "icon.gif"))
         self.wm_iconphoto(self, self.appicon)
-        self.geometry("+200+100")
+        self.geometry(self.windowgeometry)
         self.hertztick = threading.Event()
         self.refreshtick = threading.Event()
-        self.screen = ScreenAndMemory()
+        self.screen = ScreenAndMemory(columns=self.columns, rows=self.rows)
         self.screen.memory[0x00fb] = self.update_rate   # zero page $fb is unused, we use it for screen refresh speed setting
         self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
-        self.canvas = tkinter.Canvas(self, width=128 + 40 * 16, height=128 + 25 * 16, borderwidth=0, highlightthickness=0)
+        self.canvas = tkinter.Canvas(self, width=2*self.bordersize + self.columns * 16, height=2*self.bordersize + self.rows * 16, borderwidth=0, highlightthickness=0)
         self.buttonbar = tkinter.Frame(self)
         resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
         resetbut.pack(side=tkinter.LEFT)
         self.buttonbar.pack(fill=tkinter.X)
         topleft = self.screencor((0, 0))
-        botright = self.screencor((40, 25))
+        botright = self.screencor((self.columns, self.rows))
         self.screenrect = self.canvas.create_rectangle(topleft[0], topleft[1], botright[0], botright[1], outline="")
         self.spritebitmapbytes = [None] * 8
         self.spritebitmaps = []
         self.create_bitmaps()
-        # create the 1000 character bitmaps fixed on the canvas:
+        # create the character bitmaps for all character tiles, fixed on the canvas:
         self.charbitmaps = []
-        for y in range(25):
-            for x in range(40):
+        for y in range(self.rows):
+            for x in range(self.columns):
                 cor = self.screencor((x, y))
                 bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@"+self.temp_graphics_folder+"/char-20.xbm",
                                                foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
@@ -64,25 +68,30 @@ class EmulatorWindow(tkinter.Tk):
                                            foreground=self.tkcolor(i+8), background=None, anchor=tkinter.NW, tags="spritebitmap")
             self.spritebitmaps.insert(0, bm)
         # the borders:
-        self.border1 = self.canvas.create_rectangle(0, 0, 128 + 40 * 16, 64, outline="", fill="#000")
-        self.border2 = self.canvas.create_rectangle(64 + 40 * 16, 64, 128 + 40 * 16, 64 + 25 * 16, outline="", fill="#000")
-        self.border3 = self.canvas.create_rectangle(0, 64 + 25 * 16, 128 + 40 * 16, 128 + 25 * 16, outline="", fill="#000")
-        self.border4 = self.canvas.create_rectangle(0, 64, 64, 64 + 25 * 16, outline="", fill="#000")
+        self.border1 = self.canvas.create_rectangle(0, 0, 2*self.bordersize + self.columns * 16, self.bordersize, outline="", fill="#000")
+        self.border2 = self.canvas.create_rectangle(self.bordersize + self.columns * 16, self.bordersize, 2*self.bordersize + self.columns * 16, self.bordersize + self.rows * 16, outline="", fill="#000")
+        self.border3 = self.canvas.create_rectangle(0, self.bordersize + self.rows * 16, 2*self.bordersize + self.columns * 16, 2*self.bordersize + self.rows * 16, outline="", fill="#000")
+        self.border4 = self.canvas.create_rectangle(0, self.bordersize, self.bordersize, self.bordersize + self.rows * 16, outline="", fill="#000")
         self.bind("<KeyPress>", lambda event: self.keypress(*self._keyevent(event)))
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
         self.repaint()
         self.canvas.pack()
         self._cyclic_blink_cursor()
         self._cyclic_repaint()
-        introtxt = self.canvas.create_text(topleft[0] + 320, topleft[0] + 180, fill="white", justify=tkinter.CENTER,
-                                           text="pyc64 basic & function keys active\n\n"
-                                                "use 'gopy' to enter Python mode\n\n\n\n"
-                                                "(install the py64 library to be able to execute 6502 machine code)")
-        self.after(4000, lambda: self.canvas.delete(introtxt))
+        self.welcome_message()
         self.interpret_thread = None
         self.interpreter = None
         self.switch_interpreter("basic")
         self.after(1000//self.screen.hz, self.hertztimer)
+
+    def welcome_message(self):
+        topleft = self.screencor((0, 0))
+        introtxt = self.canvas.create_text(topleft[0] + 16 * self.columns // 2, topleft[0] + 16 * (self.rows // 2 - 2),
+                                           fill="white", justify=tkinter.CENTER,
+                                           text="pyc64 basic & function keys active\n\n"
+                                                "use 'gopy' to enter Python mode\n\n\n\n"
+                                                "(install the py64 library to be able to execute 6502 machine code)")
+        self.after(4000, lambda: self.canvas.delete(introtxt))
 
     def hertztimer(self):
         self.after(1000//self.screen.hz, self.hertztimer)
@@ -243,7 +252,7 @@ class EmulatorWindow(tkinter.Tk):
                 filename = self.temp_graphics_folder + "/char-{:02x}.xbm".format(i)
                 if not os.path.isfile(filename):
                     chars = source_chars.copy()
-                    row, col = divmod(i, 40)
+                    row, col = divmod(i, self.columns)
                     ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
                     ci = ci.convert(mode="1", dither=None)
                     ci.save(filename, "xbm")
@@ -253,7 +262,7 @@ class EmulatorWindow(tkinter.Tk):
                 filename = self.temp_graphics_folder + "/char-sh-{:02x}.xbm".format(i)
                 if not os.path.isfile(filename):
                     chars = source_chars.copy()
-                    row, col = divmod(i, 40)
+                    row, col = divmod(i, self.columns)
                     ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
                     ci = ci.convert(mode="1", dither=None)
                     ci.save(filename, "xbm")
@@ -332,11 +341,11 @@ class EmulatorWindow(tkinter.Tk):
             dxy.save(self.temp_graphics_folder + "/sprite-{:d}-2x-2y.xbm".format(spritenum), "xbm")
 
     def screencor(self, cc):
-        return 64 + cc[0] * 16, 64 + cc[1] * 16
+        return self.bordersize + cc[0] * 16, self.bordersize + cc[1] * 16
 
     def screencor_sprite(self, cc):
-        # sprite upper left = (24, 50) so subtract this from regular origin (64, 64)
-        return 16 + cc[0] * 2, cc[1] * 2 - 36
+        # sprite upper left = (24, 50) so subtract from regular origin (self.borderwidth, self.borderwidth) (scaled by 2 pixels)
+        return cc[0] * 2 + self.bordersize - 48, cc[1] * 2 + self.bordersize - 100
 
     def tkcolor(self, color):
         return "#{:06x}".format(colorpalette[color % 16])

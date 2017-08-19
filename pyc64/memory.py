@@ -144,12 +144,14 @@ class Memory:
 
 
 class ScreenAndMemory:
-    def __init__(self):
+    def __init__(self, columns=40, rows=25):
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
         # screen colors    $d800-$dbff
         self.memory = Memory(65536)    # 64 Kb
         self.hz = 60        # NTSC
+        self.columns = columns
+        self.rows = rows
         self.reset(True)
         self.install_memory_hooks()
 
@@ -206,8 +208,8 @@ class ScreenAndMemory:
         self.cursor_state = False
         self.cursor_blink_rate = 300
         self._cursor_enabled = True
-        self._previous_checked_chars = bytearray(1000)
-        self._previous_checked_colors = bytearray(1000)
+        self._previous_checked_chars = bytearray(self.columns*self.rows)
+        self._previous_checked_colors = bytearray(self.columns*self.rows)
         self.memory[0x000:0x0300] = bytearray(256*3)   # clear first 3 pages
         if hard:
             self.memory.clear()
@@ -337,8 +339,8 @@ class ScreenAndMemory:
 
     def getchar(self, x, y):
         """get the character AND color value at position x,y"""
-        assert 0 <= x <= 40 and 0 <= y <= 25, "position out of range"
-        offset = x + y * 40
+        assert 0 <= x <= self.columns and 0 <= y <= self.rows, "position out of range"
+        offset = x + y * self.columns
         return self.memory[0x0400 + offset], self.memory[0xd800 + offset]
 
     def blink_cursor(self):
@@ -501,10 +503,10 @@ class ScreenAndMemory:
                 self.text = txtcolors[c]
             elif c == '\x0d':
                 # RETURN, go to next line
-                self.cursor = 40 * (1 + self.cursor // 40)
-                if self.cursor > 960:
+                self.cursor = self.columns * (1 + self.cursor // self.columns)
+                if self.cursor > self.columns*(self.rows-1):
                     self._scroll_up()
-                    self.cursor = 960
+                    self.cursor = self.columns*(self.rows-1)
                 # also, disable inverse-video
                 self.inversevid = False
             elif c == '\x0e':
@@ -542,9 +544,9 @@ class ScreenAndMemory:
                 self.memory[0x0400 + self.cursor] = self._petscii2screen(ord(c), self.inversevid)
                 self.memory[0xd800 + self.cursor] = self.text
                 self.cursor += 1
-                if self.cursor >= 1000:
+                if self.cursor >= self.columns*self.rows:
                     self._scroll_up()
-                    self.cursor = 960
+                    self.cursor = self.columns*(self.rows-1)
         self._cursor_enabled = prev_cursor_enabled
         self._fix_cursor(True)
 
@@ -561,41 +563,41 @@ class ScreenAndMemory:
 
     def _scroll_up(self, fill=(32, None)):
         # scroll the screen up one line
-        self.memory[0x0400: 0x0400 + 960] = self.memory[0x0400 + 40: 0x0400 + 1000]
-        self.memory[0xd800: 0xd800 + 960] = self.memory[0xd800 + 40: 0xd800 + 1000]
+        self.memory[0x0400: 0x0400 + self.columns*(self.rows-1)] = self.memory[0x0400 + self.columns: 0x0400 + self.columns*self.rows]
+        self.memory[0xd800: 0xd800 + self.columns*(self.rows-1)] = self.memory[0xd800 + self.columns: 0xd800 + self.columns*self.rows]
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        self.memory[0x0400 + 960: 0x0400 + 1000] = fillchar
-        self.memory[0xd800 + 960: 0xd800 + 1000] = fillcolor
+        self.memory[0x0400 + self.columns*(self.rows-1): 0x0400 + self.columns*self.rows] = fillchar
+        self.memory[0xd800 + self.columns*(self.rows-1): 0xd800 + self.columns*self.rows] = fillcolor
 
     def _scroll_down(self, fill=(32, None)):
         # scroll the screen down one line
-        self.memory[0x0400 + 40: 0x0400 + 1000] = self.memory[0x0400: 0x0400 + 960]
-        self.memory[0xd800 + 40: 0xd800 + 1000] = self.memory[0xd800: 0xd800 + 960]
+        self.memory[0x0400 + self.columns: 0x0400 + self.columns*self.rows] = self.memory[0x0400: 0x0400 + self.columns*(self.rows-1)]
+        self.memory[0xd800 + self.columns: 0xd800 + self.columns*self.rows] = self.memory[0xd800: 0xd800 + self.columns*(self.rows-1)]
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        self.memory[0x0400: 0x0400 + 40] = fillchar
-        self.memory[0xd800: 0xd800 + 40] = fillcolor
+        self.memory[0x0400: 0x0400 + self.columns] = fillchar
+        self.memory[0xd800: 0xd800 + self.columns] = fillcolor
 
     def _scroll_left(self, fill=(32, None)):
         # scroll the screen left one colum
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        for y in range(0, 1000, 40):
-            self.memory[0x0400 + y: 0x0400 + y + 39] = self.memory[0x0400 + y + 1: 0x0400 + y + 40]
-            self.memory[0xd800 + y: 0xd800 + y + 39] = self.memory[0xd800 + y + 1: 0xd800 + y + 40]
-        self.memory[0x0400 + 39: 0x0400 + 1000: 40] = fillchar
-        self.memory[0xd800 + 39: 0xd800 + 1000: 40] = fillcolor
+        for y in range(0, self.columns*self.rows, self.columns):
+            self.memory[0x0400 + y: 0x0400 + y + self.columns-1] = self.memory[0x0400 + y + 1: 0x0400 + y + self.columns]
+            self.memory[0xd800 + y: 0xd800 + y + self.columns-1] = self.memory[0xd800 + y + 1: 0xd800 + y + self.columns]
+        self.memory[0x0400 + self.columns-1: 0x0400 + self.columns*self.rows: self.columns] = fillchar
+        self.memory[0xd800 + self.columns-1: 0xd800 + self.columns*self.rows: self.columns] = fillcolor
 
     def _scroll_right(self, fill=(32, None)):
         # scroll the screen right one colum
         fillchar = fill[0]
         fillcolor = self.text if fill[1] is None else fill[1]
-        for y in range(0, 1000, 40):
-            self.memory[0x0400 + y + 1: 0x0400 + y + 40] = self.memory[0x0400 + y: 0x0400 + y + 39]
-            self.memory[0xd800 + y + 1: 0xd800 + y + 40] = self.memory[0xd800 + y: 0xd800 + y + 39]
-        self.memory[0x0400: 0x0400 + 1000: 40] = fillchar
-        self.memory[0xd800: 0xd800 + 1000: 40] = fillcolor
+        for y in range(0, self.columns*self.rows, self.columns):
+            self.memory[0x0400 + y + 1: 0x0400 + y + self.columns] = self.memory[0x0400 + y: 0x0400 + y + self.columns-1]
+            self.memory[0xd800 + y + 1: 0xd800 + y + self.columns] = self.memory[0xd800 + y: 0xd800 + y + self.columns-1]
+        self.memory[0x0400: 0x0400 + self.columns*self.rows: self.columns] = fillchar
+        self.memory[0xd800: 0xd800 + self.columns*self.rows: self.columns] = fillcolor
 
     def scroll(self, up=False, down=False, left=False, right=False, fill=(32, None)):
         self._fix_cursor()
@@ -611,17 +613,17 @@ class ScreenAndMemory:
 
     def return_key(self):
         self._fix_cursor()
-        self.cursor = 40 * (self.cursor // 40) + 40
-        if self.cursor >= 1000:
+        self.cursor = self.columns * (self.cursor // self.columns) + self.columns
+        if self.cursor >= self.columns*self.rows:
             self._scroll_up()
-            self.cursor -= 40
+            self.cursor -= self.columns
         self._fix_cursor(on=True)
 
     def backspace(self):
         if self.cursor > 0:
             self._fix_cursor()
             self.cursor -= 1
-            end = 40 * (self.cursor // 40) + 39
+            end = self.columns * (self.cursor // self.columns) + self.columns - 1
             self.memory[0x0400 + self.cursor: 0x0400 + end] = self.memory[0x0400 + self.cursor + 1: 0x0400 + end + 1]
             self.memory[0xd800 + self.cursor: 0xd800 + end] = self.memory[0xd800 + self.cursor + 1: 0xd800 + end + 1]
             self.memory[0x0400 + end] = 32
@@ -629,9 +631,9 @@ class ScreenAndMemory:
             self._fix_cursor(on=True)
 
     def insert(self):
-        if self.cursor < 999:
+        if self.cursor < self.columns*self.rows-1:
             self._fix_cursor()
-            end = 40 * (self.cursor // 40) + 40
+            end = self.columns * (self.cursor // self.columns) + self.columns
             self.memory[0x0400 + self.cursor + 1: 0x0400 + end] = self.memory[0x0400 + self.cursor: 0x0400 + end - 1]
             self.memory[0xd800 + self.cursor + 1: 0xd800 + end] = self.memory[0xd800 + self.cursor: 0xd800 + end - 1]
             self.memory[0x0400 + self.cursor] = 32
@@ -640,18 +642,18 @@ class ScreenAndMemory:
 
     def up(self):
         self._fix_cursor()
-        if self.cursor < 40:
+        if self.cursor < self.columns:
             self._scroll_down()
         else:
-            self.cursor -= 40
+            self.cursor -= self.columns
         self._fix_cursor(on=True)
 
     def down(self):
         self._fix_cursor()
-        if self.cursor >= 960:
+        if self.cursor >= self.columns*(self.rows-1):
             self._scroll_up()
         else:
-            self.cursor += 40
+            self.cursor += self.columns
         self._fix_cursor(on=True)
 
     def left(self):
@@ -661,33 +663,33 @@ class ScreenAndMemory:
             self._fix_cursor(on=True)
 
     def right(self):
-        if self.cursor < 1000:
+        if self.cursor < self.columns*self.rows:
             self._fix_cursor()
             self.cursor += 1
             self._fix_cursor(on=True)
 
     def clear(self):
         # clear the screen buffer
-        self.memory[0x0400: 0x0400 + 1000] = 32
-        self.memory[0xd800: 0xd800 + 1000] = self.text
+        self.memory[0x0400: 0x0400 + self.columns*self.rows] = 32
+        self.memory[0xd800: 0xd800 + self.columns*self.rows] = self.text
         self.cursor = 0
         self._fix_cursor(on=True)
 
     def cursormove(self, x, y):
         self._fix_cursor()
-        self.cursor = x + 40 * y
+        self.cursor = x + self.columns * y
         self._fix_cursor(on=True)
 
     def cursorpos(self):
-        row, col = divmod(self.cursor, 40)
+        row, col = divmod(self.cursor, self.columns)
         return col, row
 
     def current_line(self, amount=1, petscii=True, ascii=False):
         if petscii and ascii:
             raise ValueError("select only one result type")
-        start = 0x0400 + 40 * (self.cursor // 40)
+        start = 0x0400 + self.columns * (self.cursor // self.columns)
         self._fix_cursor()
-        screencodes = self.memory[start: min(0x07e8, start + 40 * amount)]
+        screencodes = self.memory[start: min(0x0400+self.columns*self.rows, start + self.columns * amount)]
         self._fix_cursor()
         if petscii:
             return "".join(self._screen2ascii(c) for c in screencodes)
@@ -708,15 +710,15 @@ class ScreenAndMemory:
         chars, colors = self.getscreencopy()
         if self._full_repaint:
             self._full_repaint = False
-            result = [(i, (chars[i], colors[i])) for i in range(1000)]
+            result = [(i, (chars[i], colors[i])) for i in range(self.columns*self.rows)]
         else:
-            result = [(i, (chars[i], colors[i])) for i in range(1000)
+            result = [(i, (chars[i], colors[i])) for i in range(self.columns*self.rows)
                       if chars[i] != self._previous_checked_chars[i] or colors[i] != self._previous_checked_colors[i]]
         self._previous_checked_chars = chars
         self._previous_checked_colors = colors
         return result
 
     def getscreencopy(self):
-        chars = self.memory[0x0400: 0x0400 + 1000]
-        colors = self.memory[0xd800: 0xd800 + 1000]
+        chars = self.memory[0x0400: 0x0400 + self.columns*self.rows]
+        colors = self.memory[0xd800: 0xd800 + self.columns*self.rows]
         return chars, colors
