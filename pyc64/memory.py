@@ -11,6 +11,7 @@ License: MIT open-source.
 """
 
 import time
+from collections import defaultdict
 
 colorpalette = (
     0x000000,  # 0 = black
@@ -40,9 +41,11 @@ class Memory:
     def __init__(self, size=0x10000, endian="little"):
         self.size = size
         self.mem = bytearray(size)
+        self.hooked_reads = bytearray(size)   # 'bitmap' of addresses that have read-hooks, for fast checking
+        self.hooked_writes = bytearray(size)  # 'bitmap' of addresses that have write-hooks, for fast checking
         self.endian = endian     # little or big
-        self.write_hooks = {}
-        self.read_hooks = {}
+        self.write_hooks = defaultdict(list)
+        self.read_hooks = defaultdict(list)
 
     def __len__(self):
         return len(self.mem)
@@ -75,50 +78,60 @@ class Memory:
         # retrieve a copy of a block of memory, WITHOUT DOING HOOK CHECKS
         return self.mem[start:end:step]
 
-    def __getitem__(self, address):
-        if type(address) is int:
-            if address in self.read_hooks:
-                value = self.mem[address]
-                for hook in self.read_hooks[address]:
-                    newvalue = hook(address, value)
+    def __getitem__(self, addr_or_slice):
+        if type(addr_or_slice) is int:
+            if self.hooked_reads[addr_or_slice]:
+                value = self.mem[addr_or_slice]
+                for hook in self.read_hooks[addr_or_slice]:
+                    newvalue = hook(addr_or_slice, value)
                     if newvalue is not None:
                         value = newvalue
-                self.mem[address] = value
-            return self.mem[address]
-        elif type(address) is slice:
-            return [self[addr] for addr in range(*address.indices(len(self.mem)))]
+                self.mem[addr_or_slice] = value
+            return self.mem[addr_or_slice]
+        elif type(addr_or_slice) is slice:
+            if any(self.hooked_reads[addr_or_slice]):
+                # there's at least one address in the slice with a hook, so... slow mode
+                print("SLOW SLICE", addr_or_slice)  # XXX
+                return [self[addr] for addr in range(*addr_or_slice.indices(len(self.mem)))]
+            else:
+                # there's no address in the slice that's hooked so we can return it fast
+                return self.mem[addr_or_slice]
         else:
             raise TypeError("invalid address type")
 
-    def __setitem__(self, address, value):
-        if type(address) is int:
-            if address in self.write_hooks:
-                for hook in self.write_hooks[address]:
-                    newvalue = hook(address, self.mem[address], value)
+    def __setitem__(self, addr_or_slice, value):
+        if type(addr_or_slice) is int:
+            if self.hooked_writes[addr_or_slice]:
+                for hook in self.write_hooks[addr_or_slice]:
+                    newvalue = hook(addr_or_slice, self.mem[addr_or_slice], value)
                     if newvalue is not None:
                         value = newvalue
-            self.mem[address] = value
-        elif type(address) is slice:
-            if type(value) is int:
-                for addr in range(*address.indices(len(self.mem))):
-                    self[addr] = value
+            self.mem[addr_or_slice] = value
+        elif type(addr_or_slice) is slice:
+            if any(self.hooked_writes[addr_or_slice]):
+                # there's at least one address in the slice with a hook, so... slow mode
+                print("SLOW SLICE", addr_or_slice)  # XXX
+                if type(value) is int:
+                    for addr in range(*addr_or_slice.indices(len(self.mem))):
+                        self[addr] = value
+                else:
+                    for addr, value in zip(range(*addr_or_slice.indices(len(self.mem))), value):
+                        self[addr] = value
             else:
-                for addr, value in zip(range(*address.indices(len(self.mem))), value):
-                    self[addr] = value
+                # there's no address in the slice that's hooked so we can write fast
+                if type(value) is int:
+                    value = bytes([value]) * len(range(*addr_or_slice.indices(self.size)))
+                self.mem[addr_or_slice] = value
         else:
             raise TypeError("invalid address type")
 
     def intercept_write(self, address, hook):
-        if address in self.write_hooks:
-            self.write_hooks[address].append(hook)
-        else:
-            self.write_hooks[address] = [hook]
+        self.write_hooks[address].append(hook)
+        self.hooked_writes[address] = 1
 
     def intercept_read(self, address, hook):
-        if address in self.read_hooks:
-            self.read_hooks[address].append(hook)
-        else:
-            self.read_hooks[address] = [hook]
+        self.read_hooks[address].append(hook)
+        self.hooked_reads[address] = 1
 
 
 class ScreenAndMemory:
@@ -132,33 +145,11 @@ class ScreenAndMemory:
         self.install_memory_hooks()
 
     def install_memory_hooks(self):
-        def read_textcolor(address, value):
-            return self.text
-
-        def read_bordercolor(address, value):
-            return self.border
-
-        def read_screencolor(address, value):
-            return self._screen
-
-        def read_shifted(address, value):
-            return value | 2 if self._shifted else value & ~2
-
-        def write_textcolor(address, oldval, newval):
-            self.text = newval
-            return newval
-
-        def write_bordercolor(address, oldval, newval):
-            self.border = newval
-            return newval
-
         def write_screencolor(address, oldval, newval):
-            self.screen = newval
-            return newval
+            self._full_repaint = oldval != newval
 
         def write_shifted(address, oldval, newval):
-            self.shifted = bool(newval & 2)
-            return newval
+            self._full_repaint = bool((oldval & 2) ^ (newval & 2))
 
         def read_jiffieclock(address, value):
             jiffies = int(self.hz * (time.perf_counter() - self.jiffieclock_epoch)) % (24*3600*self.hz)
@@ -192,17 +183,11 @@ class ScreenAndMemory:
         self.memory.intercept_read(160, read_jiffieclock)
         self.memory.intercept_read(161, read_jiffieclock)
         self.memory.intercept_read(162, read_jiffieclock)
-        self.memory.intercept_read(646, read_textcolor)
-        self.memory.intercept_read(53280, read_bordercolor)
-        self.memory.intercept_read(53281, read_screencolor)
-        self.memory.intercept_read(53272, read_shifted)
         self.memory.intercept_write(160, write_jiffieclock)
         self.memory.intercept_write(161, write_jiffieclock)
         self.memory.intercept_write(162, write_jiffieclock)
-        self.memory.intercept_write(646, write_textcolor)
-        self.memory.intercept_write(53280, write_bordercolor)
-        self.memory.intercept_write(53281, write_screencolor)
         self.memory.intercept_write(53272, write_shifted)
+        self.memory.intercept_write(53281, write_screencolor)
 
     def reset(self, hard=False):
         self._full_repaint = True
@@ -228,28 +213,46 @@ class ScreenAndMemory:
         self.memory.setword(0x0031, 0x0803)  # begin of free basic ram
         self.memory.setword(0x0033, 0xa000)  # end of free basic ram
         self.border = 14
-        self._screen = 6
+        self.screen = 6
         self.text = 14
         self.jiffieclock_epoch = time.perf_counter()
         self.clear()
 
     @property
     def screen(self):
-        return self._screen
+        return self.memory[53281]
 
     @screen.setter
     def screen(self, color):
-        self._screen = color
+        self.memory[53281] = color
         self._full_repaint = True
 
     @property
+    def border(self):
+        return self.memory[53280]
+
+    @border.setter
+    def border(self, color):
+        self.memory[53280] = color
+
+    @property
+    def text(self):
+        return self.memory[646]
+
+    @text.setter
+    def text(self, color):
+        self.memory[646] = color
+
+    @property
     def shifted(self):
-        return self._shifted
+        return bool(self.memory[53272] & 2)
 
     @shifted.setter
-    def shifted(self, boolean):
-        self._full_repaint |= boolean != self._shifted
-        self._shifted = boolean
+    def shifted(self, value):
+        if value:
+            self.memory[53272] |= 2
+        else:
+            self.memory[53272] &= ~2
 
     @property
     def cursor_enabled(self):
@@ -648,8 +651,8 @@ class ScreenAndMemory:
 
     def clear(self):
         # clear the screen buffer
-        self.memory.blockset(0x0400, 0x0400 + 1000, [32] * 1000)
-        self.memory.blockset(0xd800, 0xd800 + 1000, [self.text] * 1000)
+        self.memory[0x0400: 0x0400 + 1000] = 32
+        self.memory[0xd800: 0xd800 + 1000] = self.text
         self.cursor = 0
         self._fix_cursor(on=True)
 
