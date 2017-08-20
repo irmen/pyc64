@@ -44,7 +44,6 @@ class EmulatorWindow(tkinter.Tk):
         self.refreshtick = threading.Event()
         self.screen = ScreenAndMemory(columns=self.columns, rows=self.rows, sprites=self.sprites)
         self.screen.memory[0x00fb] = self.update_rate   # zero page $fb is unused, we use it for screen refresh speed setting
-        self.repaint_only_dirty = True     # set to False if you're continuously changing most of the screen
         self.canvas = tkinter.Canvas(self, width=2*self.bordersize + self.columns * 16, height=2*self.bordersize + self.rows * 16, borderwidth=0, highlightthickness=0)
         self.buttonbar = tkinter.Frame(self)
         resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
@@ -284,16 +283,12 @@ class EmulatorWindow(tkinter.Tk):
             self.canvas.itemconfigure(self.border3, fill=bordercolor)
             self.canvas.itemconfigure(self.border4, fill=bordercolor)
         prefix = "char-sh" if self.screen.shifted else "char"
-        if self.repaint_only_dirty:
-            dirty = iter(self.screen.getdirty())
-        else:
-            chars, colors = self.screen.getscreencopy()
-            dirty = enumerate(zip(chars, colors))
+        dirty = self.screen.getdirty()
         screencolor = self.tkcolor(self.screen.screen)
         for index, (char, color) in dirty:
             forecol = self.tkcolor(color)
             bm = self.charbitmaps[index]
-            bitmap = "@" + self.temp_graphics_folder + "/{:s}-{:02x}.xbm".format(prefix, char)
+            bitmap = "@{:s}/{:s}-{:02x}.xbm".format(self.temp_graphics_folder, prefix, char)
             self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
         sprites = self.screen.getsprites()
         for snum, sprite in sprites.items():

@@ -10,6 +10,9 @@ class EmulatorPlusWindow(EmulatorWindow):
     sprites = 0   # for now, a larger screen will overwrite the sprite pointers so you can't use sprites. also y can not be >255
     charset_shifted = "charset-shifted-2.png"   # define alternate charset
 
+    def __init__(self, title):
+        super(EmulatorPlusWindow, self).__init__(title)
+
     def welcome_message(self):
         topleft = self.screencor((0, 0))
         introtxt = self.canvas.create_text(topleft[0] + 16 * self.columns // 2, topleft[0] + 16 * (self.rows // 2 - 10),

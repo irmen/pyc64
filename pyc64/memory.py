@@ -59,25 +59,25 @@ class Memory:
         """get a 16-bit (2 bytes) value from memory, no aligning restriction"""
         e = "<" if self.endian == "little" else ">"
         s = "h" if signed else "H"
-        return struct.unpack(e+s, self.mem[address:address+2])[0]
+        return struct.unpack(e+s, self[address:address+2])[0]
 
     def setword(self, address, value, signed=False):
         """write a 16-bit (2 bytes) value to memory, no aligning restriction"""
         e = "<" if self.endian == "little" else ">"
         s = "h" if signed else "H"
-        self.mem[address:address+2] = struct.pack(e+s, value)
+        self[address:address+2] = struct.pack(e+s, value)
 
     def getlong(self, address, signed=False):
         """get a 32-bit (4 bytes) value from memory, no aligning restriction"""
         e = "<" if self.endian == "little" else ">"
         s = "i" if signed else "I"
-        return struct.unpack(e+s, self.mem[address:address+4])[0]
+        return struct.unpack(e+s, self[address:address+4])[0]
 
     def setlong(self, address, value, signed=False):
         """write a 32-bit (4 bytes) value to memory, no aligning restriction"""
         e = "<" if self.endian == "little" else ">"
         s = "i" if signed else "I"
-        self.mem[address:address+4] = struct.pack(e+s, value)
+        self[address:address+4] = struct.pack(e+s, value)
 
     def __getitem__(self, addr_or_slice):
         """get the value of a memory location or range of locations (via slice)"""
@@ -425,8 +425,8 @@ class ScreenAndMemory:
         '●': 113,       # circle
         '♥': 115,       # hearts
         '○': 119,       # open circle
-        '♣': 120,    # clubs
-        '♦': 122,    # diamonds
+        '♣': 120,       # clubs
+        '♦': 122,       # diamonds
     })
 
     def writestr(self, txt):
@@ -708,18 +708,20 @@ class ScreenAndMemory:
                 print("char mapping error: %d -> %d -> %d" % (c, sc, cc))
 
     def getdirty(self):
-        chars, colors = self.getscreencopy()
+        # this is pretty fast, on my machine about 0.001 second to diff a 64x50 screen (3200 chars)
+        # it usually is worth this extra millisecond because it can give huge savings
+        # in the actual screen redraw part
+        chars = self.memory[0x0400: 0x0400 + self.columns*self.rows]
+        colors = self.memory[0xd800: 0xd800 + self.columns*self.rows]
+        prev_chars = self._previous_checked_chars
+        prev_colors = self._previous_checked_colors
+
         if self._full_repaint:
             self._full_repaint = False
             result = [(i, (chars[i], colors[i])) for i in range(self.columns*self.rows)]
         else:
             result = [(i, (chars[i], colors[i])) for i in range(self.columns*self.rows)
-                      if chars[i] != self._previous_checked_chars[i] or colors[i] != self._previous_checked_colors[i]]
+                      if chars[i] != prev_chars[i] or colors[i] != prev_colors[i]]
         self._previous_checked_chars = chars
         self._previous_checked_colors = colors
         return result
-
-    def getscreencopy(self):
-        chars = self.memory[0x0400: 0x0400 + self.columns*self.rows]
-        colors = self.memory[0xd800: 0xd800 + self.columns*self.rows]
-        return chars, colors
