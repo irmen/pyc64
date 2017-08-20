@@ -14,25 +14,6 @@ import time
 import struct
 from collections import defaultdict
 
-colorpalette = (
-    0x000000,  # 0 = black
-    0xFFFFFF,  # 1 = white
-    0x68372B,  # 2 = red
-    0x70A4B2,  # 3 = cyan
-    0x6F3D86,  # 4 = purple
-    0x588D43,  # 5 = green
-    0x352879,  # 6 = blue
-    0xB8C76F,  # 7 = yellow
-    0x6F4F25,  # 8 = orange
-    0x433900,  # 9 = brown
-    0x9A6759,  # 10 = light red
-    0x444444,  # 11 = dark grey
-    0x6C6C6C,  # 12 = medium grey
-    0x9AD284,  # 13 = light green
-    0x6C5EB5,  # 14 = light blue
-    0x959595,  # 15 = light grey
-)
-
 
 class Memory:
     """
@@ -144,6 +125,25 @@ class Memory:
 
 
 class ScreenAndMemory:
+    colorpalette = (
+        0x000000,  # 0 = black
+        0xFFFFFF,  # 1 = white
+        0x68372B,  # 2 = red
+        0x70A4B2,  # 3 = cyan
+        0x6F3D86,  # 4 = purple
+        0x588D43,  # 5 = green
+        0x352879,  # 6 = blue
+        0xB8C76F,  # 7 = yellow
+        0x6F4F25,  # 8 = orange
+        0x433900,  # 9 = brown
+        0x9A6759,  # 10 = light red
+        0x444444,  # 11 = dark grey
+        0x6C6C6C,  # 12 = medium grey
+        0x9AD284,  # 13 = light green
+        0x6C5EB5,  # 14 = light blue
+        0x959595,  # 15 = light grey
+    )
+
     def __init__(self, columns=40, rows=25, sprites=8):
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff

@@ -9,6 +9,40 @@ class EmulatorPlusWindow(EmulatorWindow):
     windowgeometry = "+200+40"
     sprites = 0   # for now, a larger screen will overwrite the sprite pointers so you can't use sprites. also y can not be >255
     charset_shifted = "charset-shifted-2.png"   # define alternate charset
+    colorpalette = (
+        0x000000,  # 0 = black
+        0xFFFFFF,  # 1 = white
+        0x68372B,  # 2 = red
+        0x70A4B2,  # 3 = cyan
+        0x6F3D86,  # 4 = purple
+        0x588D43,  # 5 = green
+        0x352879,  # 6 = blue
+        0xB8C76F,  # 7 = yellow
+        0x6F4F25,  # 8 = orange
+        0x433900,  # 9 = brown
+        0x9A6759,  # 10 = light red
+        0x444444,  # 11 = dark grey
+        0x6C6C6C,  # 12 = medium grey
+        0x9AD284,  # 13 = light green
+        0x6C5EB5,  # 14 = light blue
+        0x959595,  # 15 = light grey
+        0x0000ff,
+        0x00ff00,
+        0x00ffff,
+        0xff0000,
+        0xff00ff,
+        0xffff00,
+        0x000080,
+        0x008000,
+        0x008080,
+        0x800000,
+        0x800080,
+        0x808000,
+        0x808080,
+        0x000000,
+        0x000000,
+        0x000000,
+    )
 
     def __init__(self, title):
         super(EmulatorPlusWindow, self).__init__(title)

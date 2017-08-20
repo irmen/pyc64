@@ -17,7 +17,7 @@ import queue
 import time
 from collections import deque
 from PIL import Image
-from .memory import ScreenAndMemory, colorpalette
+from .memory import ScreenAndMemory
 from .basic import BasicInterpreter
 from .shared import ResetMachineException
 from .python import PythonInterpreter
@@ -33,8 +33,11 @@ class EmulatorWindow(tkinter.Tk):
     windowgeometry = "+200+100"
     charset_normal = "charset-normal.png"
     charset_shifted = "charset-shifted.png"
+    colorpalette = ScreenAndMemory.colorpalette
 
     def __init__(self, title):
+        if len(self.colorpalette) not in (2, 4, 8, 16, 32, 64, 128, 256):
+            raise ValueError("colorpalette size not a valid power of 2")
         super().__init__()
         self.wm_title(title)
         self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "icon.gif"))
@@ -344,7 +347,7 @@ class EmulatorWindow(tkinter.Tk):
         return cc[0] * 2 + self.bordersize - 48, cc[1] * 2 + self.bordersize - 100
 
     def tkcolor(self, color):
-        return "#{:06x}".format(colorpalette[color % 16])
+        return "#{:06x}".format(self.colorpalette[color & len(self.colorpalette)-1])
 
     def reset_machine(self):
         self.screen.reset()
