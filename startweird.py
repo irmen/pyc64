@@ -1,18 +1,15 @@
-from pyc64.emulator import C64EmulatorWindow
+from pyc64.emulator import EmulatorWindowBase
 from pyc64.memory import ScreenAndMemory
 
 
-class EmulatorPlusWindow(C64EmulatorWindow):
+class EmulatorWindow(EmulatorWindowBase):
     columns = 64
     rows = 50
     bordersize = 32
-    sprites = 0   # for now, a larger screen will overwrite the sprite pointers so you can't use sprites. also y can not be >255
-    smoothscrolling = False   # tkinter can't smoothly scroll a window of this size
+    smoothscrolling = False  # tkinter is too slow for this window size to smooth scroll
+    # sprites = 0   # for now, a larger screen will overwrite the sprite pointers so you can't use sprites. also y can not be >255
     charset_shifted = "charset-shifted-2.png"   # define alternate charset
-    welcome_message = "WHOAAA !!!! This is what a C-64 with a 512x400 screen would look like!\n\n\n\n" \
-                      "pyc64 basic & function keys active\n\n" \
-                      "use 'gopy' to enter Python mode\n\n\n\n" \
-                      "(install the py64 library to be able to execute 6502 machine code)"
+    welcome_message = "This is a fictional machine that resembles a c64 only a little bit, but is totally different"
     colorpalette = (
         0x000000,  # 0 = black
         0xFFFFFF,  # 1 = white
@@ -48,14 +45,20 @@ class EmulatorPlusWindow(C64EmulatorWindow):
         0x000000,
     )
 
-    def _border_positions(self):
-        return super()._border_positions()
+
+class CustomScreenMemory(ScreenAndMemory):
+    def reset(self, hard=False):
+        super().reset(hard)
+        self.memory[0xd011] = 0  # override Vic control register 1 (yscroll etc)
+        self.memory[0xd016] = 0  # override Vic control register 2 (xscroll etc)
+        self.memory[0xd021] = 0
 
 
 def start():
-    screen = ScreenAndMemory(columns=EmulatorPlusWindow.columns, rows=EmulatorPlusWindow.rows, sprites=EmulatorPlusWindow.sprites)
-    emu = EmulatorPlusWindow(screen, "Commodore-64 \"PLUSPLUS\" 'emulator' in pure Python!")
+    screen = CustomScreenMemory(columns=EmulatorWindow.columns, rows=EmulatorWindow.rows, sprites=EmulatorWindow.sprites)
+    emu = EmulatorWindow(screen, "This is a fictional machine with a character/tile based screen!")
     emu.start()
+    screen.writestr("welcome!")
     emu.mainloop()
 
 

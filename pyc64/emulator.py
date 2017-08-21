@@ -24,31 +24,35 @@ from .shared import ResetMachineException
 from .python import PythonInterpreter
 
 
-class EmulatorWindow(tkinter.Tk):
+class EmulatorWindowBase(tkinter.Tk):
     temp_graphics_folder = "temp_gfx"
     update_rate = 1000 // 20    # 20 hz screen refresh rate
-    columns = 40
-    rows = 25
-    bordersize = 52
-    sprites = 8
+    columns = 0
+    rows = 0
+    bordersize = 0
+    sprites = 0
     smoothscrolling = True
-    windowgeometry = "+200+100"
+    windowgeometry = "+200+40"
     charset_normal = "charset-normal.png"
     charset_shifted = "charset-shifted.png"
-    colorpalette = ScreenAndMemory.colorpalette
+    colorpalette = []
+    welcome_message = "Welcome to the emulator!"
 
-    def __init__(self, title):
+    def __init__(self, screen, title):
         if len(self.colorpalette) not in (2, 4, 8, 16, 32, 64, 128, 256):
             raise ValueError("colorpalette size not a valid power of 2")
+        if self.columns <= 0 or self.columns > 128 or self.rows <=0 or self.rows > 128:
+            raise ValueError("row/col size invalid")
+        if self.bordersize < 0 or self.bordersize > 256:
+            raise ValueError("bordersize invalid")
+        if self.sprites < 0 or self.sprites > 256:
+            raise ValueError("sprites invalid")
         super().__init__()
         self.wm_title(title)
         self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "icon.gif"))
         self.wm_iconphoto(self, self.appicon)
         self.geometry(self.windowgeometry)
-        self.hertztick = threading.Event()
-        self.refreshtick = threading.Event()
-        self.screen = ScreenAndMemory(columns=self.columns, rows=self.rows, sprites=self.sprites)
-        self.screen.memory[0x00fb] = self.update_rate   # zero page $fb is unused, we use it for screen refresh speed setting
+        self.screen = screen
         self.canvas = tkinter.Canvas(self, width=2 * self.bordersize + self.columns * 16, height=2 * self.bordersize + self.rows * 16,
                                      borderwidth=0, highlightthickness=0, background="black",
                                      xscrollincrement = 1, yscrollincrement = 1)
@@ -56,8 +60,7 @@ class EmulatorWindow(tkinter.Tk):
         resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
         resetbut.pack(side=tkinter.LEFT)
         self.buttonbar.pack(fill=tkinter.X)
-        topleft = self.screencor((0, 0))
-        botright = self.screencor((self.columns, self.rows))
+        self.refreshtick = threading.Event()
         self.spritebitmapbytes = [None] * self.sprites
         self.spritebitmaps = []
         self.create_bitmaps()
@@ -76,50 +79,37 @@ class EmulatorWindow(tkinter.Tk):
                                            foreground=self.tkcolor(i + 8), background=None, anchor=tkinter.NW, tags="spritebitmap")
             self.spritebitmaps.insert(0, bm)
         # the borders:
-        b1, b2, b3, b4 = self._border_positions()
-        self.border1 = self.canvas.create_rectangle(*b1, outline="", fill="#000")
-        self.canvas.tag_raise(self.border1)
-        self.border2 = self.canvas.create_rectangle(*b2, outline="", fill="#000")
-        self.canvas.tag_raise(self.border2)
-        self.border3 = self.canvas.create_rectangle(*b3, outline="", fill="#000")
-        self.canvas.tag_raise(self.border3)
-        self.border4 = self.canvas.create_rectangle(*b4, outline="", fill="#000")
-        self.canvas.tag_raise(self.border4)
+        if self.bordersize > 0:
+            b1, b2, b3, b4 = self._border_positions()
+            self.border1 = self.canvas.create_rectangle(*b1, outline="", fill="#000")
+            self.canvas.tag_raise(self.border1)
+            self.border2 = self.canvas.create_rectangle(*b2, outline="", fill="#000")
+            self.canvas.tag_raise(self.border2)
+            self.border3 = self.canvas.create_rectangle(*b3, outline="", fill="#000")
+            self.canvas.tag_raise(self.border3)
+            self.border4 = self.canvas.create_rectangle(*b4, outline="", fill="#000")
+            self.canvas.tag_raise(self.border4)
         self.bind("<KeyPress>", lambda event: self.keypress(*self._keyevent(event)))
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
         self.canvas.pack()
-        self.interpret_thread = None
-        self.interpreter = None
-        self.switch_interpreter("basic")
-        self._cyclic_herztick()
-        self._cyclic_blink_cursor()
+
+    def start(self):
         self._cyclic_repaint()
-        self.welcome_message()
+        self._welcome_message()
 
-    def welcome_message(self):
-        topleft = self.screencor((0, 0))
-        introtxt = self.canvas.create_text(topleft[0] + 16 * self.columns // 2, topleft[0] + 16 * (self.rows // 2 - 2),
-                                           fill="white", justify=tkinter.CENTER,
-                                           text="pyc64 basic & function keys active\n\n"
-                                                "use 'gopy' to enter Python mode\n\n\n\n"
-                                                "(install the py64 library to be able to execute 6502 machine code)")
-        self.after(4000, lambda: self.canvas.delete(introtxt))
-
-    def _cyclic_herztick(self):
-        self.after(1000 // self.screen.hz, self._cyclic_herztick)
-        self.screen.hztick()
-        self.hertztick.set()
-
-    def _cyclic_blink_cursor(self):
-        self.cyclic_blink_after = self.after(self.screen.cursor_blink_rate, self._cyclic_blink_cursor)
-        self.screen.blink_cursor()
+    def _welcome_message(self):
+        if self.welcome_message:
+            topleft = self.screencor((0, 0))
+            introtxt = self.canvas.create_text(topleft[0] + 16 * self.columns // 2, topleft[0] + 16 * (self.rows // 2 - 2),
+                                               fill="white", justify=tkinter.CENTER,
+                                               text=self.welcome_message)
+            self.after(4000, lambda: self.canvas.delete(introtxt))
 
     def _cyclic_repaint(self):
-        update_rate = max(10, self.screen.memory[0x00fb])
         starttime = time.perf_counter()
         self.repaint()
         duration = time.perf_counter() - starttime
-        remaining_timer_budget = (update_rate/1000)-duration
+        remaining_timer_budget = (self.update_rate/1000)-duration
         if remaining_timer_budget < 0.001:
             print("warning: screen refresh took too long! ", remaining_timer_budget, file=sys.stderr)
             remaining_timer_budget = 0.001
@@ -130,6 +120,189 @@ class EmulatorWindow(tkinter.Tk):
         if not c or ord(c) > 255:
             c = event.keysym
         return c, event.state, event.x, event.y
+
+    def keypress(self, char, state, mousex, mousey):
+        pass   # override in subclass
+
+    def keyrelease(self, char, state, mousex, mousey):
+        pass   # override in subclass
+
+    def repaint(self):
+        # set bordercolor, done by setting the 4 border rectangles
+        # (screen color done by setting the background color of all character bitmaps,
+        #  this is a lot faster than using many transparent bitmaps!)
+        if self.bordersize > 0:
+            bordercolor = self.tkcolor(self.screen.border)
+            if self.canvas.itemcget(self.border1, "fill") != bordercolor:
+                self.canvas.itemconfigure(self.border1, fill=bordercolor)
+                self.canvas.itemconfigure(self.border2, fill=bordercolor)
+                self.canvas.itemconfigure(self.border3, fill=bordercolor)
+                self.canvas.itemconfigure(self.border4, fill=bordercolor)
+            # adjust borders
+            bc1_new, bc2_new, bc3_new, bc4_new = self._border_positions()
+            bc1 = self.canvas.coords(self.border1)
+            bc2 = self.canvas.coords(self.border2)
+            bc3 = self.canvas.coords(self.border3)
+            bc4 = self.canvas.coords(self.border4)
+            if bc1_new != bc1:
+                self.canvas.coords(self.border1, bc1_new)
+            if bc2_new != bc2:
+                self.canvas.coords(self.border2, bc2_new)
+            if bc3_new != bc3:
+                self.canvas.coords(self.border3, bc3_new)
+            if bc4_new != bc4:
+                self.canvas.coords(self.border4, bc4_new)
+        # characters
+        prefix = "char-sh" if self.screen.shifted else "char"
+        dirty = self.screen.getdirty()
+        screencolor = self.tkcolor(self.screen.screen)
+        for index, (char, color) in dirty:
+            forecol = self.tkcolor(color)
+            bm = self.charbitmaps[index]
+            bitmap = "@{:s}/{:s}-{:02x}.xbm".format(self.temp_graphics_folder, prefix, char)
+            self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
+        # smooth scroll
+        if self.smoothscrolling:
+            xys = self.smoothscroll(self.screen.scrollx, self.screen.scrolly)
+            self.canvas.xview_moveto(0)
+            self.canvas.yview_moveto(0)
+            self.canvas.xview_scroll(xys[0], tkinter.UNITS)
+            self.canvas.yview_scroll(xys[1], tkinter.UNITS)
+        # sprites
+        sprites = self.screen.getsprites()
+        for snum, sprite in sprites.items():
+            configure = {}
+            # sprite double sizes
+            current_bm = self.canvas.itemcget(self.spritebitmaps[snum], "bitmap")
+            extension = "-2x" if sprite.doublex else ""
+            extension += "-2y" if sprite.doubley else ""
+            if sprite.doublex != ("-2x" in current_bm) or sprite.doubley != ("-2y" in current_bm):
+                # size change
+                configure["bitmap"] = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
+            # bitmapdata
+            if sprite.bitmap != self.spritebitmapbytes[snum]:
+                # regenerate sprite bitmap
+                self.create_sprite_bitmap(snum, sprite.bitmap)
+                self.spritebitmapbytes[snum] = sprite.bitmap
+                # first, configure another bitmap to force the old one out
+                self.canvas.itemconfigure(self.spritebitmaps[snum], bitmap="@{:s}/char-00.xbm".format(self.temp_graphics_folder))
+                # schedule reloading the sprite bitmap:
+                configure["bitmap"] = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
+            # sprite enabled
+            tkstate = tkinter.NORMAL if sprite.enabled else tkinter.HIDDEN
+            if self.canvas.itemcget(self.spritebitmaps[snum], "state") != tkstate:
+                configure["state"] = tkstate
+            # sprite colors
+            spritecolor = self.tkcolor(sprite.color)
+            if self.canvas.itemcget(self.spritebitmaps[snum], "foreground") != spritecolor:
+                configure["foreground"] = spritecolor
+            # sprite positions
+            x, y = self.screencor_sprite((sprite.x, sprite.y))
+            self.canvas.coords(self.spritebitmaps[snum], x - 2 * self.screen.scrollx, y - 2 * self.screen.scrolly)
+            if configure:
+                # reconfigure all changed properties in one go
+                self.canvas.itemconfigure(self.spritebitmaps[snum], **configure)
+        self.refreshtick.set()
+
+    def smoothscroll(self, xs, ys):
+        return -self.screen.scrollx * 2, -self.screen.scrolly * 2
+
+    def create_bitmaps(self):
+        os.makedirs(self.temp_graphics_folder, exist_ok=True)
+        with open(self.temp_graphics_folder + "/readme.txt", "w") as f:
+            f.write("this is a temporary folder to cache pyc64 files for tkinter graphics bitmaps.\n")
+        # normal
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_normal))) as source_chars:
+            for i in range(256):
+                filename = self.temp_graphics_folder + "/char-{:02x}.xbm".format(i)
+                chars = source_chars.copy()
+                row, col = divmod(i, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
+                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                ci = ci.convert(mode="1", dither=None)
+                ci.save(filename, "xbm")
+        # shifted
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_shifted))) as source_chars:
+            for i in range(256):
+                filename = self.temp_graphics_folder + "/char-sh-{:02x}.xbm".format(i)
+                chars = source_chars.copy()
+                row, col = divmod(i, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
+                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                ci = ci.convert(mode="1", dither=None)
+                ci.save(filename, "xbm")
+        # monochrome sprites (including their double-size variants)
+        sprites = self.screen.getsprites()
+        for i, sprite in sprites.items():
+            self.create_sprite_bitmap(i, sprite.bitmap)
+            self.spritebitmapbytes[i] = sprite.bitmap
+
+    def _border_positions(self):
+        if self.smoothscrolling:
+            sx, sy = self.smoothscroll(self.screen.scrollx, self.screen.scrolly)
+        else:
+            sx, sy = 0, 0
+        return [
+            [sx, sy,
+                2 * self.bordersize + self.columns * 16 + sx, self.bordersize + sy],
+            [self.bordersize + self.columns * 16 + sx, self.bordersize + sy,
+                2 * self.bordersize + self.columns * 16 + sx, self.bordersize + self.rows * 16 + sy],
+            [sx, self.bordersize + self.rows * 16 + sy,
+                2 * self.bordersize + self.columns * 16 + sx, 2 * self.bordersize + self.rows * 16 + sy],
+            [sx, self.bordersize + sy,
+                self.bordersize + sx, self.bordersize + self.rows * 16 + sy]
+        ]
+
+    def screencor(self, cxy):
+        return self.bordersize + cxy[0] * 16, self.bordersize + cxy[1] * 16
+
+    def screencor_sprite(self, cxy):
+        return self.bordersize + cxy[0] * 2, self.bordersize + cxy[1] * 2
+
+    def tkcolor(self, color):
+        return "#{:06x}".format(self.colorpalette[color & len(self.colorpalette) - 1])
+
+    def create_sprite_bitmap(self, spritenum, bitmapbytes):
+        raise NotImplementedError("implement in subclass")
+
+    def reset_machine(self):
+        self.screen.reset()
+        self.repaint()
+
+
+class C64EmulatorWindow(EmulatorWindowBase):
+    columns = 40
+    rows = 25
+    bordersize = 52
+    sprites = 8
+    colorpalette = ScreenAndMemory.colorpalette
+    welcome_message = "pyc64 basic & function keys active\n\n" \
+                      "use 'gopy' to enter Python mode\n\n\n\n" \
+                      "(install the py64 library to be able to execute 6502 machine code)"
+
+    def __init__(self, screen, title):
+        super().__init__(screen, title)
+        self.screen.memory[0x00fb] = EmulatorWindowBase.update_rate
+        self.hertztick = threading.Event()
+        self.interpret_thread = None
+        self.interpreter = None
+
+    def start(self):
+        super().start()
+        self.switch_interpreter("basic")
+        self._cyclic_herztick()
+        self._cyclic_blink_cursor()
+
+    def _cyclic_herztick(self):
+        self.after(1000 // self.screen.hz, self._cyclic_herztick)
+        self.screen.hztick()
+        self.hertztick.set()
+
+    def _cyclic_blink_cursor(self):
+        self.cyclic_blink_after = self.after(self.screen.cursor_blink_rate, self._cyclic_blink_cursor)
+        self.screen.blink_cursor()
+
+    @property
+    def update_rate(self):
+        return max(10, self.screen.memory[0x00fb])
 
     def keypress(self, char, state, mousex, mousey):
         # print("keypress", repr(char), state)
@@ -218,7 +391,7 @@ class EmulatorWindow(tkinter.Tk):
             elif char == "Prior":     # pageup = RESTORE (outside running program)
                 if not self.interpret_thread.running_something:
                     self.screen.reset()
-                    self.screen.memory[0x00fb] = self.update_rate
+                    self.screen.memory[0x00fb] = EmulatorWindowBase.update_rate
                     self.interpreter.write_prompt("\n")
 
     def execute_direct_line(self, line):
@@ -238,7 +411,7 @@ class EmulatorWindow(tkinter.Tk):
             self.interpreter.stop()
         self.hertztick.set()
         self.screen.reset()
-        self.screen.memory[0x00fb] = self.update_rate
+        self.screen.memory[0x00fb] = EmulatorWindowBase.update_rate
         self.repaint()
         if interpreter == "basic":
             self.interpreter = BasicInterpreter(self.screen)
@@ -255,138 +428,6 @@ class EmulatorWindow(tkinter.Tk):
         else:
             raise ValueError("invalid interpreter")
 
-    def keyrelease(self, char, state, mousex, mousey):
-        # print("keyrelease", repr(char), state, keycode)
-        pass
-
-    def create_bitmaps(self):
-        os.makedirs(self.temp_graphics_folder, exist_ok=True)
-        with open(self.temp_graphics_folder + "/readme.txt", "w") as f:
-            f.write("this is a temporary folder to cache pyc64 files for tkinter graphics bitmaps.\n")
-        # normal
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_normal))) as source_chars:
-            for i in range(256):
-                filename = self.temp_graphics_folder + "/char-{:02x}.xbm".format(i)
-                chars = source_chars.copy()
-                row, col = divmod(i, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
-                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                ci = ci.convert(mode="1", dither=None)
-                ci.save(filename, "xbm")
-        # shifted
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_shifted))) as source_chars:
-            for i in range(256):
-                filename = self.temp_graphics_folder + "/char-sh-{:02x}.xbm".format(i)
-                chars = source_chars.copy()
-                row, col = divmod(i, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
-                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                ci = ci.convert(mode="1", dither=None)
-                ci.save(filename, "xbm")
-        # monochrome sprites (including their double-size variants)
-        sprites = self.screen.getsprites()
-        for i, sprite in sprites.items():
-            self.create_sprite_bitmap(i, sprite.bitmap)
-            self.spritebitmapbytes[i] = sprite.bitmap
-
-    def _border_positions(self):
-        top_ya = bottom_ya = left_xa = right_xa = 0
-        if self.smoothscrolling:
-            if self.screen.rsel24:
-                top_ya = 8
-                bottom_ya = -8
-            if self.screen.csel38:
-                left_xa = 14
-                right_xa = -18
-            # compensate for the smooth scrolling (where the canvas itself is moved):
-            sx = -self.screen.scrollx * 2
-            sy = 6 - self.screen.scrolly * 2
-        else:
-            sx = sy = 0
-        return [
-            (sx, sy,
-                2 * self.bordersize + self.columns * 16 + sx, self.bordersize + top_ya + sy),
-            (self.bordersize + self.columns * 16 + right_xa + sx, self.bordersize + sy,
-                2 * self.bordersize + self.columns * 16 + sx, self.bordersize + self.rows * 16 + sy),
-            (sx, self.bordersize + self.rows * 16 + bottom_ya + sy,
-                2 * self.bordersize + self.columns * 16 + sx, 2 * self.bordersize + self.rows * 16 + sy),
-            (sx, self.bordersize + sy,
-                self.bordersize + left_xa + sx, self.bordersize + self.rows * 16 + sy)
-        ]
-
-    def repaint(self):
-        # set bordercolor, done by setting the 4 border rectangles
-        # (screen color done by setting the background color of all character bitmaps,
-        #  this is a lot faster than using many transparent bitmaps!)
-        bordercolor = self.tkcolor(self.screen.border)
-        if self.canvas.itemcget(self.border1, "fill") != bordercolor:
-            self.canvas.itemconfigure(self.border1, fill=bordercolor)
-            self.canvas.itemconfigure(self.border2, fill=bordercolor)
-            self.canvas.itemconfigure(self.border3, fill=bordercolor)
-            self.canvas.itemconfigure(self.border4, fill=bordercolor)
-        # adjust borders
-        bc1_new, bc2_new, bc3_new, bc4_new = self._border_positions()
-        bc1 = tuple(self.canvas.coords(self.border1))
-        bc2 = tuple(self.canvas.coords(self.border2))
-        bc3 = tuple(self.canvas.coords(self.border3))
-        bc4 = tuple(self.canvas.coords(self.border4))
-        if bc1_new != bc1:
-            self.canvas.coords(self.border1, bc1_new)
-        if bc2_new != bc2:
-            self.canvas.coords(self.border2, bc2_new)
-        if bc3_new != bc3:
-            self.canvas.coords(self.border3, bc3_new)
-        if bc4_new != bc4:
-            self.canvas.coords(self.border4, bc4_new)
-        # characters
-        prefix = "char-sh" if self.screen.shifted else "char"
-        dirty = self.screen.getdirty()
-        screencolor = self.tkcolor(self.screen.screen)
-        for index, (char, color) in dirty:
-            forecol = self.tkcolor(color)
-            bm = self.charbitmaps[index]
-            bitmap = "@{:s}/{:s}-{:02x}.xbm".format(self.temp_graphics_folder, prefix, char)
-            self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
-        # smooth scroll
-        if self.smoothscrolling:
-            self.canvas.xview_moveto(0)
-            self.canvas.yview_moveto(0)
-            self.canvas.xview_scroll(-self.screen.scrollx * 2, tkinter.UNITS)
-            self.canvas.yview_scroll(-(self.screen.scrolly - 3) * 2, tkinter.UNITS)
-        # sprites
-        sprites = self.screen.getsprites()
-        for snum, sprite in sprites.items():
-            configure = {}
-            # sprite double sizes
-            current_bm = self.canvas.itemcget(self.spritebitmaps[snum], "bitmap")
-            extension = "-2x" if sprite.doublex else ""
-            extension += "-2y" if sprite.doubley else ""
-            if sprite.doublex != ("-2x" in current_bm) or sprite.doubley != ("-2y" in current_bm):
-                # size change
-                configure["bitmap"] = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
-            # bitmapdata
-            if sprite.bitmap != self.spritebitmapbytes[snum]:
-                # regenerate sprite bitmap
-                self.create_sprite_bitmap(snum, sprite.bitmap)
-                self.spritebitmapbytes[snum] = sprite.bitmap
-                # first, configure another bitmap to force the old one out
-                self.canvas.itemconfigure(self.spritebitmaps[snum], bitmap="@{:s}/char-00.xbm".format(self.temp_graphics_folder))
-                # schedule reloading the sprite bitmap:
-                configure["bitmap"] = "@{:s}/sprite-{:d}{:s}.xbm".format(self.temp_graphics_folder, snum, extension)
-            # sprite enabled
-            tkstate = tkinter.NORMAL if sprite.enabled else tkinter.HIDDEN
-            if self.canvas.itemcget(self.spritebitmaps[snum], "state") != tkstate:
-                configure["state"] = tkstate
-            # sprite colors
-            spritecolor = self.tkcolor(sprite.color)
-            if self.canvas.itemcget(self.spritebitmaps[snum], "foreground") != spritecolor:
-                configure["foreground"] = spritecolor
-            # sprite positions
-            x, y = self.screencor_sprite((sprite.x, sprite.y))
-            self.canvas.coords(self.spritebitmaps[snum], x - 2 * self.screen.scrollx, y - 2 * self.screen.scrolly)
-            if configure:
-                # reconfigure all changed properties in one go
-                self.canvas.itemconfigure(self.spritebitmaps[snum], **configure)
-        self.refreshtick.set()
-
     def create_sprite_bitmap(self, spritenum, bitmapbytes):
         with Image.frombytes("1", (24, 21), bytes(bitmapbytes)) as si:
             si = si.resize((48, 42), 0)
@@ -398,21 +439,33 @@ class EmulatorWindow(tkinter.Tk):
             dxy = si.resize((96, 84), 0)
             dxy.save(self.temp_graphics_folder + "/sprite-{:d}-2x-2y.xbm".format(spritenum), "xbm")
 
-    def screencor(self, cc):
-        return self.bordersize + cc[0] * 16, self.bordersize + cc[1] * 16
-
     def screencor_sprite(self, cc):
-        # sprite upper left = (24, 50) so subtract from regular origin (self.borderwidth, self.borderwidth) (scaled by 2 pixels)
+        # on the C-64, sprite upper left = (24, 50)
+        # so subtract from regular origin (self.borderwidth, self.borderwidth) (scaled by 2 pixels)
         return cc[0] * 2 + self.bordersize - 48, cc[1] * 2 + self.bordersize - 100
 
-    def tkcolor(self, color):
-        return "#{:06x}".format(self.colorpalette[color & len(self.colorpalette) - 1])
+    def smoothscroll(self, xs, ys):
+        # c64 smooth scrolling in Y axis has offset of 3 pixels
+        return -self.screen.scrollx * 2, -(self.screen.scrolly - 3) * 2
+
+    def _border_positions(self):
+        b1, b2, b3, b4 = super()._border_positions()
+        # adjust borders for the 24 row and/or 38 column mode
+        # left_xa = right_xa = top_ya = bottom_ya = 0
+        if self.screen.rsel24:
+            b1[3] += 8
+            b2[1] += 8
+            b4[1] += 8
+            b3[1] -= 8
+        if self.screen.csel38:
+            b4[2] += 14
+            b2[0] -= 18
+        return b1, b2, b3, b4
 
     def reset_machine(self):
-        self.screen.reset()
-        self.screen.memory[0x00fb] = self.update_rate
+        super().reset_machine()
+        self.screen.memory[0x00fb] = EmulatorWindowBase.update_rate
         self.switch_interpreter("basic")
-        self.repaint()
 
 
 class InterpretThread(threading.Thread):
@@ -522,8 +575,7 @@ class InterpretThread(threading.Thread):
         return ''
 
     def do_sync_command(self):
-        update_rate = max(10, self.window.screen.memory[0x00fb])
-        self.window.refreshtick.wait(update_rate / 1000 * 2)
+        self.window.refreshtick.wait(self.window.update_rate / 1000 * 2)
         self.window.refreshtick.clear()
 
     def submit_line(self, line):
@@ -541,7 +593,9 @@ class InterpretThread(threading.Thread):
 
 
 def start():
-    emu = EmulatorWindow("Commodore-64 'emulator' in pure Python!")
+    screen = ScreenAndMemory(columns=C64EmulatorWindow.columns, rows=C64EmulatorWindow.rows, sprites=C64EmulatorWindow.sprites)
+    emu = C64EmulatorWindow(screen, "Commodore-64 'emulator' in pure Python!")
+    emu.start()
     emu.mainloop()
 
 
