@@ -10,6 +10,7 @@ License: MIT open-source.
 
 import io
 import os
+import sys
 import tkinter
 import pkgutil
 import threading
@@ -112,8 +113,14 @@ class EmulatorWindow(tkinter.Tk):
 
     def _cyclic_repaint(self):
         update_rate = max(10, self.screen.memory[0x00fb])
-        self.cyclic_repaint_after = self.after(update_rate, self._cyclic_repaint)
+        starttime = time.perf_counter()
         self.repaint()
+        duration = time.perf_counter() - starttime
+        remaining_timer_budget = (update_rate/1000)-duration
+        if remaining_timer_budget < 0.001:
+            print("warning: screen refresh took too long! ", remaining_timer_budget, file=sys.stderr)
+            remaining_timer_budget = 0.001
+        self.cyclic_repaint_after = self.after(int(remaining_timer_budget * 1000), self._cyclic_repaint)
 
     def _keyevent(self, event):
         c = event.char
