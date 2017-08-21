@@ -132,7 +132,7 @@ class BasicInterpreter:
             else:
                 # direct mode
                 # if there's no char on the last pos of the first line, only evaluate the first line
-                if len(line) >= self.screen.columns and line[self.screen.columns-1] == ' ':
+                if len(line) >= self.screen.columns and line[self.screen.columns - 1] == ' ':
                     line = line[:self.screen.columns]
                 if self.process_programline_entry(line):
                     return
@@ -418,24 +418,48 @@ class BasicInterpreter:
             raise BasicError("illegal quantity")
 
     def execute_scroll(self, cmd):
+        # scroll [direction][,fillchar][,fillcolor][,amount] OR scroll direction,x1,y1,x2,y2[,fillchar][,fillcolor][,amount]
         if cmd.startswith("sC"):
             cmd = cmd[2:]
         elif cmd.startswith("scroll"):
             cmd = cmd[6:]
         direction = eval("(" + cmd + ")", self.symbols)
         scrolldir = 'u'
+        x1, y1 = 0, 0
+        x2, y2 = self.screen.columns - 1, self.screen.rows - 1
         fillsc = 32
+        amount = 1
         fillcolor = self.screen.text
-        if len(direction) >= 1:
-            scrolldir = direction[0]
-        if len(direction) >= 2:
-            fillsc = direction[1]
-        if len(direction) == 3:
-            fillcolor = direction[2]
-        if len(direction) > 3:
-            raise BasicError("syntax")
+        if len(direction) >= 5:
+            scrolldir, x1, y1, x2, y2 = direction[0:5]
+            if len(direction) >= 6:
+                fillsc = direction[5]
+            if len(direction) >= 7:
+                fillcolor = direction[6]
+            if len(direction) >= 8:
+                amount = direction[7]
+            if len(direction) > 8:
+                raise BasicError("syntax")
+        else:
+            if len(direction) >= 1:
+                scrolldir = direction[0]
+            if len(direction) >= 2:
+                fillsc = direction[1]
+            if len(direction) >= 3:
+                fillcolor = direction[2]
+            if len(direction) >= 4:
+                amount = direction[3]
+            if len(direction) > 4:
+                raise BasicError("syntax")
+        if x1 < 0 or x1 >= self.screen.columns or x2 < 0 or x2 >= self.screen.columns or\
+                y1 < 0 or y1 >= self.screen.rows or y2 < 0 or y2 >= self.screen.rows:
+            raise BasicError("illegal quantity")
+        if amount <= 0 or amount > max(self.screen.columns, self.screen.rows):
+            raise BasicError("illegal quantity")
         if scrolldir in ("u", "d", "l", "r", "ul", "ur", "dl", "dr", "lu", "ru", "ld", "rd"):
-            self.screen.scroll('u' in scrolldir, 'd' in scrolldir, 'l' in scrolldir, 'r' in scrolldir, (fillsc, fillcolor))
+            self.screen.scroll((x1, y1), (x2, y2),
+                               'u' in scrolldir, 'd' in scrolldir, 'l' in scrolldir, 'r' in scrolldir,
+                               (fillsc, fillcolor), amount)
         else:
             raise BasicError("scroll direction")
 

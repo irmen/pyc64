@@ -86,8 +86,8 @@ def do_load(screen, arg):
         with open("drive8/" + filename, "rb") as file:
             address = struct.unpack("<H", file.read(2))[0]
             prog = file.read()
-        screen.writestr("loading from ${:04x} to ${:04x}...\n".format(address, address+len(prog)))
-        screen.memory[address: address+len(prog)] = prog
+        screen.writestr("loading from ${:04x} to ${:04x}...\n".format(address, address + len(prog)))
+        screen.memory[address: address + len(prog)] = prog
         visible = b" abcdefghijklmnopqrstuvwxyz1234567890-=`~!@#$%^&*()_+[];:'\",.<>/?"
         return {
             0: "list 3-",
@@ -98,7 +98,7 @@ def do_load(screen, arg):
             6: "maybe it contains machine code",
             7: "that you can call via sys...",
             8: "the first 30 printable chars are:",
-            9: ">>> "+"".join(chr(x) if x in visible else ' ' for x in screen.memory[address: address+30]),
+            9: ">>> " + "".join(chr(x) if x in visible else ' ' for x in screen.memory[address: address + 30]),
             10: "(usually a sys address is shown)",
             11: "---------------",
         }

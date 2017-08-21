@@ -33,13 +33,13 @@ class Monitor(py65.monitor.Monitor):
 class CPU(py65.devices.mpu6502.MPU):
     def run(self, pc=None, microsleep=None):
         end_address = 0xffff
-        self.stPushWord(end_address-1)   # push a sentinel return address
+        self.stPushWord(end_address - 1)   # push a sentinel return address
         if pc is not None:
             self.pc = pc
         stopcodes = {0x00}        # BRK
         instructions = 0
         while True:
-            if self.memory[self.pc] == 0x4c and self.WordAt(self.pc+1) == self.pc:
+            if self.memory[self.pc] == 0x4c and self.WordAt(self.pc + 1) == self.pc:
                 # JMP to itself, instead of looping forever we also consider this a program end
                 time.sleep(2)
                 break
