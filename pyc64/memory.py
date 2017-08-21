@@ -103,7 +103,10 @@ class Memory:
                 # there's no address in the slice that's hooked so we can write fast
                 if type(value) is int:
                     value = bytes([value]) * len(range(*addr_or_slice.indices(self.size)))
-                self.mem[addr_or_slice] = value
+                try:
+                    self.mem[addr_or_slice] = value
+                except TypeError as x:
+                    print(repr(value), x)  # XXX
         else:
             raise TypeError("invalid address type")
 
@@ -192,6 +195,9 @@ class ScreenAndMemory:
             self.jiffieclock_epoch = time.perf_counter() - jiffies / self.hz
             return newval
 
+        def write_controlregister(address, oldval, newval):
+            self._full_repaint = newval & 7 != oldval & 7    # smooth scrolling is done
+
         self.memory.intercept_read(160, read_jiffieclock)
         self.memory.intercept_read(161, read_jiffieclock)
         self.memory.intercept_read(162, read_jiffieclock)
@@ -200,6 +206,8 @@ class ScreenAndMemory:
         self.memory.intercept_write(162, write_jiffieclock)
         self.memory.intercept_write(53272, write_shifted)
         self.memory.intercept_write(53281, write_screencolor)
+        self.memory.intercept_write(53270, write_controlregister)
+        self.memory.intercept_write(53265, write_controlregister)
 
     def reset(self, hard=False):
         self._full_repaint = True
@@ -228,6 +236,8 @@ class ScreenAndMemory:
         self.memory.setword(0x0283, 0xa000)  # basic end
         self.memory[0x0288] = 0x0400 // 256   # screen buffer pointer
         self.memory[0x02a6] = 1    # we're a PAL machine
+        self.memory[0xd011] = 27   # Vic control register 1 (yscroll etc)
+        self.memory[0xd016] = 200  # Vic control register 2 (xscroll etc)
         self.memory[0xa000:0xc000] = 96    # basic ROM are all RTS instructions
         self.memory[0xe000:0x10000] = 96     # kernal ROM are all RTS instructions
         self.jiffieclock_epoch = time.perf_counter()
@@ -271,6 +281,22 @@ class ScreenAndMemory:
             self.memory[53272] |= 2
         else:
             self.memory[53272] &= ~2
+
+    @property
+    def scrollx(self):
+        return self.memory[53270] & 7
+
+    @scrollx.setter
+    def scrollx(self, value):
+        self.memory[53270] = (self.memory[53270] & 248) | (value & 7)
+
+    @property
+    def scrolly(self):
+        return self.memory[53265] & 7
+
+    @scrolly.setter
+    def scrolly(self, value):
+        self.memory[53265] = (self.memory[53265] & 248) | (value & 7)
 
     @property
     def cursor_enabled(self):
@@ -741,14 +767,6 @@ class ScreenAndMemory:
             return "".join(chr(self._screen2petscii(c)) for c in screencodes)
         else:
             return "".join(chr(c) for c in screencodes)
-
-    @classmethod
-    def test_screencode_mappings(cls):
-        for c in range(32, 128):
-            sc = cls._petscii2screen(c)
-            cc = cls._screen2petscii(sc)
-            if cc != c:
-                print("char mapping error: %d -> %d -> %d" % (c, sc, cc))
 
     def getdirty(self):
         # this is pretty fast, on my machine about 0.001 second to diff a 64x50 screen (3200 chars)

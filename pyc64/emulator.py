@@ -48,7 +48,7 @@ class EmulatorWindow(tkinter.Tk):
         self.screen = ScreenAndMemory(columns=self.columns, rows=self.rows, sprites=self.sprites)
         self.screen.memory[0x00fb] = self.update_rate   # zero page $fb is unused, we use it for screen refresh speed setting
         self.canvas = tkinter.Canvas(self, width=2 * self.bordersize + self.columns * 16, height=2 * self.bordersize + self.rows * 16,
-                                     borderwidth=0, highlightthickness=0)
+                                     borderwidth=0, highlightthickness=0, background="black")
         self.buttonbar = tkinter.Frame(self)
         resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
         resetbut.pack(side=tkinter.LEFT)
@@ -296,6 +296,13 @@ class EmulatorWindow(tkinter.Tk):
             bm = self.charbitmaps[index]
             bitmap = "@{:s}/{:s}-{:02x}.xbm".format(self.temp_graphics_folder, prefix, char)
             self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
+            ccor = divmod(index, self.columns)
+            sx, sy = self.screencor((ccor[1], ccor[0]))
+            sx += self.screen.scrollx * 2
+            sy += (self.screen.scrolly - 3) * 2
+            sc = self.canvas.coords(bm)
+            if sx != sc[0] or sy != sc[1]:
+                self.canvas.coords(bm, sx, sy)
         sprites = self.screen.getsprites()
         for snum, sprite in sprites.items():
             configure = {}
@@ -485,7 +492,6 @@ class InterpretThread(threading.Thread):
 
 
 def start():
-    ScreenAndMemory.test_screencode_mappings()
     emu = EmulatorWindow("Commodore-64 'emulator' in pure Python!")
     emu.mainloop()
 

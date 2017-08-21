@@ -430,27 +430,30 @@ class BasicInterpreter:
         fillsc = 32
         amount = 1
         fillcolor = self.screen.text
-        if len(direction) >= 5:
-            scrolldir, x1, y1, x2, y2 = direction[0:5]
-            if len(direction) >= 6:
-                fillsc = direction[5]
-            if len(direction) >= 7:
-                fillcolor = direction[6]
-            if len(direction) >= 8:
-                amount = direction[7]
-            if len(direction) > 8:
-                raise BasicError("syntax")
+        if type(direction) is str:
+            scrolldir = direction
         else:
-            if len(direction) >= 1:
-                scrolldir = direction[0]
-            if len(direction) >= 2:
-                fillsc = direction[1]
-            if len(direction) >= 3:
-                fillcolor = direction[2]
-            if len(direction) >= 4:
-                amount = direction[3]
-            if len(direction) > 4:
-                raise BasicError("syntax")
+            if len(direction) >= 5:
+                scrolldir, x1, y1, x2, y2 = direction[0:5]
+                if len(direction) >= 6:
+                    fillsc = direction[5]
+                if len(direction) >= 7:
+                    fillcolor = direction[6]
+                if len(direction) >= 8:
+                    amount = direction[7]
+                if len(direction) > 8:
+                    raise BasicError("syntax")
+            else:
+                if len(direction) >= 1:
+                    scrolldir = direction[0]
+                if len(direction) >= 2:
+                    fillsc = direction[1]
+                if len(direction) >= 3:
+                    fillcolor = direction[2]
+                if len(direction) >= 4:
+                    amount = direction[3]
+                if len(direction) > 4:
+                    raise BasicError("syntax")
         if x1 < 0 or x1 >= self.screen.columns or x2 < 0 or x2 >= self.screen.columns or\
                 y1 < 0 or y1 >= self.screen.rows or y2 < 0 or y2 >= self.screen.rows:
             raise BasicError("illegal quantity")
