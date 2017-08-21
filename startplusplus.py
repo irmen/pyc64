@@ -8,6 +8,7 @@ class EmulatorPlusWindow(EmulatorWindow):
     bordersize = 32
     windowgeometry = "+200+40"
     sprites = 0   # for now, a larger screen will overwrite the sprite pointers so you can't use sprites. also y can not be >255
+    smoothscrolling = False   # tkinter is too slow to smoothly scroll a window of this size
     charset_shifted = "charset-shifted-2.png"   # define alternate charset
     colorpalette = (
         0x000000,  # 0 = black

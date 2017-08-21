@@ -31,6 +31,7 @@ class EmulatorWindow(tkinter.Tk):
     rows = 25
     bordersize = 52
     sprites = 8
+    smoothscrolling = True
     windowgeometry = "+200+100"
     charset_normal = "charset-normal.png"
     charset_shifted = "charset-shifted.png"
@@ -57,7 +58,6 @@ class EmulatorWindow(tkinter.Tk):
         self.buttonbar.pack(fill=tkinter.X)
         topleft = self.screencor((0, 0))
         botright = self.screencor((self.columns, self.rows))
-        self.screenrect = self.canvas.create_rectangle(topleft[0], topleft[1], botright[0], botright[1], outline="")
         self.spritebitmapbytes = [None] * self.sprites
         self.spritebitmaps = []
         self.create_bitmaps()
@@ -91,7 +91,7 @@ class EmulatorWindow(tkinter.Tk):
         self.interpret_thread = None
         self.interpreter = None
         self.switch_interpreter("basic")
-        self.after(1000 // self.screen.hz, self.hertztimer)
+        self._cyclic_herztick()
         self._cyclic_blink_cursor()
         self._cyclic_repaint()
         self.welcome_message()
@@ -105,8 +105,8 @@ class EmulatorWindow(tkinter.Tk):
                                                 "(install the py64 library to be able to execute 6502 machine code)")
         self.after(4000, lambda: self.canvas.delete(introtxt))
 
-    def hertztimer(self):
-        self.after(1000 // self.screen.hz, self.hertztimer)
+    def _cyclic_herztick(self):
+        self.after(1000 // self.screen.hz, self._cyclic_herztick)
         self.screen.hztick()
         self.hertztick.set()
 
@@ -289,15 +289,18 @@ class EmulatorWindow(tkinter.Tk):
 
     def _border_positions(self):
         top_ya = bottom_ya = left_xa = right_xa = 0
-        if self.screen.rsel24:
-            top_ya = 8
-            bottom_ya = -8
-        if self.screen.csel38:
-            left_xa = 14
-            right_xa = -18
-        # compensate for the smooth scrolling (where the canvas itself is moved):
-        sx = -self.screen.scrollx * 2
-        sy = 6 - self.screen.scrolly * 2
+        if self.smoothscrolling:
+            if self.screen.rsel24:
+                top_ya = 8
+                bottom_ya = -8
+            if self.screen.csel38:
+                left_xa = 14
+                right_xa = -18
+            # compensate for the smooth scrolling (where the canvas itself is moved):
+            sx = -self.screen.scrollx * 2
+            sy = 6 - self.screen.scrolly * 2
+        else:
+            sx = sy = 0
         return [
             (sx, sy,
                 2 * self.bordersize + self.columns * 16 + sx, self.bordersize + top_ya + sy),
@@ -342,10 +345,13 @@ class EmulatorWindow(tkinter.Tk):
             bm = self.charbitmaps[index]
             bitmap = "@{:s}/{:s}-{:02x}.xbm".format(self.temp_graphics_folder, prefix, char)
             self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
-        self.canvas.xview_moveto(0)
-        self.canvas.yview_moveto(0)
-        self.canvas.xview_scroll(-self.screen.scrollx * 2, tkinter.UNITS)
-        self.canvas.yview_scroll(-(self.screen.scrolly - 3) * 2, tkinter.UNITS)
+        # smooth scroll
+        if self.smoothscrolling:
+            self.canvas.xview_moveto(0)
+            self.canvas.yview_moveto(0)
+            self.canvas.xview_scroll(-self.screen.scrollx * 2, tkinter.UNITS)
+            self.canvas.yview_scroll(-(self.screen.scrolly - 3) * 2, tkinter.UNITS)
+        # sprites
         sprites = self.screen.getsprites()
         for snum, sprite in sprites.items():
             configure = {}
