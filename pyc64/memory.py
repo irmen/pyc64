@@ -103,10 +103,7 @@ class Memory:
                 # there's no address in the slice that's hooked so we can write fast
                 if type(value) is int:
                     value = bytes([value]) * len(range(*addr_or_slice.indices(self.size)))
-                try:
-                    self.mem[addr_or_slice] = value
-                except TypeError as x:
-                    print(repr(value), x)  # XXX
+                self.mem[addr_or_slice] = value
         else:
             raise TypeError("invalid address type")
 
@@ -196,7 +193,6 @@ class ScreenAndMemory:
             return newval
 
         def write_controlregister(address, oldval, newval):
-            # self._full_repaint |= newval & 7 != oldval & 7    # smooth scrolling
             pass
 
         self.memory.intercept_read(160, read_jiffieclock)
@@ -267,6 +263,26 @@ class ScreenAndMemory:
     @property
     def text(self):
         return self.memory[646]
+
+    @text.setter
+    def text(self, color):
+        self.memory[646] = color
+
+    @property
+    def csel38(self):
+        return not (self.memory[53270] & 8)
+
+    @csel38.setter
+    def csel38(self, value):
+        self.memory[53270] |= 0 if value else 8
+
+    @property
+    def rsel24(self):
+        return not (self.memory[53265] & 8)
+
+    @rsel24.setter
+    def rsel24(self, value):
+        self.memory[53265] |= 0 if value else 8
 
     @text.setter
     def text(self, color):

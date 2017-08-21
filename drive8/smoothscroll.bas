@@ -1,5 +1,5 @@
 5 poke 53265,19:poke 53270,192
-6 poke 251, 33 :rem refresh rate
+6 poke 53248,100:poke53249,100:poke53269,1
 10 for i=0 to 25
 20 for j=0 to 7
 30 poke 53270,j | 192:poke53265,j | 16

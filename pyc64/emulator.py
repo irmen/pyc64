@@ -67,7 +67,7 @@ class EmulatorWindow(tkinter.Tk):
             for x in range(self.columns):
                 cor = self.screencor((x, y))
                 bm = self.canvas.create_bitmap(cor[0], cor[1], bitmap="@" + self.temp_graphics_folder + "/char-20.xbm",
-                                               foreground="black", background="white", anchor=tkinter.NW, tags="charbitmap")
+                                               foreground="white", background="black", anchor=tkinter.NW, tags="charbitmap")
                 self.charbitmaps.append(bm)
         # create the sprite tkinter bitmaps:
         for i in range(self.sprites - 1, -1, -1):
@@ -76,23 +76,25 @@ class EmulatorWindow(tkinter.Tk):
                                            foreground=self.tkcolor(i + 8), background=None, anchor=tkinter.NW, tags="spritebitmap")
             self.spritebitmaps.insert(0, bm)
         # the borders:
-        self.border1 = self.canvas.create_rectangle(0, 0, 2 * self.bordersize + self.columns * 16, self.bordersize, outline="", fill="#000")
-        self.border2 = self.canvas.create_rectangle(self.bordersize + self.columns * 16, self.bordersize,
-                                                    2 * self.bordersize + self.columns * 16, self.bordersize + self.rows * 16, outline="", fill="#000")
-        self.border3 = self.canvas.create_rectangle(0, self.bordersize + self.rows * 16, 2 * self.bordersize + self.columns * 16,
-                                                    2 * self.bordersize + self.rows * 16, outline="", fill="#000")
-        self.border4 = self.canvas.create_rectangle(0, self.bordersize, self.bordersize, self.bordersize + self.rows * 16, outline="", fill="#000")
+        b1, b2, b3, b4 = self._border_positions()
+        self.border1 = self.canvas.create_rectangle(*b1, outline="", fill="#000")
+        self.canvas.tag_raise(self.border1)
+        self.border2 = self.canvas.create_rectangle(*b2, outline="", fill="#000")
+        self.canvas.tag_raise(self.border2)
+        self.border3 = self.canvas.create_rectangle(*b3, outline="", fill="#000")
+        self.canvas.tag_raise(self.border3)
+        self.border4 = self.canvas.create_rectangle(*b4, outline="", fill="#000")
+        self.canvas.tag_raise(self.border4)
         self.bind("<KeyPress>", lambda event: self.keypress(*self._keyevent(event)))
         self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
-        self.repaint()
         self.canvas.pack()
-        self._cyclic_blink_cursor()
-        self._cyclic_repaint()
-        self.welcome_message()
         self.interpret_thread = None
         self.interpreter = None
         self.switch_interpreter("basic")
         self.after(1000 // self.screen.hz, self.hertztimer)
+        self._cyclic_blink_cursor()
+        self._cyclic_repaint()
+        self.welcome_message()
 
     def welcome_message(self):
         topleft = self.screencor((0, 0))
@@ -238,7 +240,6 @@ class EmulatorWindow(tkinter.Tk):
         self.screen.reset()
         self.screen.memory[0x00fb] = self.update_rate
         self.repaint()
-        self.update()
         if interpreter == "basic":
             self.interpreter = BasicInterpreter(self.screen)
             self.interpret_thread = InterpretThread(self.interpreter, self)
@@ -286,6 +287,28 @@ class EmulatorWindow(tkinter.Tk):
             self.create_sprite_bitmap(i, sprite.bitmap)
             self.spritebitmapbytes[i] = sprite.bitmap
 
+    def _border_positions(self):
+        top_ya = bottom_ya = left_xa = right_xa = 0
+        if self.screen.rsel24:
+            top_ya = 8
+            bottom_ya = -8
+        if self.screen.csel38:
+            left_xa = 14
+            right_xa = -18
+        # compensate for the smooth scrolling (where the canvas itself is moved):
+        sx = -self.screen.scrollx * 2
+        sy = 6 - self.screen.scrolly * 2
+        return [
+            (sx, sy,
+                2 * self.bordersize + self.columns * 16 + sx, self.bordersize + top_ya + sy),
+            (self.bordersize + self.columns * 16 + right_xa + sx, self.bordersize + sy,
+                2 * self.bordersize + self.columns * 16 + sx, self.bordersize + self.rows * 16 + sy),
+            (sx, self.bordersize + self.rows * 16 + bottom_ya + sy,
+                2 * self.bordersize + self.columns * 16 + sx, 2 * self.bordersize + self.rows * 16 + sy),
+            (sx, self.bordersize + sy,
+                self.bordersize + left_xa + sx, self.bordersize + self.rows * 16 + sy)
+        ]
+
     def repaint(self):
         # set bordercolor, done by setting the 4 border rectangles
         # (screen color done by setting the background color of all character bitmaps,
@@ -296,27 +319,20 @@ class EmulatorWindow(tkinter.Tk):
             self.canvas.itemconfigure(self.border2, fill=bordercolor)
             self.canvas.itemconfigure(self.border3, fill=bordercolor)
             self.canvas.itemconfigure(self.border4, fill=bordercolor)
-        # compensate for the smooth scrolling (where the canvas itself is moved):
-        bc1 = self.canvas.coords(self.border1)
-        bx = -self.screen.scrollx * 2 - bc1[0]
-        by = 6 - self.screen.scrolly * 2 - bc1[1]
-        if bx or by:
-            self.canvas.move(self.border1, bx, by)
-        bc2 = self.canvas.coords(self.border2)
-        bx = -self.screen.scrollx * 2 - (bc2[0] - self.bordersize - self.columns * 16)
-        by = 6 - self.screen.scrolly * 2 - (bc2[1] - self.bordersize)
-        if bx or by:
-            self.canvas.move(self.border2, bx, by)
-        bc3 = self.canvas.coords(self.border3)
-        bx = -self.screen.scrollx * 2 - bc3[0]
-        by = 6  - self.screen.scrolly * 2 - (bc3[1] - self.bordersize - self.rows * 16)
-        if bx or by:
-            self.canvas.move(self.border3, bx, by)
-        bc4 = self.canvas.coords(self.border4)
-        bx = -self.screen.scrollx * 2 - bc4[0]
-        by = 6 - self.screen.scrolly * 2 - (bc4[1] - self.bordersize)
-        if bx or by:
-            self.canvas.move(self.border4, bx, by)
+        # adjust borders
+        bc1_new, bc2_new, bc3_new, bc4_new = self._border_positions()
+        bc1 = tuple(self.canvas.coords(self.border1))
+        bc2 = tuple(self.canvas.coords(self.border2))
+        bc3 = tuple(self.canvas.coords(self.border3))
+        bc4 = tuple(self.canvas.coords(self.border4))
+        if bc1_new != bc1:
+            self.canvas.coords(self.border1, bc1_new)
+        if bc2_new != bc2:
+            self.canvas.coords(self.border2, bc2_new)
+        if bc3_new != bc3:
+            self.canvas.coords(self.border3, bc3_new)
+        if bc4_new != bc4:
+            self.canvas.coords(self.border4, bc4_new)
         # characters
         prefix = "char-sh" if self.screen.shifted else "char"
         dirty = self.screen.getdirty()
@@ -359,7 +375,7 @@ class EmulatorWindow(tkinter.Tk):
                 configure["foreground"] = spritecolor
             # sprite positions
             x, y = self.screencor_sprite((sprite.x, sprite.y))
-            self.canvas.coords(self.spritebitmaps[snum], x, y)
+            self.canvas.coords(self.spritebitmaps[snum], x - 2 * self.screen.scrollx, y - 2 * self.screen.scrolly)
             if configure:
                 # reconfigure all changed properties in one go
                 self.canvas.itemconfigure(self.spritebitmaps[snum], **configure)
