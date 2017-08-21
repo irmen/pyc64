@@ -196,7 +196,8 @@ class ScreenAndMemory:
             return newval
 
         def write_controlregister(address, oldval, newval):
-            self._full_repaint |= newval & 7 != oldval & 7    # smooth scrolling is done
+            # self._full_repaint |= newval & 7 != oldval & 7    # smooth scrolling
+            pass
 
         self.memory.intercept_read(160, read_jiffieclock)
         self.memory.intercept_read(161, read_jiffieclock)

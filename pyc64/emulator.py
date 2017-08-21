@@ -49,7 +49,8 @@ class EmulatorWindow(tkinter.Tk):
         self.screen = ScreenAndMemory(columns=self.columns, rows=self.rows, sprites=self.sprites)
         self.screen.memory[0x00fb] = self.update_rate   # zero page $fb is unused, we use it for screen refresh speed setting
         self.canvas = tkinter.Canvas(self, width=2 * self.bordersize + self.columns * 16, height=2 * self.bordersize + self.rows * 16,
-                                     borderwidth=0, highlightthickness=0, background="black")
+                                     borderwidth=0, highlightthickness=0, background="black",
+                                     xscrollincrement = 1, yscrollincrement = 1)
         self.buttonbar = tkinter.Frame(self)
         resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
         resetbut.pack(side=tkinter.LEFT)
@@ -295,6 +296,28 @@ class EmulatorWindow(tkinter.Tk):
             self.canvas.itemconfigure(self.border2, fill=bordercolor)
             self.canvas.itemconfigure(self.border3, fill=bordercolor)
             self.canvas.itemconfigure(self.border4, fill=bordercolor)
+        # compensate for the smooth scrolling (where the canvas itself is moved):
+        bc1 = self.canvas.coords(self.border1)
+        bx = -self.screen.scrollx * 2 - bc1[0]
+        by = 6 - self.screen.scrolly * 2 - bc1[1]
+        if bx or by:
+            self.canvas.move(self.border1, bx, by)
+        bc2 = self.canvas.coords(self.border2)
+        bx = -self.screen.scrollx * 2 - (bc2[0] - self.bordersize - self.columns * 16)
+        by = 6 - self.screen.scrolly * 2 - (bc2[1] - self.bordersize)
+        if bx or by:
+            self.canvas.move(self.border2, bx, by)
+        bc3 = self.canvas.coords(self.border3)
+        bx = -self.screen.scrollx * 2 - bc3[0]
+        by = 6  - self.screen.scrolly * 2 - (bc3[1] - self.bordersize - self.rows * 16)
+        if bx or by:
+            self.canvas.move(self.border3, bx, by)
+        bc4 = self.canvas.coords(self.border4)
+        bx = -self.screen.scrollx * 2 - bc4[0]
+        by = 6 - self.screen.scrolly * 2 - (bc4[1] - self.bordersize)
+        if bx or by:
+            self.canvas.move(self.border4, bx, by)
+        # characters
         prefix = "char-sh" if self.screen.shifted else "char"
         dirty = self.screen.getdirty()
         screencolor = self.tkcolor(self.screen.screen)
@@ -303,13 +326,10 @@ class EmulatorWindow(tkinter.Tk):
             bm = self.charbitmaps[index]
             bitmap = "@{:s}/{:s}-{:02x}.xbm".format(self.temp_graphics_folder, prefix, char)
             self.canvas.itemconfigure(bm, foreground=forecol, background=screencolor, bitmap=bitmap)
-            ccor = divmod(index, self.columns)
-            sx, sy = self.screencor((ccor[1], ccor[0]))
-            sx += self.screen.scrollx * 2
-            sy += (self.screen.scrolly - 3) * 2
-            sc = self.canvas.coords(bm)
-            if sx != sc[0] or sy != sc[1]:
-                self.canvas.coords(bm, sx, sy)
+        self.canvas.xview_moveto(0)
+        self.canvas.yview_moveto(0)
+        self.canvas.xview_scroll(-self.screen.scrollx * 2, tkinter.UNITS)
+        self.canvas.yview_scroll(-(self.screen.scrolly - 3) * 2, tkinter.UNITS)
         sprites = self.screen.getsprites()
         for snum, sprite in sprites.items():
             configure = {}
