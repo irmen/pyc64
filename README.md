@@ -19,7 +19,7 @@ you can only do the same things with it as what is supported
 for the BASIC mode. So no fancy screen scrolling or rasterbars...
 
 
-## BASIC V2 and the VIC-registers (video)
+## BASIC V2 and the VIC-registers (video chip)
 
 A subset and variant of the BASIC V2 in the C-64 is provided.
 
@@ -30,7 +30,11 @@ Some VIC-II registers have been made available:
 - 1024-2023 the screen buffer characters ($0400-$07e7) 
 - 55296-56295 the screen buffer colors ($d800-$dbe7)
 - 53272 charset shift/unshift register ($d018)
+- 53265 and 53270 horizontal and vertical smooth scroll registers ($d011/$d016)
 - the [sprite](https://www.c64-wiki.com/wiki/Sprite) registers! (no multicolor though, and no priority register and collision detection)
+
+
+## Keyboard
 
 A few function keys are remapped as wel for convenience, like the fastloader cartridges of old:
 
@@ -39,6 +43,14 @@ A few function keys are remapped as wel for convenience, like the fastloader car
 - F5 = LOAD shortcut
 - F6 (shift-F5): LOAD "*",8  shortcut
 - F7 = DOS"$ to show directory of drive8
+
+Other uncommon keys:
+- Esc = RUN/STOP
+- Ctrl = Commodore key
+- PgUp = RESTORE key
+- Insert/Help = INSERT
+- the reset button on top = perform warm reset
+
 
 Note that most of the BASIC operations are essentially handled by Python itself via eval(),
 so you can do many interesting things that are silly to see working on a classic 80's c-64 screen.
