@@ -771,17 +771,23 @@ class ScreenAndMemory:
         row, col = divmod(self.cursor, self.columns)
         return col, row
 
-    def current_line(self, amount=1, petscii=True, ascii=False):
-        if petscii and ascii:
+    def current_line(self, include_previous=False, include_next=False, *, petscii=True, ascii=False, codes=False):
+        if sum([petscii, ascii, codes]) > 1:
             raise ValueError("select only one result type")
-        start = 0x0400 + self.columns * (self.cursor // self.columns)
+        start_y = end_y = self.cursor // self.columns
+        if include_previous:
+            start_y = max(0, start_y - 1)
+        if include_next:
+            end_y = min(self.rows, end_y + 1)
         self._fix_cursor()
-        screencodes = self.memory[start: min(0x0400 + self.columns * self.rows, start + self.columns * amount)]
+        screencodes = self.memory[0x0400 + self.columns * start_y: 0x0400 + self.columns * (end_y + 1)]
         self._fix_cursor()
         if petscii:
             return "".join(self._screen2ascii(c) for c in screencodes)
         elif ascii:
             return "".join(chr(self._screen2petscii(c)) for c in screencodes)
+        elif codes:
+            return screencodes
         else:
             return "".join(chr(c) for c in screencodes)
 

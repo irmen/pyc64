@@ -331,8 +331,18 @@ class C64EmulatorWindow(EmulatorWindowBase):
             # if '1' <= char <= '8' and self.key_control_down:
             #     self.c64screen.text = ord(char)-1
             if char == '\r':    # RETURN key
-                line = self.screen.current_line(2)
+                line = self.screen.current_line(True, True)
+                line1, line2, line3 = line[0: self.columns], line[self.columns: self.columns * 2], line[self.columns * 2:]
+                if line1.endswith(' '):
+                    line1 = ''
+                if line2.endswith(' '):
+                    line3 = ''
+                else:
+                    line1 = ''
+                line = (line1 + line2 + line3).rstrip()
                 self.screen.return_key()
+                if len(line) > self.columns and not line1:
+                    self.screen.return_key()
                 if not with_shift:
                     self.execute_direct_line(line)
             elif char in ('\x08', '\x7f', 'Delete'):
@@ -361,25 +371,40 @@ class C64EmulatorWindow(EmulatorWindowBase):
             elif char == "Right":
                 self.screen.right()
                 self.repaint()
-            elif char == 'Home':
+            elif char == "Home":
                 if with_shift:
                     self.screen.clear()
                 else:
                     self.screen.cursormove(0, 0)
                 self.repaint()
-            elif char in ('Insert', 'Help'):
+            elif char == "End":
+                # move to end of current line
+                x, y = self.screen.cursorpos()
+                line = self.screen.current_line(False, True).rstrip()
+                x = len(line)
+                if x > self.columns:
+                    if line[self.columns - 1] == ' ':
+                        line = line[:self.columns].rstrip()
+                        x = len(line)
+                    else:
+                        y += 1
+                        x -= self.columns
+                if x and x % self.columns == 0:
+                    x -= 1
+                self.screen.cursormove(min(x, self.columns), y)
+            elif char in ("Insert", "Help"):
                 self.screen.insert()
                 self.repaint()
-            elif char == 'F7':      # directory shortcut key
+            elif char == "F7":      # directory shortcut key
                 self.screen.writestr(self.interpreter.F7_dir_command + "\n")
                 self.execute_direct_line(self.interpreter.F7_dir_command)
-            elif char == 'F5':      # load file shortcut key
+            elif char == "F5":      # load file shortcut key
                 if with_shift:
                     self.screen.writestr(self.interpreter.F6_load_command + "\n")
                     self.execute_direct_line(self.interpreter.F6_load_command)
                 else:
                     self.screen.writestr(self.interpreter.F5_load_command)
-                    line = self.screen.current_line(1)
+                    line = self.screen.current_line(False, False)
                     self.screen.return_key()
                     self.execute_direct_line(line)
             elif char == "F3":      # run program shortcut key

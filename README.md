@@ -49,6 +49,7 @@ Other uncommon keys:
 - Ctrl = Commodore key
 - PgUp = RESTORE key
 - Insert/Help = INSERT
+- End = move to end of current logical line
 - the reset button on top = perform warm reset
 
 
