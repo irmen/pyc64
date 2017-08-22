@@ -341,8 +341,8 @@ class C64EmulatorWindow(EmulatorWindowBase):
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
-            if event.keycode in self.joystick.joystick_keys_osx:
-                self.screen.setjoystick(**{self.joystick_keys[event.keysym]: False})
+            if event.keycode in self.joystick_keys_osx:
+                self.screen.setjoystick(**{self.joystick_keys_osx[event.keycode]: False})
                 return
         if event.keysym in self.joystick_keys:
             self.screen.setjoystick(**{self.joystick_keys[event.keysym]: False})
@@ -353,8 +353,8 @@ class C64EmulatorWindow(EmulatorWindowBase):
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
-            if event.keycode in self.joystick.joystick_keys_osx:
-                self.screen.setjoystick(**{self.joystick_keys[event.keysym]: True})
+            if event.keycode in self.joystick_keys_osx:
+                self.screen.setjoystick(**{self.joystick_keys_osx[event.keycode]: True})
                 return
         if event.keysym in self.joystick_keys:
             self.screen.setjoystick(**{self.joystick_keys[event.keysym]: True})
