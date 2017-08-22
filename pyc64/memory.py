@@ -241,6 +241,10 @@ class ScreenAndMemory:
         self.border = 14
         self.screen = 6
         self.text = 14
+        self.joy_fire = self.joy_up = self.joy_down = self.joy_left = self.joy_right =\
+            self.joy_leftup = self.joy_rightup = self.joy_leftdown = self.joy_rightdown = False
+        self.memory[56320] = 16   # joystick port 2
+        self.memory[56321] = 16   # joystick port 1 (not used)
         self.clear()
 
     @property
@@ -809,3 +813,32 @@ class ScreenAndMemory:
         self._previous_checked_chars = chars
         self._previous_checked_colors = colors
         return result
+
+    def setjoystick(self, left=False, right=False, up=False, down=False,
+                    leftup=False, rightup=False, leftdown=False, rightdown=False, fire=False):
+        self.joy_fire = fire
+        self.joy_up = up
+        self.joy_down = down
+        self.joy_left = left
+        self.joy_right = right
+        self.joy_leftup = leftup
+        self.joy_rightup = rightup
+        self.joy_leftdown = leftdown
+        self.joy_rightdown = rightdown
+        set_bits = 0
+        if self.joy_left | self.joy_leftup | self.joy_leftdown:
+            set_bits |= 1 << 0
+        if self.joy_right | self.joy_rightup | self.joy_rightdown:
+            set_bits |= 1 << 1
+        if self.joy_up | self.joy_leftup | self.joy_rightup:
+            set_bits |= 1 << 2
+        if self.joy_down | self.joy_leftdown | self.joy_rightdown:
+            set_bits |= 1 << 3
+        if not self.joy_fire:
+            set_bits |= 1 << 4
+        self.memory[56320] = (self.memory[56320] & 0b11100000) | set_bits
+
+    def getjoystick(self):
+        # returns left, right, up, down, fire statuses
+        j = self.memory[56320]
+        return bool(j & 1 << 0), bool(j & 1 << 1), bool(j & 1 << 2), bool(j & 1 << 3), not bool(j & 1 << 4)

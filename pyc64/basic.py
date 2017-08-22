@@ -121,13 +121,14 @@ class BasicInterpreter:
     def write_prompt(self, prefix=""):
         self.screen.writestr(prefix + "ready.\n")
 
-    def execute_line(self, line):
+    def execute_line(self, line, recursive=False):
         in_program = self.running_program
         try:
             if in_program:
                 # we're running in a program, REM and DATA do nothing
                 if line.startswith(("#", "rem") or line.startswith(("dA", "data"))):
-                    self.next_run_line_idx += 1
+                    if not recursive:
+                        self.next_run_line_idx += 1
                     return
             else:
                 # direct mode
@@ -153,14 +154,16 @@ class BasicInterpreter:
                 if not self.running_program and not self.sleep_until:
                     self.write_prompt("\n")
             if self.running_program:
-                # schedule next line to be executed
-                self.next_run_line_idx += 1
+                if not recursive:
+                    # schedule next line to be executed
+                    self.next_run_line_idx += 1
         except GotoLineException as gx:
             self.next_run_line_idx = gx.line_idx
         except FlowcontrolException:
             if in_program:
-                # we do go to the next line...
-                self.next_run_line_idx += 1
+                if not recursive:
+                    # we do go to the next line...
+                    self.next_run_line_idx += 1
             raise
         except BasicError as bx:
             traceback.print_exc()
@@ -615,7 +618,7 @@ class BasicInterpreter:
             condition, then = match.groups()
             condition = eval(condition, self.symbols)
             if condition:
-                return self.execute_line(then)
+                return self.execute_line(then, recursive=True)
         else:
             # perhaps if .. goto .. form?
             match = re.match(r"if(.+)goto\s+(\S+)$", cmd)

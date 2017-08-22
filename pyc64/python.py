@@ -120,7 +120,7 @@ class PythonInterpreter:
                 break
             self.interactive.do_sync_command()
 
-    def execute_line(self, line):
+    def execute_line(self, line, recursive=False):
         line = line.lstrip()
         if line.startswith(">>>"):
             line = line[3:]

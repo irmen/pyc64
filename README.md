@@ -31,6 +31,7 @@ Some VIC-II registers have been made available:
 - 55296-56295 the screen buffer colors ($d800-$dbe7)
 - 53272 charset shift/unshift register ($d018)
 - 53265 and 53270 horizontal and vertical smooth scroll registers ($d011/$d016)
+- 56320 joystick port 2 bits
 - the [sprite](https://www.c64-wiki.com/wiki/Sprite) registers! (no multicolor though, and no priority register and collision detection)
 
 
@@ -51,7 +52,7 @@ Other uncommon keys:
 - Insert/Help = INSERT
 - End = move to end of current logical line
 - the reset button on top = perform warm reset
-
+- numpad keys = joystick (r_ctrl or 0 or enter = fire)
 
 Note that most of the BASIC operations are essentially handled by Python itself via eval(),
 so you can do many interesting things that are silly to see working on a classic 80's c-64 screen.

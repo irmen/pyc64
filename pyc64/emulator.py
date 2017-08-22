@@ -89,8 +89,8 @@ class EmulatorWindowBase(tkinter.Tk):
             self.canvas.tag_raise(self.border3)
             self.border4 = self.canvas.create_rectangle(*b4, outline="", fill="#000")
             self.canvas.tag_raise(self.border4)
-        self.bind("<KeyPress>", lambda event: self.keypress(*self._keyevent(event)))
-        self.bind("<KeyRelease>", lambda event: self.keyrelease(*self._keyevent(event)))
+        self.bind("<KeyPress>", self.keypress)
+        self.bind("<KeyRelease>", self.keyrelease)
         self.canvas.pack()
 
     def start(self):
@@ -115,16 +115,10 @@ class EmulatorWindowBase(tkinter.Tk):
             remaining_timer_budget = 0.001
         self.cyclic_repaint_after = self.after(int(remaining_timer_budget * 1000), self._cyclic_repaint)
 
-    def _keyevent(self, event):
-        c = event.char
-        if not c or ord(c) > 255:
-            c = event.keysym
-        return c, event.state, event.x, event.y
-
-    def keypress(self, char, state, mousex, mousey):
+    def keypress(self, event):
         pass   # override in subclass
 
-    def keyrelease(self, char, state, mousex, mousey):
+    def keyrelease(self, event):
         pass   # override in subclass
 
     def repaint(self):
@@ -304,11 +298,51 @@ class C64EmulatorWindow(EmulatorWindowBase):
     def update_rate(self):
         return max(10, self.screen.memory[0x00fb])
 
-    def keypress(self, char, state, mousex, mousey):
-        # print("keypress", repr(char), state)
-        with_shift = state & 1
-        with_control = state & 4
-        with_alt = state & 8
+    joystick_keys = {
+        "Control_R": "fire",
+        "KP_Insert": "fire",
+        "KP_0": "fire",
+        "KP_Enter": "fire",
+        "Alt_R": "fire",
+        "KP_Up": "up",
+        "KP_8": "up",
+        "KP_Down": "down",
+        "KP_2": "down",
+        "KP_Left": "left",
+        "KP_4": "left",
+        "KP_Right": "right",
+        "KP_6": "right",
+        "KP_Home": "leftup",
+        "KP_7": "leftup",
+        "KP_Prior": "rightup",
+        "KP_9": "rightup",
+        "KP_End": "leftdown",
+        "KP_1": "leftdown",
+        "KP_Next": "rightdown",
+        "KP_3": "rightdown"
+    }
+
+    def keyrelease(self, event):
+        # print(time.time(), "KEYRELEASE", vars(event))
+        # first check special control keys
+        if event.keysym in self.joystick_keys:
+            self.screen.setjoystick(**{self.joystick_keys[event.keysym]: False})
+            return
+
+    def keypress(self, event):
+        # print(time.time(), "keypress", event.keycode, event.keysym)
+        # first check special control keys
+        if event.keysym in self.joystick_keys:
+            self.screen.setjoystick(**{self.joystick_keys[event.keysym]: True})
+            return
+        # turn the event into a bit more managable key character
+        char = event.char
+        if not char or ord(char) > 255:
+            char = event.keysym
+        # print("keypress", repr(char), event.state)
+        with_shift = event.state & 1
+        with_control = event.state & 4
+        with_alt = event.state & 8
         if char.startswith("Shift") and with_control or char.startswith("Control") and with_shift \
                 or char == "??" and with_control and with_shift:
                 # simulate SHIFT+COMMODORE_KEY to flip the charset
@@ -324,7 +358,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
             else:
                 # buffer the keypress (if it's not the pgup=RESTORE key)
                 if char != 'Prior':
-                    self.interpret_thread.buffer_keypress(char, state, mousex, mousey)
+                    self.interpret_thread.buffer_keypress(char, event)
             return
 
         if len(char) == 1:
@@ -518,10 +552,10 @@ class InterpretThread(threading.Thread):
                 # see if we have buffered keys to be handled
                 if not self.running_something:
                     with self.keybuffer_lock:
-                        keys = list(self.keybuffer)
+                        keyevents = list(self.keybuffer)
                         self.keybuffer.clear()
-                    for when, key in enumerate(keys, start=1):
-                        self.window.after(when, self.window.keypress(*key))
+                    for when, (char, event) in enumerate(keyevents, start=1):
+                        self.window.after(when, self.window.keypress(event))
                 # look for work
                 if self.running_program:
                     with self.interpret_lock:
@@ -578,21 +612,20 @@ class InterpretThread(threading.Thread):
         self.window.hertztick.set()
         time.sleep(0.1)
 
-    def buffer_keypress(self, *params):
+    def buffer_keypress(self, char, event):
         with self.keybuffer_lock:
-            self.keybuffer.append(params)
+            self.keybuffer.append((char, event))
 
-    def get_bufferedkey(self):
+    def get_bufferedkeyevent(self):
         try:
             with self.keybuffer_lock:
                 return self.keybuffer.popleft()
         except IndexError:
-            return None
+            return (None, None)
 
     def do_get_command(self):
-        event = self.get_bufferedkey()
+        char, event = self.get_bufferedkeyevent()
         if event:
-            char, state, mousex, mousey = event
             if len(char) == 1:
                 return char
             else:
