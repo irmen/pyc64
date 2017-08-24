@@ -10,6 +10,10 @@ class NumpadmadnessWindow(tkinter.Tk):
         l.pack(padx=50, pady=50)
         self.bind("<KeyPress>", self.keypress)
         self.bind("<KeyRelease>", self.keyrelease)
+        self.bind("<KP_0>", self.keypadzero)
+
+    def keypadzero(self, event):
+        print("KEYPADZERO", event)
 
     joystick_keys_sane_platforms = {
         "Control_R": "fire",
@@ -50,18 +54,6 @@ class NumpadmadnessWindow(tkinter.Tk):
         5570611: "rightdown", # kp 3
     }
 
-    joystick_keys_windows_keysym_num = {
-        65379: "fire",      # kp 0
-        65362: "up",        # kp 8
-        65364: "down",      # kp 2
-        65361: "left",      # kp 4
-        65363: "right",     # kp 6
-        65360: "leftup",    # kp 7
-        65365: "rightup",   # kp 9
-        65367: "leftdown",  # kp 1
-        65366: "rightdown"  # kp 3
-    }
-
     joystick_keys_windows_keycode = {
         96: "fire",       # kp 0 (numlock)
         104: "up",        # kp 8 (numlock)
@@ -83,10 +75,7 @@ class NumpadmadnessWindow(tkinter.Tk):
                 return
         elif sys.platform == "win32":
             # Windows numkeys are also problematic, need to solve this via keysym_num OR via keycode.. (sigh)
-            if event.keysym_num in self.joystick_keys_windows_keysym_num:
-                print("JOYSTICK switch OFF:", self.joystick_keys_windows_keysym_num[event.keysym_num])
-                return
-            elif event.keycode in self.joystick_keys_windows_keycode:
+            if event.keycode in self.joystick_keys_windows_keycode:
                 print("JOYSTICK switch OFF:", self.joystick_keys_windows_keycode[event.keycode])
                 return
         # sane platforms (Linux for one) play nice and just use the friendly keysym name.
@@ -103,10 +92,7 @@ class NumpadmadnessWindow(tkinter.Tk):
                 return
         elif sys.platform == "win32":
             # Windows numkeys are also problematic, need to solve this via keysym_num OR via keycode.. (sigh)
-            if event.keysym_num in self.joystick_keys_windows_keysym_num:
-                print("JOYSTICK switch ON:", self.joystick_keys_windows_keysym_num[event.keysym_num])
-                return
-            elif event.keycode in self.joystick_keys_windows_keycode:
+            if event.keycode in self.joystick_keys_windows_keycode:
                 print("JOYSTICK switch ON:", self.joystick_keys_windows_keycode[event.keycode])
                 return
         # sane platforms (Linux for one) play nice and just use the friendly keysym name.

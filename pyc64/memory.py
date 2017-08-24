@@ -394,8 +394,12 @@ class ScreenAndMemory:
     def blink_cursor(self):
         if self.cursor_enabled:
             self.cursor_state = not self.cursor_state
+            if self.cursor_state:
+                self.memory[0x0287] = self.memory[0xd800 + self.cursor]   # save char color to GDCOL memory address
+                self.memory[0xd800 + self.cursor] = self.text
+            else:
+                self.memory[0xd800 + self.cursor] = self.memory[0x0287]   # restore char color from GDCOL address
             self.memory[0x0400 + self.cursor] ^= 0x80
-            self.memory[0xd800 + self.cursor] = self.text      # @todo preserve char color
 
     # ASCII-to-PETSCII translation table
     # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )
@@ -603,8 +607,9 @@ class ScreenAndMemory:
             return
         if not on and self.cursor_state:
             self.memory[0x0400 + self.cursor] &= 0x7f
-            self.memory[0xd800 + self.cursor] = self.text
+            self.memory[0xd800 + self.cursor] = self.memory[0x0287]  # restore char color from GDCOL
         if on and not self.cursor_state:
+            self.memory[0x0287] = self.memory[0xd800 + self.cursor]  # save char color to GDCOL address
             self.memory[0x0400 + self.cursor] |= 0x80
             self.memory[0xd800 + self.cursor] = self.text
         self.cursor_state = on

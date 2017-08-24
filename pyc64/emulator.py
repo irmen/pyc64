@@ -342,18 +342,6 @@ class C64EmulatorWindow(EmulatorWindowBase):
         5570611: "rightdown", # kp 3
     }
 
-    joystick_keys_windows_keysym_num = {
-        65379: "fire",      # kp 0
-        65362: "up",        # kp 8
-        65364: "down",      # kp 2
-        65361: "left",      # kp 4
-        65363: "right",     # kp 6
-        65360: "leftup",    # kp 7
-        65365: "rightup",   # kp 9
-        65367: "leftdown",  # kp 1
-        65366: "rightdown"  # kp 3
-    }
-
     joystick_keys_windows_keycode = {
         96: "fire",       # kp 0 (numlock)
         104: "up",        # kp 8 (numlock)
@@ -367,7 +355,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
     }
 
     def keyrelease(self, event):
-        print(time.time(), "KEYRELEASE {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event))) # XXX
+        # print(time.time(), "KEYRELEASE {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event))) # XXX
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
@@ -376,10 +364,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
                 return
         elif sys.platform == "win32":
             # Windows numkeys are also problematic, need to solve this via keysym_num OR via keycode.. (sigh)
-            if event.keysym_num in self.joystick_keys_windows_keysym_num:
-                self.screen.setjoystick(**{self.joystick_keys_windows_keysym_num[event.keysym_num]: False})
-                return
-            elif event.keycode in self.joystick_keys_windows_keycode:
+            if event.keycode in self.joystick_keys_windows_keycode:
                 self.screen.setjoystick(**{self.joystick_keys_windows_keycode[event.keycode]: False})
                 return
         # sane platforms (Linux for one) play nice and just use the friendly keysym name.
@@ -388,7 +373,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
             return
 
     def keypress(self, event):
-        print(time.time(), "KEYPRESS {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
+        # print(time.time(), "KEYPRESS {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
@@ -397,10 +382,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
                 return
         elif sys.platform == "win32":
             # Windows numkeys are also problematic, need to solve this via keysym_num OR via keycode.. (sigh)
-            if event.keysym_num in self.joystick_keys_windows_keysym_num:
-                self.screen.setjoystick(**{self.joystick_keys_windows_keysym_num[event.keysym_num]: True})
-                return
-            elif event.keycode in self.joystick_keys_windows_keycode:
+            if event.keycode in self.joystick_keys_windows_keycode:
                 self.screen.setjoystick(**{self.joystick_keys_windows_keycode[event.keycode]: True})
                 return
         # sane platforms (Linux for one) play nice and just use the friendly keysym name.
@@ -701,7 +683,7 @@ class InterpretThread(threading.Thread):
             if len(char) == 1:
                 return char
             else:
-                pass  # @todo handle control characters? (F1  etc)
+                pass  # @todo handle control characters? (F1  etc) INPUT would also need that
         return ''
 
     def do_sync_command(self):
