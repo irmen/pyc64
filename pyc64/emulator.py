@@ -326,6 +326,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
         "KP_Next": "rightdown",
         "KP_3": "rightdown"
     }
+
     joystick_keys_osx = {
         524352: "fire",       # R alt
         270336: "fire",       # R control
@@ -340,6 +341,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
         5439537: "leftdown",  # kp 1
         5570611: "rightdown", # kp 3
     }
+
     joystick_keys_windows_keysym_num = {
         65379: "fire",      # kp 0
         65362: "up",        # kp 8
@@ -351,6 +353,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
         65367: "leftdown",  # kp 1
         65366: "rightdown"  # kp 3
     }
+
     joystick_keys_windows_keycode = {
         96: "fire",       # kp 0 (numlock)
         104: "up",        # kp 8 (numlock)
@@ -364,7 +367,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
     }
 
     def keyrelease(self, event):
-        print(time.time(), "KEYRELEASE '{char}' keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event))) # XXX
+        print(time.time(), "KEYRELEASE {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event))) # XXX
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
@@ -385,7 +388,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
             return
 
     def keypress(self, event):
-        print(time.time(), "KEYPRESS '{char}' keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
+        print(time.time(), "KEYPRESS {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
