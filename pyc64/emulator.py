@@ -51,6 +51,11 @@ class EmulatorWindowBase(tkinter.Tk):
         self.wm_title(title)
         self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "icon.gif"))
         self.wm_iconphoto(self, self.appicon)
+        if sys.platform == "win32":
+            # tell windows to use a new toolbar icon
+            import ctypes
+            myappid = 'net.Razorvine.Tale.story'  # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         self.geometry(self.windowgeometry)
         self.screen = screen
         self.canvas = tkinter.Canvas(self, width=2 * self.bordersize + self.columns * 16, height=2 * self.bordersize + self.rows * 16,
@@ -298,7 +303,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
     def update_rate(self):
         return max(10, self.screen.memory[0x00fb])
 
-    joystick_keys = {
+    joystick_keys_sane_platforms = {
         "Control_R": "fire",
         "KP_Insert": "fire",
         "KP_0": "fire",
@@ -335,29 +340,69 @@ class C64EmulatorWindow(EmulatorWindowBase):
         5439537: "leftdown",  # kp 1
         5570611: "rightdown", # kp 3
     }
+    joystick_keys_windows_keysym_num = {
+        65379: "fire",      # kp 0
+        65362: "up",        # kp 8
+        65364: "down",      # kp 2
+        65361: "left",      # kp 4
+        65363: "right",     # kp 6
+        65360: "leftup",    # kp 7
+        65365: "rightup",   # kp 9
+        65367: "leftdown",  # kp 1
+        65366: "rightdown"  # kp 3
+    }
+    joystick_keys_windows_keycode = {
+        96: "fire",       # kp 0 (numlock)
+        104: "up",        # kp 8 (numlock)
+        98: "down",       # kp 2 (numlock)
+        100: "left",      # kp 4 (numlock)
+        102: "right",     # kp 6 (numlock)
+        103: "leftup",    # kp 7 (numlock)
+        105: "rightup",   # kp 9 (numlock)
+        97: "leftdown",   # kp 1 (numlock)
+        99: "rightdown"   # kp 3 (numlock)
+    }
 
     def keyrelease(self, event):
-        # print(time.time(), "KEYRELEASE", vars(event))
+        print(time.time(), "KEYRELEASE '{char}' keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event))) # XXX
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
             if event.keycode in self.joystick_keys_osx:
                 self.screen.setjoystick(**{self.joystick_keys_osx[event.keycode]: False})
                 return
-        if event.keysym in self.joystick_keys:
-            self.screen.setjoystick(**{self.joystick_keys[event.keysym]: False})
+        elif sys.platform == "win32":
+            # Windows numkeys are also problematic, need to solve this via keysym_num OR via keycode.. (sigh)
+            if event.keysym_num in self.joystick_keys_windows_keysym_num:
+                self.screen.setjoystick(**{self.joystick_keys_windows_keysym_num[event.keysym_num]: False})
+                return
+            elif event.keycode in self.joystick_keys_windows_keycode:
+                self.screen.setjoystick(**{self.joystick_keys_windows_keycode[event.keycode]: False})
+                return
+        # sane platforms (Linux for one) play nice and just use the friendly keysym name.
+        elif event.keysym in self.joystick_keys_sane_platforms:
+            self.screen.setjoystick(**{self.joystick_keys_sane_platforms[event.keysym]: False})
             return
 
     def keypress(self, event):
-        # print(time.time(), "keypress", event.keycode, event.keysym)
+        print(time.time(), "KEYPRESS '{char}' keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
             if event.keycode in self.joystick_keys_osx:
                 self.screen.setjoystick(**{self.joystick_keys_osx[event.keycode]: True})
                 return
-        if event.keysym in self.joystick_keys:
-            self.screen.setjoystick(**{self.joystick_keys[event.keysym]: True})
+        elif sys.platform == "win32":
+            # Windows numkeys are also problematic, need to solve this via keysym_num OR via keycode.. (sigh)
+            if event.keysym_num in self.joystick_keys_windows_keysym_num:
+                self.screen.setjoystick(**{self.joystick_keys_windows_keysym_num[event.keysym_num]: True})
+                return
+            elif event.keycode in self.joystick_keys_windows_keycode:
+                self.screen.setjoystick(**{self.joystick_keys_windows_keycode[event.keycode]: True})
+                return
+        # sane platforms (Linux for one) play nice and just use the friendly keysym name.
+        elif event.keysym in self.joystick_keys_sane_platforms:
+            self.screen.setjoystick(**{self.joystick_keys_sane_platforms[event.keysym]: True})
             return
         # turn the event into a bit more managable key character
         char = event.char
