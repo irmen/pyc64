@@ -151,7 +151,7 @@ class BasicInterpreter:
                     do_more = self._execute_cmd(cmd, parts)
                     if not do_more:
                         break
-                if not self.running_program and not self.sleep_until:
+                if not self.running_program and not self.sleep_until and not self.must_run_stop:
                     self.write_prompt("\n")
             if self.running_program:
                 if not recursive:
