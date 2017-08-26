@@ -11,7 +11,6 @@ License: MIT open-source.
 import random
 import array
 import io
-import os
 import sys
 import tkinter
 import pkgutil
@@ -68,23 +67,22 @@ class Playfield:
 
 
 class BoulderWindow(tkinter.Tk):
-    temp_graphics_folder = "temp_gfx"
     update_rate = 1000 // 30    # 30 hz screen refresh rate
     visible_columns = 40
     visible_rows = 25
     playfield_columns = 80
     playfield_rows = 80
-    sprites = 32
+    scalexy = 2
     tileset = "boulder_rush.png"
 
     def __init__(self, title):
+        super().__init__()
         if self.playfield_columns <= 0 or self.playfield_columns > 128 or self.playfield_rows <= 0 or self.playfield_rows > 128:
             raise ValueError("invalid playfield size")
         if self.visible_columns <= 0 or self.visible_columns > 128 or self.visible_rows <= 0 or self.visible_rows > 128:
             raise ValueError("invalid visible size")
-        if self.sprites < 0 or self.sprites > 256:
-            raise ValueError("invalid number of sprites")
-        super().__init__()
+        if self.scalexy not in (1, 2, 3, 4):
+            raise ValueError("invalid scalexy factor")
         self.geometry("+200+40")
         self.wm_title(title)
         self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "gdash_icon_48.gif"))
@@ -95,8 +93,10 @@ class BoulderWindow(tkinter.Tk):
             myappid = 'net.Razorvine.Tale.story'  # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         self.playfield = Playfield(self.playfield_columns, self.playfield_rows, self.visible_columns, self.visible_rows)
-        self.canvas = tkinter.Canvas(self, width=self.visible_columns * 32, height=self.visible_rows * 32,
-                                     borderwidth=16, highlightthickness=0, background="black", xscrollincrement=2, yscrollincrement=2)
+        self.canvas = tkinter.Canvas(self, width=self.visible_columns * 16 * self.scalexy,
+                                     height=self.visible_rows * 16 * self.scalexy,
+                                     borderwidth=16, highlightthickness=0, background="black",
+                                     xscrollincrement=self.scalexy, yscrollincrement=self.scalexy)
         self.buttonbar = tkinter.Frame(self)
         resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
         resetbut.pack(side=tkinter.LEFT)
@@ -125,6 +125,11 @@ class BoulderWindow(tkinter.Tk):
     def _cyclic_repaint(self):
         starttime = time.perf_counter()
         self.repaint()
+        self.update()
+        self.update()
+        self.update()
+        self.update()
+        self.update()
         duration = time.perf_counter() - starttime
         remaining_timer_budget = (self.update_rate/1000)-duration
         if remaining_timer_budget < 0.001:
@@ -148,7 +153,7 @@ class BoulderWindow(tkinter.Tk):
         self.canvas.yview_scroll(self.view_y, tkinter.UNITS)
         self.view_x += 2
         self.view_y += 1
-        for _ in range(100):
+        for _ in range(40):
             self.playfield[random.randrange(0, self.playfield_columns), random.randrange(0, self.playfield_rows)] = random.randrange(1, 256)
         self.view_x = min(max(0, self.view_x), (self.playfield_columns - self.visible_columns) * 16)
         self.view_y = min(max(0, self.view_y), (self.playfield_rows - self.visible_rows) * 16)
@@ -161,32 +166,30 @@ class BoulderWindow(tkinter.Tk):
         self.refreshtick.set()
 
     def create_tile_images(self):
-        os.makedirs(self.temp_graphics_folder, exist_ok=True)
-        with open(self.temp_graphics_folder + "/readme.txt", "w") as f:
-            f.write("this is a temporary folder to cache pyc64 files for tkinter graphics bitmaps.\n")
         with Image.open(io.BytesIO(pkgutil.get_data(__name__, self.tileset))) as source_chars:
             tile_num = 0
             while True:
-                row, col = divmod(tile_num, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
+                row, col = divmod(tile_num, source_chars.width // 16)       # the tileset image contains 16x16 pixel tiles
                 if row * 16 > source_chars.height:
                     break
-                filename = self.temp_graphics_folder + "/tile-{:04x}.png".format(tile_num)
                 chars = source_chars.copy()
                 ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                ci = ci.resize((32, 32), Image.NEAREST)   # double the size
-                ci.save(filename, "png")
+                if self.scalexy != 1:
+                    ci = ci.resize((16 * self.scalexy, 16 * self.scalexy), Image.NEAREST)
+                out = io.BytesIO()
+                ci.save(out, "png")
+                img = tkinter.PhotoImage(data=out.getvalue())
+                self.tile_images.append(img)
                 tile_num += 1
-        for i in range(tile_num):
-            filename = self.temp_graphics_folder + "/tile-{:04x}.png".format(i)
-            img = tkinter.PhotoImage(file=filename)
-            self.tile_images.append(img)
 
     def create_sprite_images(self):
         data0 = pkgutil.get_data(__name__, "boulderdash_logo_sprite.png")
         image = tkinter.PhotoImage(data=data0)
-        image = image.zoom(2, 2)  # double the size
-        sx = 16 * self.visible_columns // 2 - image.width() // 4
-        sy = 16 * self.visible_rows // 2 - image.height() // 4
+        sw, sh = image.width(), image.height()
+        if self.scalexy != 1:
+            image = image.zoom(self.scalexy, self.scalexy)
+        sx = (16 * self.visible_columns - sw) // 2
+        sy = (16 * self.visible_rows - sh) // 2
         cor = self.physicalcor((sx, sy))
         cs = self.canvas.create_image(cor[0], cor[1], image=image, anchor=tkinter.NW, tags="sprite")
         self.canvas.tag_raise(cs)
@@ -198,7 +201,7 @@ class BoulderWindow(tkinter.Tk):
         return cxy[0] * 16, cxy[1] * 16     # a tile is 16x16 pixels
 
     def physicalcor(self, sxy):
-        return sxy[0] * 2, sxy[1] * 2    # the actual physical display is a 2x2 zoom
+        return sxy[0] * self.scalexy, sxy[1] * self.scalexy    # the actual physical display can be a 2x2 zoom
 
     def tkcolor(self, color):
         return "#{:06x}".format(self.colorpalette[color & len(self.colorpalette) - 1])
