@@ -204,7 +204,7 @@ class EmulatorWindowBase(tkinter.Tk):
         self.refreshtick.set()
 
     def smoothscroll(self, xs, ys):
-        return -self.screen.scrollx * 2, -self.screen.scrolly * 2
+        return -xs * 2, -self.ys * 2
 
     def create_bitmaps(self):
         os.makedirs(self.temp_graphics_folder, exist_ok=True)
@@ -559,7 +559,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
 
     def smoothscroll(self, xs, ys):
         # c64 smooth scrolling in Y axis has offset of 3 pixels
-        return -self.screen.scrollx * 2, -(self.screen.scrolly - 3) * 2
+        return -xs * 2, -(ys - 3) * 2
 
     def _border_positions(self):
         b1, b2, b3, b4 = super()._border_positions()
