@@ -8,6 +8,7 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 """
 
+import random
 import array
 import io
 import os
@@ -48,10 +49,22 @@ class Playfield:
     def add_sprite(self, sprite):
         self.sprites.append(sprite)
 
+    def __getitem__(self, xy):
+        x, y = xy
+        if x < 0 or x >= self.width or y < 0 or y >= self.height:
+            raise ValueError("tile xy out of bounds")
+        return self.tiles[x + self.width*y]
+
+    def __setitem__(self, xy, value):
+        x, y = xy
+        if x < 0 or x >= self.width or y < 0 or y >= self.height:
+            raise ValueError("tile xy out of bounds")
+        self.tiles[x + self.width*y] = value
+
     def dirty(self):
+        diff = [(i, tile) for i, tile in enumerate(self.tiles) if tile != self.previously_compared_tiles[i]]
         self.previously_compared_tiles[:] = self.tiles
-        return []  # @todo
-        return enumerate(self.tiles)   # @todo
+        return diff
 
 
 class BoulderWindow(tkinter.Tk):
@@ -135,6 +148,8 @@ class BoulderWindow(tkinter.Tk):
         self.canvas.yview_scroll(self.view_y, tkinter.UNITS)
         self.view_x += 2
         self.view_y += 1
+        for _ in range(100):
+            self.playfield[random.randrange(0, self.playfield_columns), random.randrange(0, self.playfield_rows)] = random.randrange(1, 256)
         self.view_x = min(max(0, self.view_x), (self.playfield_columns - self.visible_columns) * 16)
         self.view_y = min(max(0, self.view_y), (self.playfield_rows - self.visible_rows) * 16)
         self.playfield.set_view(self.view_x // 16, self.view_y // 16)
