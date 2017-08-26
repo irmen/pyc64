@@ -1,3 +1,3 @@
-from boulder import screen
+from boulder import game
 
-screen.start()
+game.start()
