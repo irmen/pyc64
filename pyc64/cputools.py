@@ -38,9 +38,11 @@ class CPU(py65.devices.mpu6502.MPU):
             self.pc = pc
         stopcodes = {0x00}        # BRK
         instructions = 0
+        start_time = time.perf_counter()
         while True:
             if self.memory[self.pc] == 0x4c and self.WordAt(self.pc + 1) == self.pc:
                 # JMP to itself, instead of looping forever we also consider this a program end
+                end_time = time.perf_counter()
                 time.sleep(2)
                 break
             self.step()
@@ -50,6 +52,11 @@ class CPU(py65.devices.mpu6502.MPU):
                 microsleep()
             if self.pc == end_address:
                 # when this address is reached, we consider it the end of the program
+                end_time = time.perf_counter()
                 break
             if self.memory[self.pc] in stopcodes:
+                end_time = time.perf_counter()
                 raise InterruptedError("brk instruction")
+        duration = end_time - start_time
+        mips = instructions / duration / 1e6
+        print("6510 CPU simulator: {:d} instructions in {:.3f} seconds = {:.3f} mips (~{:.3f} times realtime)".format(instructions, duration, mips, mips/0.44))
