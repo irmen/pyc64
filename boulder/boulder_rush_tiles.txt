@@ -1,0 +1,56 @@
+These tiles are from the MIT-licensed GDASH (https://bitbucket.org/czirkoszoltan/gdash)
+
+
+ 0:  	empty   boulder   dirt   dirt2   steel   brick   bladderspender   voodoo
+ 1:		sweet   gravestone   trappeddiamond   diamondkey   biterswitch1   biterswitch2   biterswitch3   biterswitch4
+ 2:		clock   chasingboulder   creatureswitch   creatureswitchon   acid   sokobanbox   outboxclosed   outboxopen
+ 3:		steelwallbirth0   steelwallbirth1   steelwallbirth2   steelwallbirth3   clockbirth0   clockbirth1   clockbirth2   clockbirth3
+ 4:		rockfordbirth0   rockfordbirth1   rockfordbirth2   rockfordbirth3   boulderbirth0   boulderbirth1   boulderbirth2   boulderbirth4
+ 5:		expandingwallswitchhoriz   expandingwallswitchvert   rockfordbomb   explosion0   explosion1   explosion2   explosion3   explosion4
+ 6:     bomb   ignitedbomb0   ignitedbomb1   ignitedbomb2   ignitedbomb3   ignitedbomb4   ignitedbomb5   ignitedbomb6
+ 7:		diamondbirth0   diamondbirth1   diamondbirth2   diamondbirth3   diamondbirth4	teleporter	hammer   pot
+ 8:		door1   door2   door3   key1   key2   key3   questionmark	eatable
+ 9:		steelwalldestructable   down_arrow   leftright_arrow   everydir_arrow   glued   out   exclamationmark   none
+10:		ghostexplode0   ghostexplode1   ghostexplode2   ghostexplode3   bombexplode0   bombexplode1   bombexplode2   bombexplode3
+11:		cow0 - cow7
+12:		water0 - water7
+13:     altfirefly0 - altfirefly7
+14:		altbutterfly0 - altbutterfly7
+15:     bonusbg0 - bonusbg7
+16:		covered0 - covered7
+17:		firefly0 - firefly7
+18:		butterfly0 - butterfly7
+19:		stonefly0 - bstonefly7
+20:		ghost0 - ghost7
+21:		biter0 - biter7
+22:		bladder0 - bladder7
+23:		magicwall0 - magicwall7
+24:		amoeba0 - amoeba7
+25:		slime0 - slime7
+26:		rockfordblink0 - rockfordblink7
+27:		rockfordtap0 - rockfordtap7
+28:		rockfordtapblink0 - rockfordtapblink7
+29:		rockfordleft0 - rockfordleft7
+30:		rockfrodright0 - rockfordright7
+31:		diamond0 - diamond7
+32:		rockfordstirring0 - rockfordstirring7
+33:		hammeractivel00   hammeractivel01   hammeractivel10    hammeractivel01   hammeractiver00   hammeractiver01   hammeractiver10   hammeractiver01
+34:		megaboulder   skeleton   gravityswitch   gravityswitchon   wallslopedupright   wallslopedupleft   wallslopeddownleft   wallslopeddownright
+35:		dirtslopedupright   dirtslopedupleft   dirtslopeddownleft   dirtslopeddownright   steelwallslopedupright   steelwallslopedupleft   steelwallslopeddownleft   steelwallslopeddownright
+36:		nitroflask   dirtball   replicatorswitchon   replicatorswitchoff   amoebaexplode0   amoebaexplode1   amoebaexplode3   amoebaexplode4
+37:		amoebarectangle2_0 - amoebarectangle2_7
+38:		replicator0 - replicator7
+39:		lava0 - lava7
+40:		conveyorright0  -  conveyorright7 
+41:		conveyorleft0  -  conveyorleft7 
+42:		dragonfly0 - dragonfly7
+43:		flyingdiamond0 - flyingdiamond7
+44:		dirtloose   conveyordirectionswitchnormal   conveyordirectionswitchchanged   conveyordirectionswitchoff   conveyordirectionswitchon   flyingboulder   coconut   [unused]
+45:		nutcrack0   nutcrack1   nutcrack2   nutcrack3   rocketright   rocketup   rocketleft   rocketdown
+46:		rocketlauncher   rockfordrocketlauncher   [rest empty]
+47:		[empty]
+48:		[empty]
+49:		rockfordpushleft0 - rockfordpushleft7
+50:		rockfordpushright0 - rockfordpushright7
+
+
