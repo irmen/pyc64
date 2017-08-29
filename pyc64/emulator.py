@@ -663,7 +663,7 @@ class InterpretThread(threading.Thread):
         self.interpreter.runstop()
         self.must_stop = True
         self.direct_queue.put(None)  # sentinel
-        self.window.hertztick.set()
+        self.window.hertztick.draw_single()
         time.sleep(0.1)
 
     def buffer_keypress(self, char, event):

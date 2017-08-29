@@ -17,6 +17,7 @@ import tkinter
 import pkgutil
 import time
 from PIL import Image
+from . import caves
 
 
 class Tilesheet:
@@ -84,9 +85,9 @@ class Tilesheet:
 
 class BoulderWindow(tkinter.Tk):
     update_fps = 20
-    visible_columns = 42
+    visible_columns = 40
     visible_rows = 22
-    playfield_columns = 42
+    playfield_columns = 40
     playfield_rows = 22
     scalexy = 2
 
@@ -162,10 +163,11 @@ class BoulderWindow(tkinter.Tk):
         self.cyclic_repaint_after = self.after(int(remaining_timer_budget * 1000), self._cyclic_repaint)
 
     def keypress(self, event):
-        pass   # override in subclass
+        pass
 
     def keyrelease(self, event):
-        pass   # override in subclass
+        if event.keycode == 13:
+            self.gamestate.next_level()
 
     def repaint(self):
         for index, tile in self.tilesheet.dirty():
@@ -250,17 +252,17 @@ class BoulderWindow(tkinter.Tk):
             time=str(self.gamestate.timeremaining)[3:7],
             score=self.gamestate.score,
             diamonds="\x0e {:02d}/{:02d}".format(self.gamestate.diamonds, self.gamestate.diamonds_needed),
-            keys=self.gamestate.keys["grey"]
+            keys=self.gamestate.keys["diamond"]
         ))
-        self.tilesheet_score.set_tiles(1, 0, tiles)
-        if self.gamestate.keys["yellow"]:
-            self.tilesheet_score[10, 0] = GameState.KEY1.spritex + GameState.KEY1.spritey * 8
-        if self.gamestate.keys["green"]:
-            self.tilesheet_score[11, 0] = GameState.KEY2.spritex + GameState.KEY2.spritey * 8
-        if self.gamestate.keys["red"]:
-            self.tilesheet_score[12, 0] = GameState.KEY3.spritex + GameState.KEY3.spritey * 8
-        tiles = self.text2tiles("Welcome to BoulderDash!")
-        self.tilesheet_score.set_tiles(5, 1, tiles)
+        self.tilesheet_score.set_tiles(0, 0, tiles)
+        if self.gamestate.keys["one"]:
+            self.tilesheet_score[9, 0] = GameState.KEY1.spritex + GameState.KEY1.spritey * 8
+        if self.gamestate.keys["two"]:
+            self.tilesheet_score[10, 0] = GameState.KEY2.spritex + GameState.KEY2.spritey * 8
+        if self.gamestate.keys["three"]:
+            self.tilesheet_score[11, 0] = GameState.KEY3.spritex + GameState.KEY3.spritey * 8
+        tiles = self.text2tiles("Level: {:d}.{:s} (ENTER=next)                      ".format(self.gamestate.level, self.gamestate.level_name))
+        self.tilesheet_score.set_tiles(0, 1, tiles[:40])
 
 
 class GameObject:
@@ -437,58 +439,95 @@ class GameState:
     ROCKFORDPUSHLEFT = GameObject(False, True, True, 0, 49, sframes=8, sfps=20)
     ROCKFORDPUSHRIGHT = GameObject(False, True, True, 0, 50, sframes=8, sfps=20)
 
-
     def __init__(self, tilesheet, fps):
+        self.level = 1
         self.fps = fps
         self.frame = 0
         self.lives = 9
         self.keys = {
-            "grey": 0,
-            "yellow": True,
-            "green": True,
-            "red": True
+            "diamond": 0,
+            "one": True,
+            "two": True,
+            "three": True
         }
         self.diamonds = 0
-        self.diamonds_needed = 99
         self.score = 0
-        self.time_remaining = datetime.timedelta(minutes=9, seconds=59.9999)
-        self.timelimit = datetime.datetime.now() + self.time_remaining
-        self.cavename = "World 1"
         self.tiles = tilesheet
         self.width = tilesheet.width
         self.height = tilesheet.height
         self.cave = []
+        self.level_name = "???"
         for _ in range(self.width * self.height):
             self.cave.append(Cell())
-        self.rectangle(self.STEEL, 0, 0, self.tiles.width - 1, self.tiles.height - 1)
-        self.rectangle(self.DIRT, 1, 1, self.tiles.width-2, self.tiles.height-2, fill=False)
-        self.rectangle(self.DIRT2, 2, 2, self.tiles.width-3, self.tiles.height-3, fill=False)
-        self.rectangle(self.BOULDER, 3, 3, self.tiles.width-4, self.tiles.height-4, fill=False)
-        self.rectangle(self.MEGABOULDER, 4, 4, self.tiles.width - 5, self.tiles.height - 5, fill=False)
-        self.rectangle(self.BONUSBG, 5, 5, self.tiles.width - 6, self.tiles.height - 6, fill=True)
+        self.load_c64level()
 
-    def rectangle(self, obj, x1, y1, x2, y2, fill=False):
-        self.line(obj, x1, y1, width=x2-x1+1)
-        self.line(obj, x1, y2, width=x2-x1+1)
-        self.line(obj, x1, y1+1, height=y2-y1-1)
-        self.line(obj, x2, y1+1, height=y2-y1-1)
-        if fill:
-            for y in range(y1+1, y2):
-                self.line(obj, x1+1, y, width=x2-x1-1)
+    def load_c64level(self):
+        c64cave = caves.Cave.decode_from_lvl(self.level)
+        assert c64cave.width == self.tiles.width and c64cave.height == self.tiles.height
+        self.level_name = c64cave.name
+        self.diamonds_needed = c64cave.diamonds_needed
+        self.time_remaining = datetime.timedelta(seconds=c64cave.time)
+        self.timelimit = datetime.datetime.now() + self.time_remaining
+        # convert the c64 cave map
+        conversion = {
+            0x00: self.EMPTY,
+            0x01: self.DIRT,
+            0x02: self.BRICK,
+            0x03: self.MAGICWALL,
+            0x04: self.OUTBOXCLOSED,
+            0x05: self.OUTBOXBLINKING,
+            0x07: self.STEEL,
+            0x08: self.FIREFLY,
+            0x09: self.FIREFLY,
+            0x0a: self.FIREFLY,
+            0x0b: self.FIREFLY,
+            0x10: self.BOULDER,
+            0x12: self.BOULDER,
+            0x14: self.DIAMOND,
+            0x16: self.DIAMOND,
+            0x25: self.ROCKFORDBIRTH,
+            0x30: self.BUTTERFLY,
+            0x31: self.BUTTERFLY,
+            0x32: self.BUTTERFLY,
+            0x33: self.BUTTERFLY,
+            0x38: self.ROCKFORD,
+            0x3a: self.AMOEBA
+        }
+        for i, obj in enumerate(c64cave.map):
+            y, x = divmod(i, self.width)
+            self.draw_single(conversion[obj], x, y)
 
-    def line(self, obj, x, y, width=0, height=0):
-        if width:
-            for xx in range(x, x+width):
-                self.set(xx, y, obj)
-        else:
-            for yy in range(y, y+height):
-                self.set(x, yy, obj)
+    def draw_rectangle(self, obj, x1, y1, width, height, fillobject=None):
+        self.draw_line(obj, x1, y1, width, 'r')
+        self.draw_line(obj, x1, y1 + height - 1, width, 'r')
+        self.draw_line(obj, x1, y1 + 1, height - 2, 'd')
+        self.draw_line(obj, x1 + width - 1, y1 + 1, height - 2, 'd')
+        if fillobject is not None:
+            for y in range(y1+1, y1+height - 1):
+                self.draw_line(fillobject, x1 + 1, y, width-2, 'r')
 
-    def set(self, x, y, obj):
+    def draw_line(self, obj, x, y, length, direction):
+        dx, dy = {
+            "l": (-1, 0),
+            "r": (1, 0),
+            "u": (0, -1),
+            "d": (0, 1),
+            "lu": (-1, -1),
+            "ru": (1, -1),
+            "ld": (-1, 1),
+            "rd": (1, 1)
+        }[direction.lower()]
+        for _ in range(length):
+            self.draw_single(obj, x, y)
+            x += dx
+            y += dy
+
+    def draw_single(self, obj, x, y):
         self.cave[x + y*self.width].object = obj
         self.tiles[x, y] = self.select_tile(obj)
 
     def select_tile(self, obj):
+        # select the tile to display (also for animated objects)
         tile = obj.spritex + 8 * obj.spritey
         if obj.sframes:
             tile += int(obj.sfps / self.fps * self.frame) % obj.sframes
@@ -508,6 +547,10 @@ class GameState:
         }
         return self.cave[x + y * self.width + dirxy[direction]].object
 
+    def next_level(self):
+        self.level = (self.level % len(caves.CAVES)) + 1
+        self.load_c64level()
+
     def update(self):
         self.frame += 1
         self.timeremaining = self.timelimit - datetime.datetime.now()
@@ -520,43 +563,43 @@ class GameState:
                 if not obj:
                     continue
                 if obj.sframes:
-                    self.set(x, y, obj)  # mark the cell dirty to force updating its animation
+                    self.draw_single(obj, x, y)  # mark the cell dirty to force updating its animation
 
         # place something randomly:
-        if self.frame % 2 == 0:
-            obj = random.choice([self.ROCKFORDBLINK,
-                                 self.ROCKFORDTAP,
-                                 self.ROCKFORDTAPBLINK,
-                                 self.ROCKFORDLEFT,
-                                 self.ROCKFORDRIGHT,
-                                 self.ROCKFORDPUSHLEFT,
-                                 self.ROCKFORDPUSHRIGHT,
-                                 self.EXPLOSION,
-                                 self.FIREFLY,
-                                 self.BUTTERFLY,
-                                 self.STONEFLY,
-                                 self.AMOEBA,
-                                 self.ALTBUTTERFLY,
-                                 self.ALTFIREFLY,
-                                 self.COW,
-                                 self.GHOST,
-                                 self.BITER,
-                                 self.BLADDER,
-                                 self.AMOEBARECTANGLE,
-                                 self.DRAGONFLY,
-                                 self.MAGICWALL,
-                                 self.DIAMOND,
-                                 self.FLYINGDIAMOND,
-                                 self.WATER,
-                                 self.REPLICATOR,
-                                 self.BOMB,
-                                 self.BOMBEXPLODE,
-                                 self.BONUSBG,
-                                 self.COVERED,
-                                 self.REPLICATOR,
-                                 self.LAVA,
-                                 self.IGNITEDBOMB])
-            self.set(random.randrange(1, self.tiles.width-1), random.randrange(1, self.tiles.height-1), obj)
+        # if self.frame % 20 == 19:
+        #     obj = random.choice([self.ROCKFORDBLINK,
+        #                          self.ROCKFORDTAP,
+        #                          self.ROCKFORDTAPBLINK,
+        #                          self.ROCKFORDLEFT,
+        #                          self.ROCKFORDRIGHT,
+        #                          self.ROCKFORDPUSHLEFT,
+        #                          self.ROCKFORDPUSHRIGHT,
+        #                          self.EXPLOSION,
+        #                          self.FIREFLY,
+        #                          self.BUTTERFLY,
+        #                          self.STONEFLY,
+        #                          self.AMOEBA,
+        #                          self.ALTBUTTERFLY,
+        #                          self.ALTFIREFLY,
+        #                          self.COW,
+        #                          self.GHOST,
+        #                          self.BITER,
+        #                          self.BLADDER,
+        #                          self.AMOEBARECTANGLE,
+        #                          self.DRAGONFLY,
+        #                          self.MAGICWALL,
+        #                          self.DIAMOND,
+        #                          self.FLYINGDIAMOND,
+        #                          self.WATER,
+        #                          self.REPLICATOR,
+        #                          self.BOMB,
+        #                          self.BOMBEXPLODE,
+        #                          self.BONUSBG,
+        #                          self.COVERED,
+        #                          self.REPLICATOR,
+        #                          self.LAVA,
+        #                          self.IGNITEDBOMB])
+        #     self.draw_single(obj, random.randrange(1, self.tiles.width - 1), random.randrange(1, self.tiles.height - 1))
 
 
 def start():
