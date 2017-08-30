@@ -177,7 +177,7 @@ class Cave:
 
     @classmethod
     def decode_from_lvl(cls, levelnumber):
-        name, data, description = CAVES[levelnumber-1]
+        name, data, description = CAVES[levelnumber - 1]
         cave = cls(data[0], name, description, 40, 22)   # size hardcoded
         cave.intermission = name.lower().startswith("intermission")
         cave.magicwall_millingtime = cave.amoeba_slowgrowthtime = data[0x01]
@@ -218,7 +218,7 @@ class Cave:
 
     def build_map(self, data):
         seeds = [0, self.randomseed]
-        for y in range(1, self.height-1):
+        for y in range(1, self.height - 1):
             for x in range(0, self.width):
                 obj = 0x01   # DIRT
                 self.bdrandom(seeds)
@@ -232,25 +232,25 @@ class Cave:
         while n < len(data) and data[n] < 0xff:
             obj = data[n] & 0x3f
             kind = (data[n] & 0xc0) >> 6
-            x = data[n+1]
-            y = data[n+2] - 2   # apparently need to adjust for top 2 lines where score is shown on c64
+            x = data[n + 1]
+            y = data[n + 2] - 2   # apparently need to adjust for top 2 lines where score is shown on c64
             if kind == 0:
                 self.draw_single(obj, x, y)
                 n += 3
             elif kind == 1:
-                length = data[n+3]
-                direction = data[n+4]
+                length = data[n + 3]
+                direction = data[n + 4]
                 self.draw_line(obj, x, y, length, direction)
                 n += 5
             elif kind == 2:
-                width = data[n+3]
-                height = data[n+4]
-                fillobject = data[n+5]
+                width = data[n + 3]
+                height = data[n + 4]
+                fillobject = data[n + 5]
                 self.draw_rectangle(obj, x, y, width, height, fillobject)
                 n += 6
             elif kind == 3:
-                width = data[n+3]
-                height = data[n+4]
+                width = data[n + 3]
+                height = data[n + 4]
                 self.draw_rectangle(obj, x, y, width, height)
                 n += 5
             else:
@@ -262,8 +262,8 @@ class Cave:
         self.draw_line(obj, x1, y1 + 1, height - 2, 4)
         self.draw_line(obj, x1 + width - 1, y1 + 1, height - 2, 4)
         if fillobject is not None:
-            for y in range(y1+1, y1+height - 1):
-                self.draw_line(fillobject, x1 + 1, y, width-2, 2)
+            for y in range(y1 + 1, y1 + height - 1):
+                self.draw_line(fillobject, x1 + 1, y, width - 2, 2)
 
     def draw_line(self, obj, x, y, length, direction):
         dx, dy = [
@@ -281,4 +281,4 @@ class Cave:
             y += dy
 
     def draw_single(self, obj, x, y):
-        self.map[x + y*self.width] = obj
+        self.map[x + y * self.width] = obj
