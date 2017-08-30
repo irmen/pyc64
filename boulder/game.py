@@ -180,7 +180,7 @@ class BoulderWindow(tkinter.Tk):
             animframe = int(obj.sfps / self.update_fps * (self.graphics_frame-cell.anim_start_gfx_frame))
             tile = obj.spritex + self.tile_image_numcolumns * obj.spritey + (animframe % obj.sframes)
             self.tilesheet[cell.x, cell.y] = tile
-            cell.animation_ended = animframe >= obj.sframes   # the animation reached the last frame
+            cell.animation_ended = animframe >= obj.sframes   # the animation reached the last frame  # @todo proper trigger callback?
         for index, tile in self.tilesheet.dirty():
             self.canvas.itemconfigure(self.c_tiles[index], image=self.tile_images[tile])
         for index, tile in self.tilesheet_score.dirty():
@@ -313,6 +313,7 @@ GameObject.CREATURESWITCH = GameObject("CREATURESWITCH", False, False, False, 2,
 GameObject.CREATURESWITCHON = GameObject("CREATURESWITCHON", False, False, False, 3, 2)
 GameObject.ACID = GameObject("ACID", False, False, False, 4, 2)
 GameObject.SOKOBANBOX = GameObject("SOKOBANBOX", False, False, False, 5, 2)
+GameObject.INBOXBLINKING = GameObject("OUTBOXBLINKING", False, False, False, 6, 2, sframes=2, sfps=4)
 GameObject.OUTBOXBLINKING = GameObject("OUTBOXBLINKING", False, False, False, 6, 2, sframes=2, sfps=4)
 GameObject.OUTBOXCLOSED = GameObject("OUTBOXCLOSED", False, False, False, 6, 2)
 GameObject.OUTBOXOPEN = GameObject("OUTBOXOPEN", False, False, False, 7, 2)
@@ -540,8 +541,9 @@ class GameState:
         assert c64cave.width == self.tiles.width and c64cave.height == self.tiles.height
         self.level_name = c64cave.name
         self.diamonds_needed = c64cave.diamonds_needed
-        self.time_remaining = datetime.timedelta(seconds=c64cave.time)
-        self.timelimit = datetime.datetime.now() + self.time_remaining
+        self.timeremaining = datetime.timedelta(seconds=c64cave.time)
+        self.frame = 0
+        self.timelimit = None   # will be set as soon as Rockford spawned
         # convert the c64 cave map
         conversion = {
             0x00: (GameObject.EMPTY, None),
@@ -559,7 +561,7 @@ class GameState:
             0x12: (GameObject.BOULDER, None),
             0x14: (GameObject.DIAMOND, None),
             0x16: (GameObject.DIAMOND, None),
-            0x25: (GameObject.ROCKFORDBIRTH, None),
+            0x25: (GameObject.INBOXBLINKING, None),
             0x30: (GameObject.BUTTERFLY, 'd'),
             0x31: (GameObject.BUTTERFLY, 'l'),
             0x32: (GameObject.BUTTERFLY, 'u'),
@@ -637,9 +639,10 @@ class GameState:
     def update(self, graphics_frame_counter):
         self.graphics_frame_counter = graphics_frame_counter    # we store this to properly sync up animation frames
         self.frame += 1
-        self.timeremaining = self.timelimit - datetime.datetime.now()
-        if self.timeremaining.seconds <= 0:
-            self.timeremaining = datetime.timedelta(0)
+        if self.timelimit:
+            self.timeremaining = self.timelimit - datetime.datetime.now()
+            if self.timeremaining.seconds <= 0:
+                self.timeremaining = datetime.timedelta(0)
         # sweep
         for cell in self.cave:
             if cell.frame < self.frame:
@@ -655,6 +658,10 @@ class GameState:
                     self.update_firefly(cell)
                 elif cell.isbutterfly():
                     self.update_butterfly(cell)
+                elif cell.obj is GameObject.INBOXBLINKING:
+                    self.update_inbox(cell)
+                elif cell.obj is GameObject.ROCKFORDBIRTH:
+                    self.update_rockfordbirth(cell)
 
     def update_explosion(self, cell):
         # a normal explosion ends with an empty cell
@@ -723,6 +730,17 @@ class GameState:
             self.move(cell, cell.direction)
         else:
             cell.direction = self.rotate90left(cell.direction)
+
+    def update_inbox(self, cell):
+        # after 4 blinks (=2 seconds), Rockford spawns in the inbox.
+        if self.update_timestep * self.frame > 2.0:
+            self.draw_single_cell(cell, GameObject.ROCKFORDBIRTH)
+
+    def update_rockfordbirth(self, cell):
+        # rockfordbirth eventually creates the real Rockford and starts the level timer.
+        if cell.animation_ended:
+            self.draw_single_cell(cell, GameObject.ROCKFORD)
+            self.timelimit = datetime.datetime.now() + self.timeremaining
 
     def explode(self, cell, direction=None):
         explosioncell = self.cave[cell.x + cell.y * self.width + self._dirxy[direction]]
