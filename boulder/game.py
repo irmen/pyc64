@@ -87,7 +87,7 @@ class Tilesheet:
 
 
 class BoulderWindow(tkinter.Tk):
-    update_fps = 60
+    update_fps = 30
     update_timestep = 1 / update_fps
     visible_columns = 40
     visible_rows = 22
@@ -449,7 +449,7 @@ GameObject.ROCKFORDPUSHRIGHT = GameObject("ROCKFORDPUSHRIGHT", False, True, True
 
 class GameState:
     class Cell:
-        __slots__ = "obj", "x", "y", "frame", "falling", "animation_ended", "anim_start_gfx_frame"
+        __slots__ = "obj", "x", "y", "frame", "falling", "direction", "animation_ended", "anim_start_gfx_frame"
 
         def __init__(self, obj, x, y):
             self.obj = obj  # what object is in the cell
@@ -457,6 +457,7 @@ class GameState:
             self.y = y
             self.frame = 0
             self.falling = False
+            self.direction = None
             self.animation_ended = False
             self.anim_start_gfx_frame = 0
 
@@ -466,6 +467,12 @@ class GameState:
         def isempty(self):
             return self.obj in {GameObject.EMPTY, GameObject.BONUSBG, None}
 
+        def isrockford(self):
+            return self.obj in {GameObject.ROCKFORD, GameObject.ROCKFORDBIRTH,
+                                GameObject.ROCKFORDBOMB, GameObject.ROCKFORDROCKETLAUNCHER, GameObject.ROCKFORDSTIRRING,
+                                GameObject.ROCKFORDLEFT, GameObject.ROCKFORDRIGHT,
+                                GameObject.ROCKFORDPUSHLEFT, GameObject.ROCKFORDPUSHRIGHT,
+                                GameObject.ROCKFORDTAP, GameObject.ROCKFORDTAPBLINK, GameObject.ROCKFORDBLINK}
         def isrounded(self):
             return self.obj.rounded
 
@@ -477,7 +484,13 @@ class GameState:
 
         def isbutterfly(self):
             # these explode to diamonds
-            return self.obj in {GameObject.BUTTERFLY, GameObject.ALTBUTTERFLY}
+            return self.obj is GameObject.BUTTERFLY or self.obj is GameObject.ALTBUTTERFLY
+
+        def isamoeba(self):
+            return self.obj is GameObject.AMOEBA or self.obj is GameObject.AMOEBARECTANGLE
+
+        def isfirefly(self):
+            return self.obj is GameObject.FIREFLY or self.obj is GameObject.ALTFIREFLY
 
         def canfall(self):
             return self.obj in {GameObject.BOULDER, GameObject.SWEET, GameObject.DIAMONDKEY, GameObject.BOMB,
@@ -531,32 +544,33 @@ class GameState:
         self.timelimit = datetime.datetime.now() + self.time_remaining
         # convert the c64 cave map
         conversion = {
-            0x00: GameObject.EMPTY,
-            0x01: GameObject.DIRT,
-            0x02: GameObject.BRICK,
-            0x03: GameObject.MAGICWALL,
-            0x04: GameObject.OUTBOXCLOSED,
-            0x05: GameObject.OUTBOXBLINKING,
-            0x07: GameObject.STEEL,
-            0x08: GameObject.FIREFLY,
-            0x09: GameObject.FIREFLY,
-            0x0a: GameObject.FIREFLY,
-            0x0b: GameObject.FIREFLY,
-            0x10: GameObject.BOULDER,
-            0x12: GameObject.BOULDER,
-            0x14: GameObject.DIAMOND,
-            0x16: GameObject.DIAMOND,
-            0x25: GameObject.ROCKFORDBIRTH,
-            0x30: GameObject.BUTTERFLY,
-            0x31: GameObject.BUTTERFLY,
-            0x32: GameObject.BUTTERFLY,
-            0x33: GameObject.BUTTERFLY,
-            0x38: GameObject.ROCKFORD,
-            0x3a: GameObject.AMOEBA
+            0x00: (GameObject.EMPTY, None),
+            0x01: (GameObject.DIRT, None),
+            0x02: (GameObject.BRICK, None),
+            0x03: (GameObject.MAGICWALL, None),
+            0x04: (GameObject.OUTBOXCLOSED, None),
+            0x05: (GameObject.OUTBOXBLINKING, None),
+            0x07: (GameObject.STEEL, None),
+            0x08: (GameObject.FIREFLY, 'l'),
+            0x09: (GameObject.FIREFLY, 'u'),
+            0x0a: (GameObject.FIREFLY, 'r'),
+            0x0b: (GameObject.FIREFLY, 'd'),
+            0x10: (GameObject.BOULDER, None),
+            0x12: (GameObject.BOULDER, None),
+            0x14: (GameObject.DIAMOND, None),
+            0x16: (GameObject.DIAMOND, None),
+            0x25: (GameObject.ROCKFORDBIRTH, None),
+            0x30: (GameObject.BUTTERFLY, 'd'),
+            0x31: (GameObject.BUTTERFLY, 'l'),
+            0x32: (GameObject.BUTTERFLY, 'u'),
+            0x33: (GameObject.BUTTERFLY, 'r'),
+            0x38: (GameObject.ROCKFORD, None),
+            0x3a: (GameObject.AMOEBA, None)
         }
         for i, obj in enumerate(c64cave.map):
             y, x = divmod(i, self.width)
-            self.draw_single(conversion[obj], x, y)
+            obj, direction = conversion[obj]
+            self.draw_single(obj, x, y, initial_direction=direction)
 
     def draw_rectangle(self, obj, x1, y1, width, height, fillobject=None):
         self.draw_line(obj, x1, y1, width, 'r')
@@ -583,11 +597,12 @@ class GameState:
             x += dx
             y += dy
 
-    def draw_single(self, obj, x, y):
-        self.draw_single_cell(self.cave[x + y * self.width], obj)
+    def draw_single(self, obj, x, y, initial_direction=None):
+        self.draw_single_cell(self.cave[x + y * self.width], obj, initial_direction)
 
-    def draw_single_cell(self, cell, obj):
+    def draw_single_cell(self, cell, obj, initial_direction=None):
         cell.obj = obj
+        cell.direction = initial_direction
         cell.frame = self.frame
         cell.animation_ended = False
         cell.anim_start_gfx_frame = self.graphics_frame_counter
@@ -599,24 +614,18 @@ class GameState:
         # retrieve the cell relative to the given cell
         return self.cave[cell.x + cell.y * self.width + self._dirxy[direction]]
 
-    def move(self, cell, direction=None):
+    def move(self, cell, direction):
         # move the object in the cell to the given relative direction
+        if not direction:
+            return  # no movement...
         newcell = self.cave[cell.x + cell.y * self.width + self._dirxy[direction]]
         self.draw_single_cell(newcell, cell.obj)
         newcell.falling = cell.falling
+        newcell.direction = cell.direction
         self.draw_single_cell(cell, GameObject.EMPTY)
         cell.falling = False
+        cell.direction = None
         return newcell
-
-    def explode(self, cell, direction=None):
-        explosioncell = self.cave[cell.x + cell.y * self.width + self._dirxy[direction]]
-        if explosioncell.isbutterfly():
-            obj = GameObject.DIAMONDBIRTH
-        else:
-            obj = GameObject.EXPLOSION
-        self.draw_single_cell(explosioncell, obj)
-        for direction in ["lu", "u", "ru", "l", "r", "ld", "d", "rd"]:
-            self.draw_single_cell(self.cave[explosioncell.x + explosioncell.y * self.width + self._dirxy[direction]], obj)
 
     def next_level(self):
         self.level = (self.level % len(caves.CAVES)) + 1
@@ -642,6 +651,10 @@ class GameState:
                     self.update_explosion(cell)
                 elif cell.obj is GameObject.DIAMONDBIRTH:
                     self.update_diamondbirth(cell)
+                elif cell.isfirefly():
+                    self.update_firefly(cell)
+                elif cell.isbutterfly():
+                    self.update_butterfly(cell)
 
     def update_explosion(self, cell):
         # a normal explosion ends with an empty cell
@@ -676,6 +689,80 @@ class GameState:
             self.move(cell, 'r')
         else:
             cell.falling = False  # falling is blocked by something
+
+    def update_firefly(self, cell):
+        # if it hits Rockford or Amoeba it explodes
+        # tries to rotate 90 degrees left and move to empty cell in new or original direction
+        # if not possible rotate 90 right and wait for next update
+        newdir = self.rotate90left(cell.direction)
+        if self.get(cell, 'u').isrockford() or self.get(cell, 'd').isrockford() \
+                or self.get(cell, 'l').isrockford() or self.get(cell, 'r').isrockford():
+            self.explode(cell)
+        elif self.get(cell, 'u').isamoeba() or self.get(cell, 'd').isamoeba() \
+                or self.get(cell, 'l').isamoeba() or self.get(cell, 'r').isamoeba():
+            self.explode(cell)
+        elif self.get(cell, newdir).isempty():
+            self.move(cell, newdir).direction = newdir
+        elif self.get(cell, cell.direction).isempty():
+            self.move(cell, cell.direction)
+        else:
+            cell.direction = self.rotate90right(cell.direction)
+
+    def update_butterfly(self, cell):
+        # same as firefly except butterflies rotate in the opposite direction
+        newdir = self.rotate90right(cell.direction)
+        if self.get(cell, 'u').isrockford() or self.get(cell, 'd').isrockford() \
+                or self.get(cell, 'l').isrockford() or self.get(cell, 'r').isrockford():
+            self.explode(cell)
+        elif self.get(cell, 'u').isamoeba() or self.get(cell, 'd').isamoeba() \
+                or self.get(cell, 'l').isamoeba() or self.get(cell, 'r').isamoeba():
+            self.explode(cell)
+        elif self.get(cell, newdir).isempty():
+            self.move(cell, newdir).direction = newdir
+        elif self.get(cell, cell.direction).isempty():
+            self.move(cell, cell.direction)
+        else:
+            cell.direction = self.rotate90left(cell.direction)
+
+    def explode(self, cell, direction=None):
+        explosioncell = self.cave[cell.x + cell.y * self.width + self._dirxy[direction]]
+        if explosioncell.isbutterfly():
+            obj = GameObject.DIAMONDBIRTH
+        else:
+            obj = GameObject.EXPLOSION
+        self.draw_single_cell(explosioncell, obj)
+        for direction in ["lu", "u", "ru", "l", "r", "ld", "d", "rd"]:
+            cell = self.cave[explosioncell.x + explosioncell.y * self.width + self._dirxy[direction]]
+            if cell.isexplodable():
+                self.explode(cell, None)
+            elif cell.isconsumable():
+                self.draw_single_cell(cell, obj)
+
+    def rotate90left(self, direction):
+        return {
+            None: None,
+            "u": "l",
+            "d": "r",
+            "l": "d",
+            "r": "u",
+            "lu": "ld",
+            "ru": "lu",
+            "ld": "rd",
+            "rd": "ru"
+        }[direction]
+
+    def rotate90right(self, direction):
+        return {
+            None: None,
+            "u": "r",
+            "d": "l",
+            "l": "u",
+            "r": "d",
+            "lu": "ru",
+            "ru": "rd",
+            "ld": "lu",
+            "rd": "ld"
+        }[direction]
 
 
 def start():
