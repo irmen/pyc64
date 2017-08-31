@@ -166,9 +166,26 @@ class BoulderWindow(tkinter.Tk):
         self.after(1000 // 120, self.tick_loop)
 
     def keypress(self, event):
-        pass
+        if event.keysym == "Down":
+            self.gamestate.start_move("d")
+        elif event.keysym == "Up":
+            self.gamestate.start_move("u")
+        elif event.keysym == "Left":
+            self.gamestate.start_move("l")
+        elif event.keysym == "Right":
+            self.gamestate.start_move("r")
+        # @todo more movement (grab)
 
     def keyrelease(self, event):
+        if event.keysym == "Down":
+            self.gamestate.stop_move("d")
+        elif event.keysym == "Up":
+            self.gamestate.stop_move("u")
+        elif event.keysym == "Left":
+            self.gamestate.stop_move("l")
+        elif event.keysym == "Right":
+            self.gamestate.stop_move("r")
+        # @todo more movement (grab)
         if event.keysym == "Return":
             self.gamestate.next_level()
 
@@ -468,15 +485,6 @@ GameObject.ROCKFORD.pushleft = (0, 49, 8, 20)
 GameObject.ROCKFORD.pushright = (0, 50, 8, 20)
 
 
-class AmoebaInfo:
-    def __init__(self, size, max, slow):
-        self.size = size
-        self.max = max
-        self.slow = slow
-        self.dead = None
-        self.enclosed = False
-
-
 class GameState:
     class Cell:
         __slots__ = ("obj", "x", "y", "frame", "falling", "direction", "anim_start_gfx_frame")
@@ -523,11 +531,76 @@ class GameState:
         def isfirefly(self):
             return self.obj is GameObject.FIREFLY or self.obj is GameObject.ALTFIREFLY
 
+        def isdiamond(self):
+            return self.obj is GameObject.DIAMOND or self.obj is GameObject.FLYINGDIAMOND
+
+        def isoutbox(self):
+            return self.obj is GameObject.OUTBOXBLINKING
+
         def canfall(self):
             return self.obj in {GameObject.BOULDER, GameObject.SWEET, GameObject.DIAMONDKEY, GameObject.BOMB,
                                 GameObject.IGNITEDBOMB, GameObject.KEY1, GameObject.KEY2, GameObject.KEY3,
                                 GameObject.DIAMOND, GameObject.MEGABOULDER, GameObject.SKELETON, GameObject.NITROFLASK,
                                 GameObject.DIRTBALL, GameObject.COCONUT, GameObject.ROCKETLAUNCHER}
+
+    class AmoebaInfo:
+        def __init__(self, size, max, slow):
+            self.size = size
+            self.max = max
+            self.slow = slow
+            self.dead = None
+            self.enclosed = False
+
+    class MovementInfo:
+        def __init__(self):
+            self.direction = None
+            self.up = self.down = self.left = self.right = False
+
+        @property
+        def moving(self):
+            return self.direction is not None
+
+        def start_up(self):
+            self.direction = "u"
+            self.up = True
+
+        def start_down(self):
+            self.direction = "d"
+            self.down = True
+
+        def start_left(self):
+            self.direction = "l"
+            self.left = True
+
+        def start_right(self):
+            self.direction = "r"
+            self.right = True
+
+        def stop_up(self):
+            self.up = False
+            self.direction = self.where() if self.direction == "u" else self.direction
+
+        def stop_down(self):
+            self.down = False
+            self.direction = self.where() if self.direction == "d" else self.direction
+
+        def stop_left(self):
+            self.left = False
+            self.direction = self.where() if self.direction == "l" else self.direction
+
+        def stop_right(self):
+            self.right = False
+            self.direction = self.where() if self.direction == "r" else self.direction
+
+        def where(self):
+            if self.up:
+                return "u"
+            elif self.down:
+                return "d"
+            elif self.left:
+                return "l"
+            elif self.right:
+                return "r"
 
     def __init__(self, tilesheet, graphics_fps, tile_image_numcolumns):
         self.tile_image_numcolumns = tile_image_numcolumns
@@ -579,14 +652,19 @@ class GameState:
         c64cave = caves.Cave.decode_from_lvl(self.level)
         assert c64cave.width == self.tiles.width and c64cave.height == self.tiles.height
         self.level_name = c64cave.name
+        self.level_won = False
+        self.diamonds = 0
         self.diamonds_needed = c64cave.diamonds_needed
+        self.diamondvalue_initial = c64cave.diamondvalue_initial
+        self.diamondvalue_extra = c64cave.diamondvalue_extra
         self.timeremaining = datetime.timedelta(seconds=c64cave.time)
         self.frame = 0
         self.timelimit = None   # will be set as soon as Rockford spawned
         self.idle["blink"] = self.idle["tap"] = False
         self.rockford_cell = None     # the cell where Rockford currently is
-        self.rockford_moving = None
-        self.amoeba = AmoebaInfo(0, c64cave.amoebamaxsize, c64cave.amoeba_slowgrowthtime / self.update_timestep)
+        self.rockford_found_frame = 0
+        self.movement = self.MovementInfo()
+        self.amoeba = self.AmoebaInfo(0, c64cave.amoebamaxsize, c64cave.amoeba_slowgrowthtime / self.update_timestep)
         # convert the c64 cave map
         conversion = {
             0x00: (GameObject.EMPTY, None),
@@ -682,30 +760,31 @@ class GameState:
         self.graphics_frame_counter = graphics_frame_counter    # we store this to properly sync up animation frames
         self.frame_start()
         # sweep
-        for cell in self.cave:
-            if cell.frame < self.frame:
-                if cell.falling:
-                    self.update_falling(cell)
-                elif cell.canfall():
-                    self.update_canfall(cell)
-                elif cell.isfirefly():
-                    self.update_firefly(cell)
-                elif cell.isbutterfly():
-                    self.update_butterfly(cell)
-                elif cell.obj is GameObject.INBOXBLINKING:
-                    self.update_inbox(cell)
-                elif cell.isrockford():
-                    self.rockford_cell = cell
-                elif cell.isamoeba():
-                    self.update_amoeba(cell)
-                elif cell.obj is GameObject.OUTBOXCLOSED:
-                    self.update_outboxclosed(cell)
+        if not self.level_won:
+            for cell in self.cave:
+                if cell.frame < self.frame:
+                    if cell.falling:
+                        self.update_falling(cell)
+                    elif cell.canfall():
+                        self.update_canfall(cell)
+                    elif cell.isfirefly():
+                        self.update_firefly(cell)
+                    elif cell.isbutterfly():
+                        self.update_butterfly(cell)
+                    elif cell.obj is GameObject.INBOXBLINKING:
+                        self.update_inbox(cell)
+                    elif cell.isrockford():
+                        self.update_rockford(cell)
+                    elif cell.isamoeba():
+                        self.update_amoeba(cell)
+                    elif cell.obj is GameObject.OUTBOXCLOSED:
+                        self.update_outboxclosed(cell)
         self.frame_end()
 
     def frame_start(self):
         self.frame += 1
         # idle animation (when not moving)
-        if self.rockford_moving is None:
+        if not self.movement.moving:
             if random.randint(1, 4) == 1:
                 self.idle["blink"] = not self.idle["blink"]
             if random.randint(1, 16) == 1:
@@ -728,6 +807,16 @@ class GameState:
                 self.amoeba.dead = GameObject.BOULDER
             elif self.amoeba.slow > 0:
                 self.amoeba.slow -= 1
+        if self.level_won:
+            if self.timeremaining.seconds > 0:
+                self.score += 1
+                self.timelimit -= datetime.timedelta(seconds=1)
+            else:
+                self.level += 1
+                self.load_c64level()
+        elif self.timelimit and self.update_timestep * (self.frame - self.rockford_found_frame) > 3:
+            # after 3 seconds with dead rockford we reload the current level
+            self.load_c64level()
 
     def update_canfall(self, cell):
         # if the cell below this one is empty, the object starts to fall
@@ -811,8 +900,27 @@ class GameState:
                 grow = random.randint(1, 128) < 4 if self.amoeba.slow else random.randint(1, 4) == 1
                 direction = random.choice("udlr")
                 if grow and (self.get(cell, direction).isdirt() or self.get(cell, direction).isempty()):
-                    print("AMOEBA GROW", direction, self.amoeba)  # XXX
                     self.draw_single_cell(self.get(cell, direction), cell.obj)
+
+    def update_rockford(self, cell):
+        self.rockford_cell = cell
+        self.rockford_found_frame = self.frame
+        if self.level_won:
+            return
+        if self.timeremaining.seconds <= 0:
+            self.explode(cell)
+        elif self.movement.moving:
+            targetcell = self.get(cell, self.movement.direction)
+            if targetcell.isempty() or targetcell.isdirt():
+                cell = self.move(cell, self.movement.direction)
+            elif targetcell.isdiamond():
+                self.diamonds += 1
+                self.score += self.diamondvalue_extra if self.diamonds > self.diamonds_needed else self.diamondvalue_initial
+                cell = self.move(cell, self.movement.direction)
+            elif targetcell.isoutbox():
+                cell = self.move(cell, self.movement.direction)
+                self.level_won = True   # exit found!
+        self.rockford_cell = cell
 
     def end_rockfordbirth(self, cell):
         # rockfordbirth eventually creates the real Rockford and starts the level timer.
@@ -834,12 +942,28 @@ class GameState:
         else:
             obj = GameObject.EXPLOSION
         self.draw_single_cell(explosioncell, obj)
-        for direction in ["lu", "u", "ru", "l", "r", "ld", "d", "rd"]:
+        for direction in ["u", "ru", "r", "rd", "d", "ld", "l", "lu"]:
             cell = self.cave[explosioncell.x + explosioncell.y * self.width + self._dirxy[direction]]
             if cell.isexplodable():
                 self.explode(cell, None)
             elif cell.isconsumable():
                 self.draw_single_cell(cell, obj)
+
+    def start_move(self, direction):
+        {
+            "u": self.movement.start_up,
+            "d": self.movement.start_down,
+            "l": self.movement.start_left,
+            "r": self.movement.start_right
+        }[direction]()
+
+    def stop_move(self, direction):
+        {
+            "u": self.movement.stop_up,
+            "d": self.movement.stop_down,
+            "l": self.movement.stop_left,
+            "r": self.movement.stop_right
+        }[direction]()
 
     def rotate90left(self, direction):
         return {
