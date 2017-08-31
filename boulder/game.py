@@ -1,5 +1,5 @@
 """
-Tile based screen
+Boulderdash clone.
 
 This module is the GUI window logic, handling keyboard input
 and screen drawing via tkinter bitmaps.
@@ -167,34 +167,45 @@ class BoulderWindow(tkinter.Tk):
 
     def keypress(self, event):
         if event.keysym == "Down":
-            self.gamestate.start_move("d")
+            self.gamestate.movement.start_down()
         elif event.keysym == "Up":
-            self.gamestate.start_move("u")
+            self.gamestate.movement.start_up()
         elif event.keysym == "Left":
-            self.gamestate.start_move("l")
+            self.gamestate.movement.start_left()
         elif event.keysym == "Right":
-            self.gamestate.start_move("r")
-        # @todo more movement (grab)
+            self.gamestate.movement.start_right()
+        elif event.keysym.startswith("Shift"):
+            self.gamestate.movement.start_grab()
+        elif event.keysym == "Escape":
+            self.gamestate.cycle_level(reset=True)
 
     def keyrelease(self, event):
         if event.keysym == "Down":
-            self.gamestate.stop_move("d")
+            self.gamestate.movement.stop_down()
         elif event.keysym == "Up":
-            self.gamestate.stop_move("u")
+            self.gamestate.movement.stop_up()
         elif event.keysym == "Left":
-            self.gamestate.stop_move("l")
+            self.gamestate.movement.stop_left()
         elif event.keysym == "Right":
-            self.gamestate.stop_move("r")
-        # @todo more movement (grab)
+            self.gamestate.movement.stop_right()
+        elif event.keysym.startswith("Shift"):
+            self.gamestate.movement.stop_grab()
         if event.keysym == "Return":
-            self.gamestate.next_level()
+            self.gamestate.cycle_level()
 
     def repaint(self):
         # for all tiles that have sprite animation, update to the next animation image
         self.graphics_frame += 1
-        # handle rockford idle state/animation
         if self.gamestate.rockford_cell:
-            if self.gamestate.idle["tap"] and self.gamestate.idle["blink"]:
+            # moving left/right
+            if self.gamestate.movement.direction == "l" \
+                    or (self.gamestate.movement.direction in ("u", "d") and self.gamestate.movement.lastXdir == "l"):
+                spritex, spritey, sframes, sfps = GameObject.ROCKFORD.left
+            elif self.gamestate.movement.direction == "r" \
+                    or (self.gamestate.movement.direction in ("u", "d") and self.gamestate.movement.lastXdir == "r"):
+                spritex, spritey, sframes, sfps = GameObject.ROCKFORD.right
+            # handle rockford idle state/animation
+            elif self.gamestate.idle["tap"] and self.gamestate.idle["blink"]:
                 spritex, spritey, sframes, sfps = GameObject.ROCKFORD.tapblink
             elif self.gamestate.idle["tap"]:
                 spritex, spritey, sframes, sfps = GameObject.ROCKFORD.tap
@@ -204,7 +215,8 @@ class BoulderWindow(tkinter.Tk):
                 spritex, spritey, sframes, sfps = GameObject.ROCKFORD.spritex, GameObject.ROCKFORD.spritey,\
                                                   GameObject.ROCKFORD.sframes, GameObject.ROCKFORD.sfps
             if sframes:
-                animframe = int(sfps / self.update_fps * (self.graphics_frame - self.gamestate.rockford_cell.anim_start_gfx_frame)) % sframes
+                animframe = int(sfps / self.update_fps *
+                                (self.graphics_frame - self.gamestate.rockford_cell.anim_start_gfx_frame)) % sframes
             else:
                 animframe = 0
             self.tilesheet[self.gamestate.rockford_cell.x, self.gamestate.rockford_cell.y] = \
@@ -212,7 +224,7 @@ class BoulderWindow(tkinter.Tk):
         # other animations:
         for cell in self.gamestate.cells_with_animations():
             obj = cell.obj
-            animframe = int(obj.sfps / self.update_fps * (self.graphics_frame-cell.anim_start_gfx_frame))
+            animframe = int(obj.sfps / self.update_fps * (self.graphics_frame - cell.anim_start_gfx_frame))
             tile = obj.spritex + self.tile_image_numcolumns * obj.spritey + (animframe % obj.sframes)
             self.tilesheet[cell.x, cell.y] = tile
             if animframe >= obj.sframes and obj.anim_end_callback:
@@ -222,6 +234,11 @@ class BoulderWindow(tkinter.Tk):
             self.canvas.itemconfigure(self.c_tiles[index], image=self.tile_images[tile])
         for index, tile in self.tilesheet_score.dirty():
             self.scorecanvas.itemconfigure(self.cscore_tiles[index], image=self.tile_images[tile])
+        # flash
+        if self.gamestate.flash > self.gamestate.frame:
+            self.configure(background="yellow" if self.graphics_frame % 2 else "black")
+        elif self.gamestate.flash > 0:
+            self.configure(background="black")
         # smooth scroll
         if self.canvas.view_x != self.view_x:
             self.canvas.xview_moveto(0)
@@ -310,7 +327,8 @@ class BoulderWindow(tkinter.Tk):
             self.tilesheet_score[10, 0] = GameObject.KEY2.spritex + GameObject.KEY2.spritey * self.tile_image_numcolumns
         if self.gamestate.keys["three"]:
             self.tilesheet_score[11, 0] = GameObject.KEY3.spritex + GameObject.KEY3.spritey * self.tile_image_numcolumns
-        tiles = self.text2tiles("Level: {:d}.{:s} (ENTER=next)                      ".format(self.gamestate.level, self.gamestate.level_name))
+        tiles = self.text2tiles("Level: {:d}.{:s} (ENTER=next)                      "
+                                .format(self.gamestate.level, self.gamestate.level_name))
         self.tilesheet_score.set_tiles(0, 1, tiles[:40])
 
 
@@ -510,7 +528,7 @@ class GameState:
                                 GameObject.DIRTSLOPEDUPLEFT, GameObject.DIRTSLOPEDUPRIGHT}
 
         def isrockford(self):
-            return self.obj is GameObject.ROCKFORD or self.obj is GameObject.ROCKFORDBIRTH
+            return self.obj is GameObject.ROCKFORD
 
         def isrounded(self):
             return self.obj.rounded
@@ -534,6 +552,9 @@ class GameState:
         def isdiamond(self):
             return self.obj is GameObject.DIAMOND or self.obj is GameObject.FLYINGDIAMOND
 
+        def isboulder(self):
+            return self.obj in {GameObject.BOULDER, GameObject.MEGABOULDER, GameObject.CHASINGBOULDER, GameObject.FLYINGBOULDER}
+
         def isoutbox(self):
             return self.obj is GameObject.OUTBOXBLINKING
 
@@ -543,18 +564,11 @@ class GameState:
                                 GameObject.DIAMOND, GameObject.MEGABOULDER, GameObject.SKELETON, GameObject.NITROFLASK,
                                 GameObject.DIRTBALL, GameObject.COCONUT, GameObject.ROCKETLAUNCHER}
 
-    class AmoebaInfo:
-        def __init__(self, size, max, slow):
-            self.size = size
-            self.max = max
-            self.slow = slow
-            self.dead = None
-            self.enclosed = False
-
     class MovementInfo:
         def __init__(self):
-            self.direction = None
+            self.direction = self.lastXdir = None
             self.up = self.down = self.left = self.right = False
+            self.grab = False
 
         @property
         def moving(self):
@@ -571,10 +585,22 @@ class GameState:
         def start_left(self):
             self.direction = "l"
             self.left = True
+            self.lastXdir = "l"
 
         def start_right(self):
             self.direction = "r"
             self.right = True
+            self.lastXdir = "r"
+
+        def start_grab(self):
+            self.grab = True
+
+        def stop_all(self):
+            self.grab = self.up = self.down = self.left = self.right = False
+            self.direction = None
+
+        def stop_grab(self):
+            self.grab = False
 
         def stop_up(self):
             self.up = False
@@ -606,9 +632,9 @@ class GameState:
         self.tile_image_numcolumns = tile_image_numcolumns
         self.graphics_fps = graphics_fps
         self.graphics_frame_counter = 0    # will be set via the update() method
-        self.update_timestep = 1 / 10  # game logic updates every 0.1 seconds
+        self.fps = 10      # game logic updates every 0.1 seconds
+        self.update_timestep = 1 / self.fps
         self.frame = 0
-        self.level = 1
         self.lives = 9
         self.idle = {
             "blink": False,
@@ -631,10 +657,10 @@ class GameState:
             "d": self.width,
             "l": -1,
             "r": 1,
-            "lu": -self.width-1,
-            "ru": -self.width+1,
-            "ld": self.width-1,
-            "rd": self.width+1
+            "lu": -self.width - 1,
+            "ru": -self.width + 1,
+            "ld": self.width - 1,
+            "rd": self.width + 1
         }
         self.cave = []
         self.level_name = "???"
@@ -646,13 +672,15 @@ class GameState:
         GameObject.EXPLOSION.anim_end_callback = self.end_explosion
         GameObject.DIAMONDBIRTH.anim_end_callback = self.end_diamondbirth
         # and load the first level
-        self.load_c64level()
+        self.load_c64level(1)
 
-    def load_c64level(self):
-        c64cave = caves.Cave.decode_from_lvl(self.level)
+    def load_c64level(self, levelnumber):
+        c64cave = caves.Cave.decode_from_lvl(levelnumber)
         assert c64cave.width == self.tiles.width and c64cave.height == self.tiles.height
+        self.level = levelnumber
         self.level_name = c64cave.name
         self.level_won = False
+        self.flash = 0
         self.diamonds = 0
         self.diamonds_needed = c64cave.diamonds_needed
         self.diamondvalue_initial = c64cave.diamondvalue_initial
@@ -664,7 +692,13 @@ class GameState:
         self.rockford_cell = None     # the cell where Rockford currently is
         self.rockford_found_frame = 0
         self.movement = self.MovementInfo()
-        self.amoeba = self.AmoebaInfo(0, c64cave.amoebamaxsize, c64cave.amoeba_slowgrowthtime / self.update_timestep)
+        self.amoeba = {
+            "size": 0,
+            "max": c64cave.amoebamaxsize,
+            "slow": c64cave.amoeba_slowgrowthtime / self.update_timestep,
+            "enclosed": False,
+            "dead": None
+        }
         # convert the c64 cave map
         conversion = {
             0x00: (GameObject.EMPTY, None),
@@ -694,6 +728,12 @@ class GameState:
             y, x = divmod(i, self.width)
             obj, direction = conversion[obj]
             self.draw_single(obj, x, y, initial_direction=direction)
+
+    def cycle_level(self, reset=False):
+        level = self.level
+        if not reset:
+            level = level % len(caves.CAVES) + 1
+        self.load_c64level(level)
 
     def draw_rectangle(self, obj, x1, y1, width, height, fillobject=None):
         self.draw_line(obj, x1, y1, width, 'r')
@@ -749,9 +789,16 @@ class GameState:
         cell.direction = None
         return newcell
 
-    def next_level(self):
-        self.level = (self.level % len(caves.CAVES)) + 1
-        self.load_c64level()
+    def push(self, cell, direction):
+        # try to push the thing in the given direction
+        pushedcell = self.get(cell, direction)
+        targetcell = self.get(pushedcell, direction)
+        if targetcell.isempty():
+            if random.randint(1, 8) == 1:
+                self.move(pushedcell, direction)
+                if not self.movement.grab:
+                    cell = self.move(cell, direction)
+        return cell
 
     def cells_with_animations(self):
         return [cell for cell in self.cave if cell.obj.sframes]
@@ -795,28 +842,28 @@ class GameState:
             self.timeremaining = self.timelimit - datetime.datetime.now()
             if self.timeremaining.seconds <= 0:
                 self.timeremaining = datetime.timedelta(0)
-        self.amoeba.size = 0
-        self.amoeba.enclosed = True
+        self.amoeba["size"] = 0
+        self.amoeba["enclosed"] = True
         self.rockford_cell = None
 
     def frame_end(self):
-        if self.amoeba.dead is None:
-            if self.amoeba.enclosed:
-                self.amoeba.dead = GameObject.DIAMOND
-            elif self.amoeba.size > self.amoeba.max:
-                self.amoeba.dead = GameObject.BOULDER
-            elif self.amoeba.slow > 0:
-                self.amoeba.slow -= 1
+        if self.amoeba["dead"] is None:
+            if self.amoeba["enclosed"]:
+                self.amoeba["dead"] = GameObject.DIAMOND
+            elif self.amoeba["size"] > self.amoeba["max"]:
+                self.amoeba["dead"] = GameObject.BOULDER
+            elif self.amoeba["slow"] > 0:
+                self.amoeba["slow"] -= 1
         if self.level_won:
             if self.timeremaining.seconds > 0:
-                self.score += 1
-                self.timelimit -= datetime.timedelta(seconds=1)
+                add_score = min(self.timeremaining.seconds, 5)
+                self.score += add_score
+                self.timelimit -= datetime.timedelta(seconds=add_score)
             else:
-                self.level += 1
-                self.load_c64level()
+                self.load_c64level(self.level + 1)
         elif self.timelimit and self.update_timestep * (self.frame - self.rockford_found_frame) > 3:
             # after 3 seconds with dead rockford we reload the current level
-            self.load_c64level()
+            self.load_c64level(self.level)
 
     def update_canfall(self, cell):
         # if the cell below this one is empty, the object starts to fall
@@ -883,21 +930,20 @@ class GameState:
 
     def update_outboxclosed(self, cell):
         if self.diamonds >= self.diamonds_needed:
-            # @todo flash the screen to signify that you have enough diamonds and that the exit is open.
             self.draw_single_cell(cell, GameObject.OUTBOXBLINKING)
 
     def update_amoeba(self, cell):
-        if self.amoeba.dead is not None:
-            self.draw_single_cell(cell, self.amoeba.dead)
+        if self.amoeba["dead"] is not None:
+            self.draw_single_cell(cell, self.amoeba["dead"])
         else:
-            self.amoeba.size += 1
+            self.amoeba["size"] += 1
             if self.get(cell, 'u').isempty() or self.get(cell, 'd').isempty() \
                     or self.get(cell, 'r').isempty() or self.get(cell, 'l').isempty() \
                     or self.get(cell, 'u').isdirt() or self.get(cell, 'd').isdirt() \
                     or self.get(cell, 'r').isdirt() or self.get(cell, 'l').isdirt():
-                self.amoeba.enclosed = False
+                self.amoeba["enclosed"] = False
             if self.timelimit:
-                grow = random.randint(1, 128) < 4 if self.amoeba.slow else random.randint(1, 4) == 1
+                grow = random.randint(1, 128) < 4 if self.amoeba["slow"] else random.randint(1, 4) == 1
                 direction = random.choice("udlr")
                 if grow and (self.get(cell, direction).isdirt() or self.get(cell, direction).isempty()):
                     self.draw_single_cell(self.get(cell, direction), cell.obj)
@@ -911,16 +957,32 @@ class GameState:
             self.explode(cell)
         elif self.movement.moving:
             targetcell = self.get(cell, self.movement.direction)
-            if targetcell.isempty() or targetcell.isdirt():
+            if self.movement.grab:
+                if targetcell.isdirt():
+                    self.draw_single_cell(targetcell, GameObject.EMPTY)
+                elif targetcell.isdiamond():
+                    self.collect_diamond()
+                    self.draw_single_cell(targetcell, GameObject.EMPTY)
+                elif self.movement.direction in ("l", "r") and targetcell.isboulder():
+                    self.push(cell, self.movement.direction)
+            elif targetcell.isempty() or targetcell.isdirt():
                 cell = self.move(cell, self.movement.direction)
+            elif targetcell.isboulder() and self.movement.direction in ("l", "r"):
+                cell = self.push(cell, self.movement.direction)
             elif targetcell.isdiamond():
-                self.diamonds += 1
-                self.score += self.diamondvalue_extra if self.diamonds > self.diamonds_needed else self.diamondvalue_initial
+                self.collect_diamond()
                 cell = self.move(cell, self.movement.direction)
             elif targetcell.isoutbox():
                 cell = self.move(cell, self.movement.direction)
                 self.level_won = True   # exit found!
+                self.movement.stop_all()
         self.rockford_cell = cell
+
+    def collect_diamond(self):
+        self.diamonds += 1
+        self.score += self.diamondvalue_extra if self.diamonds > self.diamonds_needed else self.diamondvalue_initial
+        if self.diamonds >= self.diamonds_needed and not self.flash:
+            self.flash = self.frame + self.fps // 2
 
     def end_rockfordbirth(self, cell):
         # rockfordbirth eventually creates the real Rockford and starts the level timer.
@@ -948,22 +1010,6 @@ class GameState:
                 self.explode(cell, None)
             elif cell.isconsumable():
                 self.draw_single_cell(cell, obj)
-
-    def start_move(self, direction):
-        {
-            "u": self.movement.start_up,
-            "d": self.movement.start_down,
-            "l": self.movement.start_left,
-            "r": self.movement.start_right
-        }[direction]()
-
-    def stop_move(self, direction):
-        {
-            "u": self.movement.stop_up,
-            "d": self.movement.stop_down,
-            "l": self.movement.stop_left,
-            "r": self.movement.stop_right
-        }[direction]()
 
     def rotate90left(self, direction):
         return {
