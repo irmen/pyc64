@@ -175,12 +175,32 @@ class BoulderWindow(tkinter.Tk):
     def repaint(self):
         # for all tiles that have sprite animation, update to the next animation image
         self.graphics_frame += 1
+        # handle rockford idle state/animation
+        if self.gamestate.rockford_cell:
+            if self.gamestate.idle["tap"] and self.gamestate.idle["blink"]:
+                spritex, spritey, sframes, sfps = GameObject.ROCKFORD.tapblink
+            elif self.gamestate.idle["tap"]:
+                spritex, spritey, sframes, sfps = GameObject.ROCKFORD.tap
+            elif self.gamestate.idle["blink"]:
+                spritex, spritey, sframes, sfps = GameObject.ROCKFORD.blink
+            else:
+                spritex, spritey, sframes, sfps = GameObject.ROCKFORD.spritex, GameObject.ROCKFORD.spritey,\
+                                                  GameObject.ROCKFORD.sframes, GameObject.ROCKFORD.sfps
+            if sframes:
+                animframe = int(sfps / self.update_fps * (self.graphics_frame - self.gamestate.rockford_cell.anim_start_gfx_frame)) % sframes
+            else:
+                animframe = 0
+            self.tilesheet[self.gamestate.rockford_cell.x, self.gamestate.rockford_cell.y] = \
+                spritex + self.tile_image_numcolumns * spritey + animframe
+        # other animations:
         for cell in self.gamestate.cells_with_animations():
             obj = cell.obj
             animframe = int(obj.sfps / self.update_fps * (self.graphics_frame-cell.anim_start_gfx_frame))
             tile = obj.spritex + self.tile_image_numcolumns * obj.spritey + (animframe % obj.sframes)
             self.tilesheet[cell.x, cell.y] = tile
-            cell.animation_ended = animframe >= obj.sframes   # the animation reached the last frame  # @todo proper trigger callback?
+            if animframe >= obj.sframes and obj.anim_end_callback:
+                # the animation reached the last frame
+                obj.anim_end_callback(cell)
         for index, tile in self.tilesheet.dirty():
             self.canvas.itemconfigure(self.c_tiles[index], image=self.tile_images[tile])
         for index, tile in self.tilesheet_score.dirty():
@@ -278,7 +298,7 @@ class BoulderWindow(tkinter.Tk):
 
 
 class GameObject:
-    def __init__(self, name, rounded, explodable, consumable, spritex, spritey, sframes=0, sfps=0):
+    def __init__(self, name, rounded, explodable, consumable, spritex, spritey, sframes=0, sfps=0, anim_end_callback=None):
         self.name = name
         self.rounded = rounded
         self.explodable = explodable
@@ -287,6 +307,7 @@ class GameObject:
         self.spritey = spritey
         self.sframes = sframes
         self.sfps = sfps
+        self.anim_end_callback = anim_end_callback
 
 # row 0
 GameObject.EMPTY = GameObject("EMPTY", False, False, True, 0, 0)
@@ -313,10 +334,9 @@ GameObject.CREATURESWITCH = GameObject("CREATURESWITCH", False, False, False, 2,
 GameObject.CREATURESWITCHON = GameObject("CREATURESWITCHON", False, False, False, 3, 2)
 GameObject.ACID = GameObject("ACID", False, False, False, 4, 2)
 GameObject.SOKOBANBOX = GameObject("SOKOBANBOX", False, False, False, 5, 2)
-GameObject.INBOXBLINKING = GameObject("OUTBOXBLINKING", False, False, False, 6, 2, sframes=2, sfps=4)
+GameObject.INBOXBLINKING = GameObject("INBOXBLINKING", False, False, False, 6, 2, sframes=2, sfps=4)
 GameObject.OUTBOXBLINKING = GameObject("OUTBOXBLINKING", False, False, False, 6, 2, sframes=2, sfps=4)
 GameObject.OUTBOXCLOSED = GameObject("OUTBOXCLOSED", False, False, False, 6, 2)
-GameObject.OUTBOXOPEN = GameObject("OUTBOXOPEN", False, False, False, 7, 2)
 # row 3
 GameObject.STEELWALLBIRTH = GameObject("STEELWALLBIRTH", False, False, False, 0, 3, sframes=4, sfps=10)
 GameObject.CLOCKBIRTH = GameObject("CLOCKBIRTH", False, False, False, 4, 3, sframes=4, sfps=10)
@@ -327,7 +347,7 @@ GameObject.BOULDERBIRTH = GameObject("BOULDERBIRTH", False, False, False, 4, 4, 
 # row 5
 GameObject.EXPANDINGWALLSWITCHHORIZ = GameObject("EXPANDINGWALLSWITCHHORIZ", False, False, False, 0, 5)
 GameObject.EXPANDINGWALLSWITCHVERT = GameObject("EXPANDINGWALLSWITCHVERT", False, False, False, 1, 5)
-GameObject.ROCKFORDBOMB = GameObject("ROCKFORDBOMB", False, False, False, 2, 5)
+GameObject.ROCKFORD.bomb = (2, 5, 0, 0)
 GameObject.EXPLOSION = GameObject("EXPLOSION", False, False, False, 3, 5, sframes=5, sfps=10)
 # row 6
 GameObject.BOMB = GameObject("BOMB", True, False, True, 0, 6)
@@ -378,15 +398,15 @@ GameObject.AMOEBA = GameObject("AMOEBA", False, False, True, 0, 24, sframes=8, s
 # row 25
 GameObject.SLIME = GameObject("SLIME", False, False, True, 0, 25, sframes=8, sfps=20)
 # row 26 - 30
-GameObject.ROCKFORDBLINK = GameObject("ROCKFORDBLINK", False, True, True, 0, 26, sframes=8, sfps=20)
-GameObject.ROCKFORDTAP = GameObject("ROCKFORDTAP", False, True, True, 0, 27, sframes=8, sfps=20)
-GameObject.ROCKFORDTAPBLINK = GameObject("ROCKFORDTAPBLINK", False, True, True, 0, 28, sframes=8, sfps=20)
-GameObject.ROCKFORDLEFT = GameObject("ROCKFORDLEFT", False, True, True, 0, 29, sframes=8, sfps=20)
-GameObject.ROCKFORDRIGHT = GameObject("ROCKFORDRIGHT", False, True, True, 0, 30, sframes=8, sfps=20)
+GameObject.ROCKFORD.blink = (0, 26, 8, 20)
+GameObject.ROCKFORD.tap = (0, 27, 8, 20)
+GameObject.ROCKFORD.tapblink = (0, 28, 8, 20)
+GameObject.ROCKFORD.left = (0, 29, 8, 20)
+GameObject.ROCKFORD.right = (0, 30, 8, 20)
 # row 31
 GameObject.DIAMOND = GameObject("DIAMOND", True, False, True, 0, 31, sframes=8, sfps=20)
 # row 32
-GameObject.ROCKFORDSTIRRING = GameObject("ROCKFORDSTIRRING", False, True, True, 0, 32, sframes=8, sfps=20)
+GameObject.ROCKFORD.stirring = (0, 32, 8, 20)
 # row 33   @todo hammer
 # row 34
 GameObject.MEGABOULDER = GameObject("MEGABOULDER", True, False, True, 0, 34)
@@ -442,15 +462,24 @@ GameObject.ROCKETLEFT = GameObject("ROCKETLEFT", False, False, True, 6, 45)
 GameObject.ROCKETDOWN = GameObject("ROCKETDOWN", False, False, True, 7, 45)
 # row 46
 GameObject.ROCKETLAUNCHER = GameObject("ROCKETLAUNCHER", False, False, True, 0, 46)
-GameObject.ROCKFORDROCKETLAUNCHER = GameObject("ROCKFORDROCKETLAUNCHER", False, True, True, 1, 46)
+GameObject.ROCKFORD.rocketlauncher = (1, 46, 0, 0)
 # row 49 - 50
-GameObject.ROCKFORDPUSHLEFT = GameObject("ROCKFORDPUSHLEFT", False, True, True, 0, 49, sframes=8, sfps=20)
-GameObject.ROCKFORDPUSHRIGHT = GameObject("ROCKFORDPUSHRIGHT", False, True, True, 0, 50, sframes=8, sfps=20)
+GameObject.ROCKFORD.pushleft = (0, 49, 8, 20)
+GameObject.ROCKFORD.pushright = (0, 50, 8, 20)
+
+
+class AmoebaInfo:
+    def __init__(self, size, max, slow):
+        self.size = size
+        self.max = max
+        self.slow = slow
+        self.dead = None
+        self.enclosed = False
 
 
 class GameState:
     class Cell:
-        __slots__ = "obj", "x", "y", "frame", "falling", "direction", "animation_ended", "anim_start_gfx_frame"
+        __slots__ = ("obj", "x", "y", "frame", "falling", "direction", "anim_start_gfx_frame")
 
         def __init__(self, obj, x, y):
             self.obj = obj  # what object is in the cell
@@ -459,7 +488,6 @@ class GameState:
             self.frame = 0
             self.falling = False
             self.direction = None
-            self.animation_ended = False
             self.anim_start_gfx_frame = 0
 
         def __repr__(self):
@@ -468,12 +496,14 @@ class GameState:
         def isempty(self):
             return self.obj in {GameObject.EMPTY, GameObject.BONUSBG, None}
 
+        def isdirt(self):
+            return self.obj in {GameObject.DIRTBALL, GameObject.DIRT, GameObject.DIRT2, GameObject.DIRTLOOSE,
+                                GameObject.DIRTSLOPEDDOWNLEFT, GameObject.DIRTSLOPEDDOWNRIGHT,
+                                GameObject.DIRTSLOPEDUPLEFT, GameObject.DIRTSLOPEDUPRIGHT}
+
         def isrockford(self):
-            return self.obj in {GameObject.ROCKFORD, GameObject.ROCKFORDBIRTH,
-                                GameObject.ROCKFORDBOMB, GameObject.ROCKFORDROCKETLAUNCHER, GameObject.ROCKFORDSTIRRING,
-                                GameObject.ROCKFORDLEFT, GameObject.ROCKFORDRIGHT,
-                                GameObject.ROCKFORDPUSHLEFT, GameObject.ROCKFORDPUSHRIGHT,
-                                GameObject.ROCKFORDTAP, GameObject.ROCKFORDTAPBLINK, GameObject.ROCKFORDBLINK}
+            return self.obj is GameObject.ROCKFORD or self.obj is GameObject.ROCKFORDBIRTH
+
         def isrounded(self):
             return self.obj.rounded
 
@@ -505,8 +535,12 @@ class GameState:
         self.graphics_frame_counter = 0    # will be set via the update() method
         self.update_timestep = 1 / 10  # game logic updates every 0.1 seconds
         self.frame = 0
-        self.level = 12  # XXX
+        self.level = 1
         self.lives = 9
+        self.idle = {
+            "blink": False,
+            "tap": False
+        }
         self.keys = {
             "diamond": 0,
             "one": True,
@@ -534,6 +568,11 @@ class GameState:
         for y in range(self.height):
             for x in range(self.width):
                 self.cave.append(self.Cell(GameObject.EMPTY, x, y))
+        # set the anim end callbacks:
+        GameObject.ROCKFORDBIRTH.anim_end_callback = self.end_rockfordbirth
+        GameObject.EXPLOSION.anim_end_callback = self.end_explosion
+        GameObject.DIAMONDBIRTH.anim_end_callback = self.end_diamondbirth
+        # and load the first level
         self.load_c64level()
 
     def load_c64level(self):
@@ -544,6 +583,10 @@ class GameState:
         self.timeremaining = datetime.timedelta(seconds=c64cave.time)
         self.frame = 0
         self.timelimit = None   # will be set as soon as Rockford spawned
+        self.idle["blink"] = self.idle["tap"] = False
+        self.rockford_cell = None     # the cell where Rockford currently is
+        self.rockford_moving = None
+        self.amoeba = AmoebaInfo(0, c64cave.amoebamaxsize, c64cave.amoeba_slowgrowthtime / self.update_timestep)
         # convert the c64 cave map
         conversion = {
             0x00: (GameObject.EMPTY, None),
@@ -606,7 +649,6 @@ class GameState:
         cell.obj = obj
         cell.direction = initial_direction
         cell.frame = self.frame
-        cell.animation_ended = False
         cell.anim_start_gfx_frame = self.graphics_frame_counter
         cell.falling = False
         self.tiles[cell.x, cell.y] = obj.spritex + self.tile_image_numcolumns * obj.spritey
@@ -638,11 +680,7 @@ class GameState:
 
     def update(self, graphics_frame_counter):
         self.graphics_frame_counter = graphics_frame_counter    # we store this to properly sync up animation frames
-        self.frame += 1
-        if self.timelimit:
-            self.timeremaining = self.timelimit - datetime.datetime.now()
-            if self.timeremaining.seconds <= 0:
-                self.timeremaining = datetime.timedelta(0)
+        self.frame_start()
         # sweep
         for cell in self.cave:
             if cell.frame < self.frame:
@@ -650,28 +688,46 @@ class GameState:
                     self.update_falling(cell)
                 elif cell.canfall():
                     self.update_canfall(cell)
-                elif cell.obj is GameObject.EXPLOSION:
-                    self.update_explosion(cell)
-                elif cell.obj is GameObject.DIAMONDBIRTH:
-                    self.update_diamondbirth(cell)
                 elif cell.isfirefly():
                     self.update_firefly(cell)
                 elif cell.isbutterfly():
                     self.update_butterfly(cell)
                 elif cell.obj is GameObject.INBOXBLINKING:
                     self.update_inbox(cell)
-                elif cell.obj is GameObject.ROCKFORDBIRTH:
-                    self.update_rockfordbirth(cell)
+                elif cell.isrockford():
+                    self.rockford_cell = cell
+                elif cell.isamoeba():
+                    self.update_amoeba(cell)
+                elif cell.obj is GameObject.OUTBOXCLOSED:
+                    self.update_outboxclosed(cell)
+        self.frame_end()
 
-    def update_explosion(self, cell):
-        # a normal explosion ends with an empty cell
-        if cell.animation_ended:
-            self.draw_single_cell(cell, GameObject.EMPTY)
+    def frame_start(self):
+        self.frame += 1
+        # idle animation (when not moving)
+        if self.rockford_moving is None:
+            if random.randint(1, 4) == 1:
+                self.idle["blink"] = not self.idle["blink"]
+            if random.randint(1, 16) == 1:
+                self.idle["tap"] = not self.idle["tap"]
+        else:
+            self.idle["blink"] = self.idle["tap"] = False
+        if self.timelimit:
+            self.timeremaining = self.timelimit - datetime.datetime.now()
+            if self.timeremaining.seconds <= 0:
+                self.timeremaining = datetime.timedelta(0)
+        self.amoeba.size = 0
+        self.amoeba.enclosed = True
+        self.rockford_cell = None
 
-    def update_diamondbirth(self, cell):
-        # diamondbirth ends with a diamond
-        if cell.animation_ended:
-            self.draw_single_cell(cell, GameObject.DIAMOND)
+    def frame_end(self):
+        if self.amoeba.dead is None:
+            if self.amoeba.enclosed:
+                self.amoeba.dead = GameObject.DIAMOND
+            elif self.amoeba.size > self.amoeba.max:
+                self.amoeba.dead = GameObject.BOULDER
+            elif self.amoeba.slow > 0:
+                self.amoeba.slow -= 1
 
     def update_canfall(self, cell):
         # if the cell below this one is empty, the object starts to fall
@@ -736,11 +792,40 @@ class GameState:
         if self.update_timestep * self.frame > 2.0:
             self.draw_single_cell(cell, GameObject.ROCKFORDBIRTH)
 
-    def update_rockfordbirth(self, cell):
+    def update_outboxclosed(self, cell):
+        if self.diamonds >= self.diamonds_needed:
+            # @todo flash the screen to signify that you have enough diamonds and that the exit is open.
+            self.draw_single_cell(cell, GameObject.OUTBOXBLINKING)
+
+    def update_amoeba(self, cell):
+        if self.amoeba.dead is not None:
+            self.draw_single_cell(cell, self.amoeba.dead)
+        else:
+            self.amoeba.size += 1
+            if self.get(cell, 'u').isempty() or self.get(cell, 'd').isempty() \
+                    or self.get(cell, 'r').isempty() or self.get(cell, 'l').isempty() \
+                    or self.get(cell, 'u').isdirt() or self.get(cell, 'd').isdirt() \
+                    or self.get(cell, 'r').isdirt() or self.get(cell, 'l').isdirt():
+                self.amoeba.enclosed = False
+            if self.timelimit:
+                grow = random.randint(1, 128) < 4 if self.amoeba.slow else random.randint(1, 4) == 1
+                direction = random.choice("udlr")
+                if grow and (self.get(cell, direction).isdirt() or self.get(cell, direction).isempty()):
+                    print("AMOEBA GROW", direction, self.amoeba)  # XXX
+                    self.draw_single_cell(self.get(cell, direction), cell.obj)
+
+    def end_rockfordbirth(self, cell):
         # rockfordbirth eventually creates the real Rockford and starts the level timer.
-        if cell.animation_ended:
-            self.draw_single_cell(cell, GameObject.ROCKFORD)
-            self.timelimit = datetime.datetime.now() + self.timeremaining
+        self.draw_single_cell(cell, GameObject.ROCKFORD)
+        self.timelimit = datetime.datetime.now() + self.timeremaining
+
+    def end_explosion(self, cell):
+        # a normal explosion ends with an empty cell
+        self.draw_single_cell(cell, GameObject.EMPTY)
+
+    def end_diamondbirth(self, cell):
+        # diamondbirth ends with a diamond
+        self.draw_single_cell(cell, GameObject.DIAMOND)
 
     def explode(self, cell, direction=None):
         explosioncell = self.cave[cell.x + cell.y * self.width + self._dirxy[direction]]
