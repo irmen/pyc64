@@ -99,8 +99,11 @@ class BoulderWindow(tkinter.Tk):
     playfield_rows = 22
     scalexy = 2
 
-    def __init__(self, title):
+    def __init__(self, title, fps=30, scale=2):
         super().__init__()
+        self.update_fps = fps
+        self.update_timestep = 1 / fps
+        self.scalexy = scale
         if self.playfield_columns <= 0 or self.playfield_columns > 128 or self.playfield_rows <= 0 or self.playfield_rows > 128:
             raise ValueError("invalid playfield size")
         if self.visible_columns <= 0 or self.visible_columns > 128 or self.visible_rows <= 0 or self.visible_rows > 128:
@@ -128,20 +131,20 @@ class BoulderWindow(tkinter.Tk):
         self.tile_images = []
         self.c_tiles = []
         self.cscore_tiles = []
-        self.uncover_tiles = set(range(self.playfield_rows * self.playfield_columns))
-        self.font_tiles_startindex = 0
+        self.uncover_tiles = set()
         self.tile_image_numcolumns = 0
         self.view_x = 0
         self.view_y = 0
         self.canvas.view_x = self.view_x
         self.canvas.view_y = self.view_y
         self.create_tile_images()
-        self.create_font_tiles()
+        font_tiles_startindex = self.create_font_tiles()
         self.bind("<KeyPress>", self.keypress)
         self.bind("<KeyRelease>", self.keyrelease)
         self.scorecanvas.pack(pady=(0, 10))
         self.canvas.pack()
-        self.gamestate = GameState(self.tilesheet, self.update_fps, self.tile_image_numcolumns)
+        self.gamestate = GameState(self.tilesheet, self.tilesheet_score, self.update_fps,
+                                   self.tile_image_numcolumns, font_tiles_startindex)
         self.gfxupdate_starttime = None
         self.game_update_dt = None
         self.graphics_update_dt = None
@@ -166,6 +169,9 @@ class BoulderWindow(tkinter.Tk):
             self.graphics_update_dt -= self.update_timestep
             if self.graphics_update_dt >= self.update_timestep:
                 print("Gfx update too slow to reach {:d} fps!".format(self.update_fps))
+            if self.gamestate.idle["uncover"]:
+                self.uncover_tiles = set(range(self.playfield_rows * self.playfield_columns))
+                self.gamestate.idle["uncover"] = False
             self.repaint()
         self.gfxupdate_starttime = now
         self.after(1000 // 120, self.tick_loop)
@@ -182,8 +188,16 @@ class BoulderWindow(tkinter.Tk):
         elif event.keysym.startswith("Shift"):
             self.gamestate.movement.start_grab()
         elif event.keysym == "Escape":
-            self.gamestate.cycle_level(reset=True)
-            self.uncover_tiles = set(range(self.playfield_rows * self.playfield_columns))
+            if not self.uncover_tiles:
+                if self.gamestate.rockford_cell:
+                    self.gamestate.explode(self.gamestate.rockford_cell)
+                if self.gamestate.lives > 0:
+                    self.gamestate.life_lost()
+                else:
+                    self.gamestate.restart()
+        elif event.keysym == "F1":
+            if not self.uncover_tiles and self.gamestate.lives < 0:
+                self.gamestate.restart()
 
     def keyrelease(self, event):
         if event.keysym == "Down":
@@ -197,14 +211,13 @@ class BoulderWindow(tkinter.Tk):
         elif event.keysym.startswith("Shift"):
             self.gamestate.movement.stop_grab()
         if event.keysym == "Return":
-            self.uncover_tiles = set(range(self.playfield_rows * self.playfield_columns))
             self.gamestate.cycle_level()
 
     def repaint(self):
         self.graphics_frame += 1
         if self.uncover_tiles:
             # perform random uncover animation before the level starts
-            for _ in range(self.update_fps):
+            for _ in range(int(30 * 30 / self.update_fps)):
                 reveal = random.randrange(1 + self.playfield_columns, self.playfield_columns * (self.playfield_rows - 1))
                 revealy, revealx = divmod(reveal, self.playfield_columns)
                 self.uncover_tiles.discard(reveal)
@@ -301,7 +314,7 @@ class BoulderWindow(tkinter.Tk):
                 self.cscore_tiles.append(tile)
 
     def create_font_tiles(self):
-        self.font_tiles_startindex = len(self.tile_images)
+        font_tiles_startindex = len(self.tile_images)
         with Image.open(io.BytesIO(pkgutil.get_data(__name__, "font.png"))) as image:
             for c in range(0, 128):
                 row, col = divmod(c, image.width // 8)       # the font image contains 8x8 pixel tiles
@@ -313,9 +326,7 @@ class BoulderWindow(tkinter.Tk):
                 ci.save(out, "png")
                 img = tkinter.PhotoImage(data=out.getvalue())
                 self.tile_images.append(img)
-
-    def text2tiles(self, text):
-        return [self.font_tiles_startindex + ord(c) for c in text]
+        return font_tiles_startindex
 
     def tile2screencor(self, cx, cy):
         return cx * 16, cy * 16     # a tile is 16x16 pixels
@@ -335,24 +346,7 @@ class BoulderWindow(tkinter.Tk):
     def update_game(self):
         if not self.uncover_tiles:
             self.gamestate.update(self.graphics_frame)
-        # draw the score bar:
-        tiles = self.text2tiles("\x08{lives:2d}  \x0c {keys:02d}\x7f\x7f\x7f  {diamonds:<10s}  {time:s}  $ {score:06d}".format(
-            lives=self.gamestate.lives,
-            time=str(self.gamestate.timeremaining)[3:7],
-            score=self.gamestate.score,
-            diamonds="\x0e {:02d}/{:02d}".format(self.gamestate.diamonds, self.gamestate.diamonds_needed),
-            keys=self.gamestate.keys["diamond"]
-        ))
-        self.tilesheet_score.set_tiles(0, 0, tiles)
-        if self.gamestate.keys["one"]:
-            self.tilesheet_score[9, 0] = GameObject.KEY1.spritex + GameObject.KEY1.spritey * self.tile_image_numcolumns
-        if self.gamestate.keys["two"]:
-            self.tilesheet_score[10, 0] = GameObject.KEY2.spritex + GameObject.KEY2.spritey * self.tile_image_numcolumns
-        if self.gamestate.keys["three"]:
-            self.tilesheet_score[11, 0] = GameObject.KEY3.spritex + GameObject.KEY3.spritey * self.tile_image_numcolumns
-        tiles = self.text2tiles("Level: {:d}.{:s} (ENTER=next)                      "
-                                .format(self.gamestate.level, self.gamestate.level_name))
-        self.tilesheet_score.set_tiles(0, 1, tiles[:40])
+        self.gamestate.update_scorebar()
 
 
 class GameObject:
@@ -651,27 +645,15 @@ class GameState:
             elif self.right:
                 return "r"
 
-    def __init__(self, tilesheet, graphics_fps, tile_image_numcolumns):
+    def __init__(self, tilesheet, tilesheet_score, graphics_fps, tile_image_numcolumns, font_tiles_startindex):
         self.tile_image_numcolumns = tile_image_numcolumns
+        self.font_tiles_startindex = font_tiles_startindex
         self.graphics_fps = graphics_fps
         self.graphics_frame_counter = 0    # will be set via the update() method
         self.fps = 10      # game logic updates every 0.1 seconds
         self.update_timestep = 1 / self.fps
-        self.frame = 0
-        self.lives = 9
-        self.idle = {
-            "blink": False,
-            "tap": False
-        }
-        self.keys = {
-            "diamond": 0,
-            "one": True,
-            "two": True,
-            "three": True
-        }
-        self.diamonds = 0
-        self.score = 0
         self.tiles = tilesheet
+        self.tiles_score = tilesheet_score
         self.width = tilesheet.width
         self.height = tilesheet.height
         self._dirxy = {
@@ -695,6 +677,24 @@ class GameState:
         GameObject.EXPLOSION.anim_end_callback = self.end_explosion
         GameObject.DIAMONDBIRTH.anim_end_callback = self.end_diamondbirth
         # and load the first level
+        self.restart()
+
+    def restart(self):
+        self.frame = 0
+        self.diamonds = 0
+        self.score = 0
+        self.lives = 3
+        self.idle = {
+            "blink": False,
+            "tap": False,
+            "uncover": True
+        }
+        self.keys = {
+            "diamond": 0,
+            "one": True,
+            "two": True,
+            "three": True
+        }
         self.load_c64level(1)
 
     def load_c64level(self, levelnumber):
@@ -712,6 +712,7 @@ class GameState:
         self.frame = 0
         self.timelimit = None   # will be set as soon as Rockford spawned
         self.idle["blink"] = self.idle["tap"] = False
+        self.idle["uncover"] = True
         self.rockford_cell = None     # the cell where Rockford currently is
         self.rockford_found_frame = 0
         self.movement = self.MovementInfo()
@@ -753,11 +754,8 @@ class GameState:
             self.draw_single(obj, x, y, initial_direction=direction)
         self.tiles.all_dirty()
 
-    def cycle_level(self, reset=False):
-        level = self.level
-        if not reset:
-            level = level % len(caves.CAVES) + 1
-        self.load_c64level(level)
+    def cycle_level(self):
+        self.load_c64level(self.level % len(caves.CAVES) + 1)
 
     def draw_rectangle(self, obj, x1, y1, width, height, fillobject=None):
         self.draw_line(obj, x1, y1, width, 'r')
@@ -862,7 +860,7 @@ class GameState:
                 self.idle["tap"] = not self.idle["tap"]
         else:
             self.idle["blink"] = self.idle["tap"] = False
-        if self.timelimit:
+        if self.timelimit and not self.level_won and self.rockford_cell:
             self.timeremaining = self.timelimit - datetime.datetime.now()
             if self.timeremaining.seconds <= 0:
                 self.timeremaining = datetime.timedelta(0)
@@ -885,8 +883,13 @@ class GameState:
                 self.timelimit -= datetime.timedelta(seconds=add_score)
             else:
                 self.load_c64level(self.level + 1)
-        elif self.timelimit and self.update_timestep * (self.frame - self.rockford_found_frame) > 3:
-            # after 3 seconds with dead rockford we reload the current level
+        elif self.timelimit and self.update_timestep * (self.frame - self.rockford_found_frame) > 5:
+            # after 5 seconds with dead rockford we reload the current level
+            self.life_lost()
+
+    def life_lost(self):
+        self.lives = max(0, self.lives - 1)
+        if self.lives > 0:
             self.load_c64level(self.level)
 
     def update_canfall(self, cell):
@@ -1061,12 +1064,42 @@ class GameState:
             "rd": "ld"
         }[direction]
 
+    def update_scorebar(self):
+        # draw the score bar:
+        tiles = self.text2tiles("\x08{lives:2d}  \x0c {keys:02d}\x7f\x7f\x7f  {diamonds:<10s}  {time:s}  $ {score:06d}".format(
+            lives=self.lives,
+            time=str(self.timeremaining)[3:7],
+            score=self.score,
+            diamonds="\x0e {:02d}/{:02d}".format(self.diamonds, self.diamonds_needed),
+            keys=self.keys["diamond"]
+        ))
+        self.tiles_score.set_tiles(0, 0, tiles)
+        if self.keys["one"]:
+            self.tiles_score[9, 0] = GameObject.KEY1.spritex + GameObject.KEY1.spritey * self.tile_image_numcolumns
+        if self.keys["two"]:
+            self.tiles_score[10, 0] = GameObject.KEY2.spritex + GameObject.KEY2.spritey * self.tile_image_numcolumns
+        if self.keys["three"]:
+            self.tiles_score[11, 0] = GameObject.KEY3.spritex + GameObject.KEY3.spritey * self.tile_image_numcolumns
+        if self.lives > 0:
+            tiles = self.text2tiles("Level: {:d}.{:s} (ENTER=next)".format(self.level, self.level_name).ljust(self.width))
+        else:
+            tiles = self.text2tiles("\x0b  G A M E   O V E R  \x0b".center(self.width))
+        self.tiles_score.set_tiles(0, 1, tiles[:40])
 
-def start():
-    window = BoulderWindow("Bouldertiles")
+    def text2tiles(self, text):
+        return [self.font_tiles_startindex + ord(c) for c in text]
+
+
+def start(args):
+    import argparse
+    ap = argparse.ArgumentParser(description="boulderdash clone")
+    ap.add_argument("--fps", type=int, help="frames per second", default=30)
+    ap.add_argument("--scale", type=int, help="graphics scale factor", default=2, choices=(1, 2, 3, 4))
+    args = ap.parse_args(args)
+    window = BoulderWindow("Bouldertiles", args.fps, args.scale)
     window.start()
     window.mainloop()
 
 
 if __name__ == "__main__":
-    start()
+    start(sys.argv[1:])
