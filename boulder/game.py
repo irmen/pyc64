@@ -1,5 +1,5 @@
 """
-Boulderdash clone.
+Gem Snag - a Boulderdash clone.
 
 This module is the GUI window logic, handling keyboard input
 and screen drawing via tkinter bitmaps.
@@ -68,8 +68,16 @@ class Tilesheet:
                 self.tiles[i] = t
                 self.dirty_tiles[i] = 1
 
-    def set_dirty(self, x, y):
-        self.dirty_tiles[x + y * self.width] = True
+    def get_tiles(self, x, y, width, height):
+        if x < 0 or x >= self.width or y < 0 or y >= self.height:
+            raise ValueError("tile xy out of bounds")
+        if width <=0 or x + width > self.width or height <= 0 or y + height >= self.height:
+            raise ValueError("width or heigth out of bounds")
+        start = x + self.width * y
+        result = []
+        for dy in range(height):
+            result.append(self.tiles[start + self.width * dy: start + self.width * dy + width])
+        return result
 
     def all_dirty(self):
         for i in range(self.width * self.height):
@@ -113,7 +121,7 @@ class BoulderWindow(tkinter.Tk):
         self.geometry("+200+40")
         self.configure(borderwidth=16, background="black")
         self.wm_title(title)
-        self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "gdash_icon_48.gif"))
+        self.appicon = tkinter.PhotoImage(data=pkgutil.get_data(__name__, "gfx/gdash_icon_48.gif"))
         self.wm_iconphoto(self, self.appicon)
         if sys.platform == "win32":
             # tell windows to use a new toolbar icon
@@ -138,17 +146,17 @@ class BoulderWindow(tkinter.Tk):
         self.canvas.view_x = self.view_x
         self.canvas.view_y = self.view_y
         self.create_tile_images()
-        font_tiles_startindex = self.create_font_tiles()
+        self.font_tiles_startindex = self.create_font_tiles()
         self.bind("<KeyPress>", self.keypress)
         self.bind("<KeyRelease>", self.keyrelease)
         self.scorecanvas.pack(pady=(0, 10))
         self.canvas.pack()
-        self.gamestate = GameState(self.tilesheet, self.tilesheet_score, self.update_fps,
-                                   self.tile_image_numcolumns, font_tiles_startindex)
         self.gfxupdate_starttime = None
         self.game_update_dt = None
         self.graphics_update_dt = None
         self.graphics_frame = 0
+        self.popup_frame = 0
+        self.gamestate = GameState(self)
 
     def start(self):
         self.gfxupdate_starttime = time.perf_counter()
@@ -189,6 +197,7 @@ class BoulderWindow(tkinter.Tk):
             self.gamestate.movement.start_grab()
         elif event.keysym == "Escape":
             if not self.uncover_tiles:
+                self.popup_frame = 0
                 if self.gamestate.rockford_cell:
                     self.gamestate.explode(self.gamestate.rockford_cell)
                 if self.gamestate.lives > 0:
@@ -196,6 +205,7 @@ class BoulderWindow(tkinter.Tk):
                 else:
                     self.gamestate.restart()
         elif event.keysym == "F1":
+            self.popup_frame = 0
             if not self.uncover_tiles and self.gamestate.lives < 0:
                 self.gamestate.restart()
 
@@ -215,6 +225,24 @@ class BoulderWindow(tkinter.Tk):
 
     def repaint(self):
         self.graphics_frame += 1
+        for index, tile in self.tilesheet_score.dirty():
+            self.scorecanvas.itemconfigure(self.cscore_tiles[index], image=self.tile_images[tile])
+        # smooth scroll
+        if self.canvas.view_x != self.view_x:
+            self.canvas.xview_moveto(0)
+            self.canvas.xview_scroll(self.view_x, tkinter.UNITS)
+        if self.canvas.view_y != self.view_y:
+            self.canvas.yview_moveto(0)
+            self.canvas.yview_scroll(self.view_y, tkinter.UNITS)
+        self.tilesheet.set_view(self.view_x // 16, self.view_y // 16)
+
+        if self.popup_frame > self.graphics_frame:
+            for index, tile in self.tilesheet.dirty():
+                self.canvas.itemconfigure(self.c_tiles[index], image=self.tile_images[tile])
+            return
+        elif self.popup_tiles_save:
+            self.popup_close()
+
         if self.uncover_tiles:
             # perform random uncover animation before the level starts
             for _ in range(int(30 * 30 / self.update_fps)):
@@ -225,11 +253,12 @@ class BoulderWindow(tkinter.Tk):
                 self.canvas.itemconfigure(self.c_tiles[reveal], image=self.tile_images[tile])
             covered = GameObject.COVERED
             animframe = int(covered.sfps / self.update_fps * self.graphics_frame) % covered.sframes
-            tile = covered.spritex + self.tile_image_numcolumns * covered.spritey + animframe
+            tile = self.sprite2tile(covered, animframe)
             for index in self.uncover_tiles:
                 self.canvas.itemconfigure(self.c_tiles[index], image=self.tile_images[tile])
             if len(self.uncover_tiles) < self.playfield_columns * self.playfield_rows // 4:
                 self.uncover_tiles = set()   # this ends the uncover animation and starts the level
+                self.tilesheet.all_dirty()
         else:
             if self.gamestate.rockford_cell:
                 # moving left/right
@@ -255,12 +284,12 @@ class BoulderWindow(tkinter.Tk):
                 else:
                     animframe = 0
                 self.tilesheet[self.gamestate.rockford_cell.x, self.gamestate.rockford_cell.y] = \
-                    spritex + self.tile_image_numcolumns * spritey + animframe
+                    self.sprite2tile((spritex, spritey), animframe)
             # other animations:
             for cell in self.gamestate.cells_with_animations():
                 obj = cell.obj
                 animframe = int(obj.sfps / self.update_fps * (self.graphics_frame - cell.anim_start_gfx_frame))
-                tile = obj.spritex + self.tile_image_numcolumns * obj.spritey + (animframe % obj.sframes)
+                tile = self.sprite2tile(obj, animframe)
                 self.tilesheet[cell.x, cell.y] = tile
                 if animframe >= obj.sframes and obj.anim_end_callback:
                     # the animation reached the last frame
@@ -272,19 +301,17 @@ class BoulderWindow(tkinter.Tk):
                 self.configure(background="black")
             for index, tile in self.tilesheet.dirty():
                 self.canvas.itemconfigure(self.c_tiles[index], image=self.tile_images[tile])
-        for index, tile in self.tilesheet_score.dirty():
-            self.scorecanvas.itemconfigure(self.cscore_tiles[index], image=self.tile_images[tile])
-        # smooth scroll
-        if self.canvas.view_x != self.view_x:
-            self.canvas.xview_moveto(0)
-            self.canvas.xview_scroll(self.view_x, tkinter.UNITS)
-        if self.canvas.view_y != self.view_y:
-            self.canvas.yview_moveto(0)
-            self.canvas.yview_scroll(self.view_y, tkinter.UNITS)
-        self.tilesheet.set_view(self.view_x // 16, self.view_y // 16)
+
+    def sprite2tile(self, gameobject_or_spritexy, animframe=0):
+        if isinstance(gameobject_or_spritexy, GameObject):
+            if gameobject_or_spritexy.sframes:
+                return gameobject_or_spritexy.spritex + self.tile_image_numcolumns * gameobject_or_spritexy.spritey +\
+                       animframe % gameobject_or_spritexy.sframes
+            return gameobject_or_spritexy.spritex + self.tile_image_numcolumns * gameobject_or_spritexy.spritey
+        return gameobject_or_spritexy[0] + self.tile_image_numcolumns * gameobject_or_spritexy[1] + animframe
 
     def create_tile_images(self):
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "boulder_rush.png"))) as tile_image:
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "gfx/boulder_rush.png"))) as tile_image:
             tile_num = 0
             self.tile_image_numcolumns = tile_image.width // 16      # the tileset image contains 16x16 pixel tiles
             while True:
@@ -315,7 +342,7 @@ class BoulderWindow(tkinter.Tk):
 
     def create_font_tiles(self):
         font_tiles_startindex = len(self.tile_images)
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "font.png"))) as image:
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "gfx/font.png"))) as image:
             for c in range(0, 128):
                 row, col = divmod(c, image.width // 8)       # the font image contains 8x8 pixel tiles
                 if row * 8 > image.height:
@@ -344,9 +371,67 @@ class BoulderWindow(tkinter.Tk):
         self.view_y = min(max(0, self.view_y), (self.playfield_rows - self.visible_rows) * 16)
 
     def update_game(self):
-        if not self.uncover_tiles:
+        if not self.uncover_tiles and self.popup_frame < self.graphics_frame:
             self.gamestate.update(self.graphics_frame)
         self.gamestate.update_scorebar()
+
+    def text2tiles(self, text):
+        return [self.font_tiles_startindex + ord(c) for c in text]
+
+    def popup(self, text):
+        lines = []
+        width = int(self.visible_columns * 0.6)
+        for line in text.splitlines():
+            output = ""
+            for word in line.split():
+                if len(output) + len(word) < (width + 1):
+                    output += word + " "
+                else:
+                    lines.append(output.rstrip())
+                    output = word + " "
+            if output:
+                lines.append(output.rstrip())
+            else:
+                lines.append(None)
+        bchar = "\x0e"
+        x, y = (self.visible_columns - width - 6) // 2, self.visible_rows // 4
+        popupwidth = width + 6
+        popupheight = len(lines) + 6
+        self.popup_tiles_save = (
+            x, y, popupwidth, popupheight,
+            self.tilesheet.get_tiles(x, y, popupwidth, popupheight)
+        )
+        self.tilesheet.set_tiles(x, y, [self.sprite2tile(GameObject.STEELSLOPEDUPLEFT)] +
+                                 [self.sprite2tile(GameObject.STEEL)] * (width + 4) +
+                                 [self.sprite2tile(GameObject.STEELSLOPEDUPRIGHT)])
+        self.tilesheet.set_tiles(x + 1, y + 1, self.text2tiles(bchar * (width + 4)))
+        self.tilesheet[x, y + 1] = self.sprite2tile(GameObject.STEEL)
+        self.tilesheet[x + width + 5, y + 1] = self.sprite2tile(GameObject.STEEL)
+        y += 2
+        lines.insert(0, "")
+        lines.append("")
+        for line in lines:
+            if not line:
+                line = " "
+            tiles = self.text2tiles(bchar + " " + line.ljust(width) + " " + bchar)
+            self.tilesheet[x, y] = self.sprite2tile(GameObject.STEEL)
+            self.tilesheet[x + width + 5, y] = self.sprite2tile(GameObject.STEEL)
+            self.tilesheet.set_tiles(x + 1, y, tiles)
+            y += 1
+        self.tilesheet[x, y] = self.sprite2tile(GameObject.STEEL)
+        self.tilesheet[x + width + 5, y] = self.sprite2tile(GameObject.STEEL)
+        self.tilesheet.set_tiles(x + 1, y, self.text2tiles(bchar * (width + 4)))
+        self.tilesheet.set_tiles(x, y + 1, [self.sprite2tile(GameObject.STEELSLOPEDDOWNLEFT)] +
+                                 [self.sprite2tile(GameObject.STEEL)] * (width + 4) +
+                                 [self.sprite2tile(GameObject.STEELSLOPEDDOWNRIGHT)])
+        self.popup_frame = self.graphics_frame + self.update_fps * 5   # popup remains for 5 seconds
+
+    def popup_close(self):
+        x, y, width, height, saved_tiles = self.popup_tiles_save
+        for tiles in saved_tiles:
+            self.tilesheet.set_tiles(x, y, tiles)
+            y += 1
+        self.popup_tiles_save = None
 
 
 class GameObject:
@@ -465,19 +550,19 @@ GameObject.MEGABOULDER = GameObject("MEGABOULDER", True, False, True, 0, 34)
 GameObject.SKELETON = GameObject("SKELETON", True, False, True, 1, 34)
 GameObject.GRAVITYSWITCH = GameObject("GRAVITYSWITCH", False, False, False, 2, 34)
 GameObject.GRAVITYSWITCHON = GameObject("GRAVITYSWITCHON", False, False, False, 3, 34)
-GameObject.WALLSLOPEDUPRIGHT = GameObject("WALLSLOPEDUPRIGHT", True, False, True, 4, 34)
-GameObject.WALLSLOPEDUPLEFT = GameObject("WALLSLOPEDUPLEFT", True, False, True, 5, 34)
-GameObject.WALLSLOPEDDOWNLEFT = GameObject("WALLSLOPEDDOWNLEFT", True, False, True, 6, 34)
-GameObject.WALLSLOPEDDOWNRIGHT = GameObject("WALLSLOPEDDOWNRIGHT", True, False, True, 7, 34)
+GameObject.BRICKSLOPEDUPRIGHT = GameObject("BRICKSLOPEDUPRIGHT", True, False, True, 4, 34)
+GameObject.BRICKSLOPEDUPLEFT = GameObject("BRICKSLOPEDUPLEFT", True, False, True, 5, 34)
+GameObject.BRICKSLOPEDDOWNLEFT = GameObject("BRICKSLOPEDDOWNLEFT", True, False, True, 6, 34)
+GameObject.BRICKSLOPEDDOWNRIGHT = GameObject("BRICKSLOPEDDOWNRIGHT", True, False, True, 7, 34)
 # row 35
 GameObject.DIRTSLOPEDUPRIGHT = GameObject("DIRTSLOPEDUPRIGHT", True, False, True, 0, 35)
 GameObject.DIRTSLOPEDUPLEFT = GameObject("DIRTSLOPEDUPLEFT", True, False, True, 1, 35)
 GameObject.DIRTSLOPEDDOWNLEFT = GameObject("DIRTSLOPEDDOWNLEFT", True, False, True, 2, 35)
 GameObject.DIRTSLOPEDDOWNRIGHT = GameObject("DIRTSLOPEDDOWNRIGHT", True, False, True, 3, 35)
-GameObject.STEELWALLSLOPEDUPRIGHT = GameObject("STEELWALLSLOPEDUPRIGHT", True, False, True, 4, 35)
-GameObject.STEELWALLSLOPEDUPLEFT = GameObject("STEELWALLSLOPEDUPLEFT", True, False, True, 5, 35)
-GameObject.STEELWALLSLOPEDDOWNLEFT = GameObject("STEELWALLSLOPEDDOWNLEFT", True, False, True, 6, 35)
-GameObject.STEELWALLSLOPEDDOWNRIGHT = GameObject("STEELWALLSLOPEDDOWNRIGHT", True, False, True, 7, 35)
+GameObject.STEELSLOPEDUPRIGHT = GameObject("STEELSLOPEDUPRIGHT", True, False, True, 4, 35)
+GameObject.STEELSLOPEDUPLEFT = GameObject("STEELSLOPEDUPLEFT", True, False, True, 5, 35)
+GameObject.STEELSLOPEDDOWNLEFT = GameObject("STEELSLOPEDDOWNLEFT", True, False, True, 6, 35)
+GameObject.STEELSLOPEDDOWNRIGHT = GameObject("STEELSLOPEDDOWNRIGHT", True, False, True, 7, 35)
 # row 36
 GameObject.NITROFLASK = GameObject("NITROFLASK", True, False, True, 0, 36)
 GameObject.DIRTBALL = GameObject("DIRTBALL", True, False, True, 1, 36)
@@ -645,17 +730,13 @@ class GameState:
             elif self.right:
                 return "r"
 
-    def __init__(self, tilesheet, tilesheet_score, graphics_fps, tile_image_numcolumns, font_tiles_startindex):
-        self.tile_image_numcolumns = tile_image_numcolumns
-        self.font_tiles_startindex = font_tiles_startindex
-        self.graphics_fps = graphics_fps
+    def __init__(self, gfxwindow):
+        self.gfxwindow = gfxwindow
         self.graphics_frame_counter = 0    # will be set via the update() method
         self.fps = 10      # game logic updates every 0.1 seconds
         self.update_timestep = 1 / self.fps
-        self.tiles = tilesheet
-        self.tiles_score = tilesheet_score
-        self.width = tilesheet.width
-        self.height = tilesheet.height
+        self.width = gfxwindow.tilesheet.width
+        self.height = gfxwindow.tilesheet.height
         self._dirxy = {
             None: 0,
             "u": -self.width,
@@ -681,6 +762,8 @@ class GameState:
 
     def restart(self):
         self.frame = 0
+        self.level = -1
+        self.intermission = False
         self.diamonds = 0
         self.score = 0
         self.lives = 3
@@ -699,9 +782,12 @@ class GameState:
 
     def load_c64level(self, levelnumber):
         c64cave = caves.Cave.decode_from_lvl(levelnumber)
-        assert c64cave.width == self.tiles.width and c64cave.height == self.tiles.height
-        self.level = levelnumber
+        assert c64cave.width == self.width and c64cave.height == self.height
         self.level_name = c64cave.name
+        self.level_description = c64cave.description
+        self.intermission = c64cave.intermission
+        level_intro_popup = levelnumber != self.level
+        self.level = levelnumber
         self.level_won = False
         self.flash = 0
         self.diamonds = 0
@@ -752,7 +838,9 @@ class GameState:
             y, x = divmod(i, self.width)
             obj, direction = conversion[obj]
             self.draw_single(obj, x, y, initial_direction=direction)
-        self.tiles.all_dirty()
+        self.gfxwindow.tilesheet.all_dirty()
+        if level_intro_popup:
+            self.gfxwindow.popup("Level {:d}: {:s}\n\n{:s}".format(self.level, self.level_name, self.level_description))
 
     def cycle_level(self):
         self.load_c64level(self.level % len(caves.CAVES) + 1)
@@ -791,7 +879,7 @@ class GameState:
         cell.frame = self.frame
         cell.anim_start_gfx_frame = self.graphics_frame_counter
         cell.falling = False
-        self.tiles[cell.x, cell.y] = obj.spritex + self.tile_image_numcolumns * obj.spritey
+        self.gfxwindow.tilesheet[cell.x, cell.y] = obj.spritex + self.gfxwindow.tile_image_numcolumns * obj.spritey
         # animation is handled by the graphics refresh
 
     def get(self, cell, direction=None):
@@ -880,7 +968,7 @@ class GameState:
             if self.timeremaining.seconds > 0:
                 add_score = min(self.timeremaining.seconds, 5)
                 self.score += add_score
-                self.timelimit -= datetime.timedelta(seconds=add_score)
+                self.timeremaining -= datetime.timedelta(seconds=add_score)
             else:
                 self.load_c64level(self.level + 1)
         elif self.timelimit and self.update_timestep * (self.frame - self.rockford_found_frame) > 5:
@@ -888,9 +976,13 @@ class GameState:
             self.life_lost()
 
     def life_lost(self):
-        self.lives = max(0, self.lives - 1)
+        level = self.level
+        if self.intermission:
+            level += 1   # don't lose a life, instead skip out of the intermission.
+        else:
+            self.lives = max(0, self.lives - 1)
         if self.lives > 0:
-            self.load_c64level(self.level)
+            self.load_c64level(level)
 
     def update_canfall(self, cell):
         # if the cell below this one is empty, the object starts to fall
@@ -1066,37 +1158,34 @@ class GameState:
 
     def update_scorebar(self):
         # draw the score bar:
-        tiles = self.text2tiles("\x08{lives:2d}  \x0c {keys:02d}\x7f\x7f\x7f  {diamonds:<10s}  {time:s}  $ {score:06d}".format(
+        tiles = self.gfxwindow.text2tiles("\x08{lives:2d}  \x0c {keys:02d}\x7f\x7f\x7f  {diamonds:<10s}  {time:s}  $ {score:06d}".format(
             lives=self.lives,
             time=str(self.timeremaining)[3:7],
             score=self.score,
             diamonds="\x0e {:02d}/{:02d}".format(self.diamonds, self.diamonds_needed),
             keys=self.keys["diamond"]
         ))
-        self.tiles_score.set_tiles(0, 0, tiles)
+        self.gfxwindow.tilesheet_score.set_tiles(0, 0, tiles)
         if self.keys["one"]:
-            self.tiles_score[9, 0] = GameObject.KEY1.spritex + GameObject.KEY1.spritey * self.tile_image_numcolumns
+            self.gfxwindow.tilesheet_score[9, 0] = GameObject.KEY1.spritex + GameObject.KEY1.spritey * self.gfxwindow.tile_image_numcolumns
         if self.keys["two"]:
-            self.tiles_score[10, 0] = GameObject.KEY2.spritex + GameObject.KEY2.spritey * self.tile_image_numcolumns
+            self.gfxwindow.tilesheet_score[10, 0] = GameObject.KEY2.spritex + GameObject.KEY2.spritey * self.gfxwindow.tile_image_numcolumns
         if self.keys["three"]:
-            self.tiles_score[11, 0] = GameObject.KEY3.spritex + GameObject.KEY3.spritey * self.tile_image_numcolumns
+            self.gfxwindow.tilesheet_score[11, 0] = GameObject.KEY3.spritex + GameObject.KEY3.spritey * self.gfxwindow.tile_image_numcolumns
         if self.lives > 0:
-            tiles = self.text2tiles("Level: {:d}.{:s} (ENTER=next)".format(self.level, self.level_name).ljust(self.width))
+            tiles = self.gfxwindow.text2tiles("Level: {:d}. {:s} (ENTER=skip)".format(self.level, self.level_name).ljust(self.width))
         else:
-            tiles = self.text2tiles("\x0b  G A M E   O V E R  \x0b".center(self.width))
-        self.tiles_score.set_tiles(0, 1, tiles[:40])
-
-    def text2tiles(self, text):
-        return [self.font_tiles_startindex + ord(c) for c in text]
+            tiles = self.gfxwindow.text2tiles("\x0b  G A M E   O V E R  \x0b".center(self.width))
+        self.gfxwindow.tilesheet_score.set_tiles(0, 1, tiles[:40])
 
 
 def start(args):
     import argparse
-    ap = argparse.ArgumentParser(description="boulderdash clone")
+    ap = argparse.ArgumentParser(description="Gem Snag - a Boulderdash clone")
     ap.add_argument("--fps", type=int, help="frames per second", default=30)
     ap.add_argument("--scale", type=int, help="graphics scale factor", default=2, choices=(1, 2, 3, 4))
     args = ap.parse_args(args)
-    window = BoulderWindow("Bouldertiles", args.fps, args.scale)
+    window = BoulderWindow("Gem Snag", args.fps, args.scale)
     window.start()
     window.mainloop()
 
