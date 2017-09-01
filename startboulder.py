@@ -1,4 +1,4 @@
 import sys
-from boulder import game
+from boulder import gfxwindow
 
-game.start(sys.argv[1:])
+gfxwindow.start(sys.argv[1:])
