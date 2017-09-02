@@ -186,6 +186,8 @@ class BoulderWindow(tkinter.Tk):
         self.after(1000 // 120, self.tick_loop)
 
     def keypress(self, event):
+        if event.keysym.startswith("Shift") or event.state & 1:
+            self.gamestate.movement.start_grab()
         if event.keysym == "Down":
             self.gamestate.movement.start_down()
         elif event.keysym == "Up":
@@ -194,8 +196,6 @@ class BoulderWindow(tkinter.Tk):
             self.gamestate.movement.start_left()
         elif event.keysym == "Right":
             self.gamestate.movement.start_right()
-        elif event.keysym.startswith("Shift"):
-            self.gamestate.movement.start_grab()
         elif event.keysym == "Escape":
             if not self.uncover_tiles:
                 self.popup_frame = 0
@@ -211,6 +211,8 @@ class BoulderWindow(tkinter.Tk):
                 self.gamestate.restart()
 
     def keyrelease(self, event):
+        if event.keysym.startswith("Shift") or not (event.state & 1):
+            self.gamestate.movement.stop_grab()
         if event.keysym == "Down":
             self.gamestate.movement.stop_down()
         elif event.keysym == "Up":
@@ -219,8 +221,6 @@ class BoulderWindow(tkinter.Tk):
             self.gamestate.movement.stop_left()
         elif event.keysym == "Right":
             self.gamestate.movement.stop_right()
-        elif event.keysym.startswith("Shift"):
-            self.gamestate.movement.stop_grab()
         if event.keysym == "Return":
             self.gamestate.cycle_level()
 
