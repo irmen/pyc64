@@ -108,7 +108,7 @@ class BoulderWindow(tkinter.Tk):
     playfield_rows = 22
     scalexy = 2
 
-    def __init__(self, title, fps=30, scale=2):
+    def __init__(self, title, fps=30, scale=2, c64colors=False):
         super().__init__()
         self.update_fps = fps
         self.update_timestep = 1 / fps
@@ -146,7 +146,7 @@ class BoulderWindow(tkinter.Tk):
         self.view_y = 0
         self.canvas.view_x = self.view_x
         self.canvas.view_y = self.view_y
-        self.create_tile_images()
+        self.create_tile_images(c64colortiles=c64colors)
         self.font_tiles_startindex = self.create_font_tiles()
         self.bind("<KeyPress>", self.keypress)
         self.bind("<KeyRelease>", self.keyrelease)
@@ -311,8 +311,13 @@ class BoulderWindow(tkinter.Tk):
             return gameobject_or_spritexy.spritex + self.tile_image_numcolumns * gameobject_or_spritexy.spritey
         return gameobject_or_spritexy[0] + self.tile_image_numcolumns * gameobject_or_spritexy[1] + animframe
 
-    def create_tile_images(self):
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "gfx/boulder_rush.png"))) as tile_image:
+    def create_tile_images(self, c64colortiles=False):
+        tile_filename = "c64_gfx.png" if c64colortiles else "boulder_rush.png"
+        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "gfx/"+tile_filename))) as tile_image:
+            if c64colortiles:
+                tile_image = tile_image.copy().convert('P', 0)
+                palette = tile_image.getpalette()
+                assert 768 - palette.count(0) < 16
             tile_num = 0
             self.tile_image_numcolumns = tile_image.width // 16      # the tileset image contains 16x16 pixel tiles
             while True:
@@ -438,10 +443,11 @@ class BoulderWindow(tkinter.Tk):
 def start(args):
     import argparse
     ap = argparse.ArgumentParser(description="Gem Snag - a Boulderdash clone")
-    ap.add_argument("--fps", type=int, help="frames per second", default=30)
-    ap.add_argument("--scale", type=int, help="graphics scale factor", default=2, choices=(1, 2, 3, 4))
+    ap.add_argument("-f", "--fps", type=int, help="frames per second", default=30)
+    ap.add_argument("-s", "--scale", type=int, help="graphics scale factor", default=2, choices=(1, 2, 3, 4))
+    ap.add_argument("-c", "--c64colors", help="use Commodore-64 colors", action="store_true")
     args = ap.parse_args(args)
-    window = BoulderWindow("Gem Snag", args.fps, args.scale)
+    window = BoulderWindow("Gem Snag", args.fps, args.scale, args.c64colors)
     window.start()
     window.mainloop()
 

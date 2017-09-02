@@ -26,7 +26,7 @@ from .python import PythonInterpreter
 
 class EmulatorWindowBase(tkinter.Tk):
     temp_graphics_folder = "temp_gfx"
-    update_rate = 1000 // 5    # 20 hz screen refresh rate
+    update_rate = 1000 // 20    # 20 hz screen refresh rate
     columns = 0
     rows = 0
     bordersize = 0
@@ -663,7 +663,7 @@ class InterpretThread(threading.Thread):
         self.interpreter.runstop()
         self.must_stop = True
         self.direct_queue.put(None)  # sentinel
-        self.window.hertztick.draw_single()
+        self.window.hertztick.set()
         time.sleep(0.1)
 
     def buffer_keypress(self, char, event):

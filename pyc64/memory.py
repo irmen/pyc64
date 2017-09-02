@@ -125,7 +125,7 @@ class Memory:
 
 
 class ScreenAndMemory:
-    colorpalette = (
+    colorpalette_morecontrast = (       # this is a palette with more contrast
         0x000000,  # 0 = black
         0xFFFFFF,  # 1 = white
         0x68372B,  # 2 = red
@@ -142,6 +142,24 @@ class ScreenAndMemory:
         0x9AD284,  # 13 = light green
         0x6C5EB5,  # 14 = light blue
         0x959595,  # 15 = light grey
+    )
+    colorpalette = (                    # this is a lighter palette
+        0x000000,   # 0 = black
+        0xFFFFFF,   # 1 = white
+        0x984B43,   # 2 = red
+        0x79C1C8,   # 3 = cyan
+        0x9B51A5,   # 4 = purple
+        0x68AE5C,   # 5 = green
+        0x52429D,   # 6 = blue
+        0xC9D684,   # 7 = yellow
+        0x9B6739,   # 8 = orange
+        0x6A5400,   # 9 = brown
+        0xC37B75,   # 10 = light red
+        0x636363,   # 11 = dark grey
+        0x8A8A8A,   # 12 = medium grey
+        0xA3E599,   # 13 = light green
+        0x8A7BCE,   # 14 = light blue
+        0xADADAD,   # 15 = light grey
     )
 
     def __init__(self, columns=40, rows=25, sprites=8):
