@@ -47,7 +47,7 @@ class CPU(py65.devices.mpu6502.MPU):
                 break
             self.step()
             instructions += 1
-            if instructions % 4000 == 0 and microsleep:
+            if microsleep and instructions % 4000 == 0:
                 # print("microsleep", instructions)
                 microsleep()
             if self.pc == end_address:
@@ -60,3 +60,31 @@ class CPU(py65.devices.mpu6502.MPU):
         duration = end_time - start_time
         mips = instructions / duration / 1e6
         print("6510 CPU simulator: {:d} instructions in {:.3f} seconds = {:.3f} mips (~{:.3f} times realtime)".format(instructions, duration, mips, mips/0.44))
+
+
+if __name__ == "__main__":
+    from .memory import ScreenAndMemory
+    screen = ScreenAndMemory()
+    screen.clear()
+    screen.memory[0xc000:0xc00b] = [0xa9, 0x44, 0x8d, 0x00, 0x04, 0xa9, 0x01, 0x8d, 0x00, 0xd8, 0x60]
+    cpu = CPU(screen.memory)
+    assert screen.memory[0x0400] == 0x20
+    assert screen.memory[0xd800] == 14
+    cpu.run(pc=0xc000)
+    assert screen.memory[0x0400] == 0x44
+    assert screen.memory[0xd800] == 1
+    program = open("drive8/gary2.prg", "rb").read()
+    address = program[0] + 256*program[1]
+    screen.memory[address:address+len(program)-2] = program[2:]
+    cpu.run(pc=2061)
+    screen.memory[address:address+len(program)-2] = program[2:]
+    cpu.run(pc=2061)
+    screen.memory[address:address+len(program)-2] = program[2:]
+    cpu.run(pc=2061)
+    screen.memory[address:address+len(program)-2] = program[2:]
+    cpu.run(pc=2061)
+    assert screen.memory[0x0400] != 0x44
+    assert screen.memory[0xd800] != 1
+    assert screen.memory[53280] == 0
+    assert screen.memory[53281] == 0
+

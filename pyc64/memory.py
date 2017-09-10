@@ -30,7 +30,7 @@ class Memory:
         self.read_hooks = defaultdict(list)
 
     def __len__(self):
-        return len(self.mem)
+        return self.size
 
     def clear(self):
         """set all memory values to 0."""
@@ -74,7 +74,7 @@ class Memory:
         elif type(addr_or_slice) is slice:
             if any(self.hooked_reads[addr_or_slice]):
                 # there's at least one address in the slice with a hook, so... slow mode
-                return [self[addr] for addr in range(*addr_or_slice.indices(len(self.mem)))]
+                return [self[addr] for addr in range(*addr_or_slice.indices(self.size))]
             else:
                 # there's no address in the slice that's hooked so we can return it fast
                 return self.mem[addr_or_slice]
@@ -94,15 +94,21 @@ class Memory:
             if any(self.hooked_writes[addr_or_slice]):
                 # there's at least one address in the slice with a hook, so... slow mode
                 if type(value) is int:
-                    for addr in range(*addr_or_slice.indices(len(self.mem))):
+                    for addr in range(*addr_or_slice.indices(self.size)):
                         self[addr] = value
                 else:
-                    for addr, value in zip(range(*addr_or_slice.indices(len(self.mem))), value):
+                    slice_range = range(*addr_or_slice.indices(self.size))
+                    if len(slice_range) != len(value):
+                        raise ValueError("value length differs from memory slice length")
+                    for addr, value in zip(slice_range, value):
                         self[addr] = value
             else:
                 # there's no address in the slice that's hooked so we can write fast
+                slice_len = len(range(*addr_or_slice.indices(self.size)))
                 if type(value) is int:
-                    value = bytes([value]) * len(range(*addr_or_slice.indices(self.size)))
+                    value = bytes([value]) * slice_len
+                elif len(value) != slice_len:
+                    raise ValueError("value length differs from memory slice length")
                 self.mem[addr_or_slice] = value
         else:
             raise TypeError("invalid address type")
