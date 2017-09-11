@@ -31,7 +31,7 @@ class Monitor(py65.monitor.Monitor):
 
 
 class CPU(py65.devices.mpu6502.MPU):
-    def run(self, pc=None, microsleep=None):
+    def run(self, pc=None, microsleep=None, loop_detect_delay=2):
         end_address = 0xffff
         self.stPushWord(end_address - 1)   # push a sentinel return address
         if pc is not None:
@@ -43,7 +43,7 @@ class CPU(py65.devices.mpu6502.MPU):
             if self.memory[self.pc] == 0x4c and self.WordAt(self.pc + 1) == self.pc:
                 # JMP to itself, instead of looping forever we also consider this a program end
                 end_time = time.perf_counter()
-                time.sleep(2)
+                time.sleep(loop_detect_delay)
                 break
             self.step()
             instructions += 1
@@ -63,7 +63,10 @@ class CPU(py65.devices.mpu6502.MPU):
 
 
 if __name__ == "__main__":
-    from .memory import ScreenAndMemory
+    try:
+        from .memory import ScreenAndMemory
+    except (SystemError, ImportError):
+        from pyc64.memory import ScreenAndMemory
     screen = ScreenAndMemory()
     screen.clear()
     screen.memory[0xc000:0xc00b] = [0xa9, 0x44, 0x8d, 0x00, 0x04, 0xa9, 0x01, 0x8d, 0x00, 0xd8, 0x60]
@@ -75,14 +78,10 @@ if __name__ == "__main__":
     assert screen.memory[0xd800] == 1
     program = open("drive8/gary2.prg", "rb").read()
     address = program[0] + 256*program[1]
-    screen.memory[address:address+len(program)-2] = program[2:]
-    cpu.run(pc=2061)
-    screen.memory[address:address+len(program)-2] = program[2:]
-    cpu.run(pc=2061)
-    screen.memory[address:address+len(program)-2] = program[2:]
-    cpu.run(pc=2061)
-    screen.memory[address:address+len(program)-2] = program[2:]
-    cpu.run(pc=2061)
+    for _ in range(200):
+        cpu.reset()
+        screen.memory[address:address+len(program)-2] = program[2:]
+        cpu.run(pc=2061, loop_detect_delay=0)
     assert screen.memory[0x0400] != 0x44
     assert screen.memory[0xd800] != 1
     assert screen.memory[53280] == 0
