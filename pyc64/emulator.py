@@ -272,7 +272,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
     rows = 25
     bordersize = 52
     sprites = 8
-    colorpalette = ScreenAndMemory.colorpalette
+    colorpalette = ScreenAndMemory.colorpalette_pepto
     welcome_message = "pyc64 basic & function keys active\n\n" \
                       "use 'gopy' to enter Python mode\n\n\n\n" \
                       "(install the py64 library to be able to execute 6502 machine code)"

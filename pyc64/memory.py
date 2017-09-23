@@ -149,7 +149,25 @@ class ScreenAndMemory:
         0x6C5EB5,  # 14 = light blue
         0x959595,  # 15 = light grey
     )
-    colorpalette = (                    # this is a lighter palette
+    colorpalette_pepto = (         # this is Pepto's Commodore-64 palette  http://www.pepto.de/projects/colorvic/
+        0x000000,  # 0 = black
+        0xFFFFFF,  # 1 = white
+        0x813338,  # 2 = red
+        0x75cec8,  # 3 = cyan
+        0x8e3c97,  # 4 = purple
+        0x56ac4d,  # 5 = green
+        0x2e2c9b,  # 6 = blue
+        0xedf171,  # 7 = yellow
+        0x8e5029,  # 8 = orange
+        0x553800,  # 9 = brown
+        0xc46c71,  # 10 = light red
+        0x4a4a4a,  # 11 = dark grey
+        0x7b7b7b,  # 12 = medium grey
+        0xa9ff9f,  # 13 = light green
+        0x706deb,  # 14 = light blue
+        0xb2b2b2,  # 15 = light grey
+    )
+    colorpalette_light = (                    # this is a lighter palette
         0x000000,   # 0 = black
         0xFFFFFF,   # 1 = white
         0x984B43,   # 2 = red
