@@ -330,10 +330,6 @@ class ScreenAndMemory:
     def rsel24(self, value):
         self.memory[53265] |= 0 if value else 8
 
-    @text.setter
-    def text(self, color):
-        self.memory[646] = color
-
     @property
     def shifted(self):
         return bool(self.memory[53272] & 2)
