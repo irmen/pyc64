@@ -1,0 +1,80 @@
+; source IL file
+    ; these are comments
+
+.output prg,sys  ; create a c-64 program with basic SYS call to launch it
+; .clobberzp restore  ; clobber over the zp memory normally used by basic/kernel rom, frees up more zp
+
+
+.include "globals.ill"
+
+.block main
+{
+	.memory screen2 $0401
+	.memory screen3 $0402
+	.memory .word screenw $0500
+
+	; ascii to petscii, 0 terminated
+	.var .text hoi "hello everyone out there."
+
+	; ascii to petscii, with length as first byte
+	.var .ptext hoipascalstr "Hallo!\0x00\x01\x02d ag\0x01."
+
+	; ascii to screen codes, 0 terminated
+	.var .stext hoi_screen "Hallo!\n daar123."
+
+	; ascii to screen codes, length as first byte
+	.var .pstext hoipascal_screen "Hallo! \n."
+
+	.var .text hoi2 "@@\f\b\n\r\t@@"        ; should be {..}
+
+start
+	call global.make_screen_black
+
+	A='?'
+	[$d020] = '?'
+	[$d021] = '?'
+	[$d022] = '?'
+	[$d023] = 'q'
+	c64.BGCOL0 = 'a'
+	screen2 = 'a'
+	screen3 = 'a'
+	screenw = '2'
+	A='?'
+	X='?'
+	Y='?'
+	A='\002'
+	X=A
+	A='\xf2'
+	X=A
+	A='A'
+	call c64.CHROUT ;(A)
+	call c64.CHROUT ;(char=66)
+	A='\f'
+	X=A
+	A='\b'
+	X=A
+	A='\n'
+	X=A
+	A='\r'
+	X=A
+	A='\t'
+	X=A
+	call c64.CHROUT ;(foo=A)
+	A='0'
+	call c64.CHROUT ;('0')
+	A='1'
+	call c64.CHROUT ;(49)
+	A='2'
+	call c64.CHROUT
+	XY = hoi
+	call global.print_string
+	A='!'
+	go c64.CHROUT
+
+
+	return
+}
+
+.block {
+
+}

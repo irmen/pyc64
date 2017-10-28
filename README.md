@@ -19,6 +19,13 @@ you can only do the same things with it as what is supported
 for the BASIC mode. So no fancy screen scrolling or rasterbars...
 
 
+## "il65"  intermediate language for 65xx microprocessors
+
+Higher level than pure assembly, but still low level enough to support efficient
+programming on a small micro processor (direct memory/register manipulations).
+Highly experimental still. Can be found in the "il65" directory.
+
+
 ## BASIC V2 and the VIC-registers (video chip)
 
 A subset and variant of the BASIC V2 in the C-64 is provided.

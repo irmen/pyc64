@@ -13,3 +13,5 @@
 *.xbm
 *.directory
 /temp_gfx/
+*.asm
+*.labels.txt
