@@ -1,25 +1,25 @@
 ; source IL file
     ; these are comments
 
-.output prg,sys  ; create a c-64 program with basic SYS call to launch it
-.clobberzp restore  ; clobber over the zp memory normally used by basic/kernel rom, frees up more zp
+output prg,sys  ; create a c-64 program with basic SYS call to launch it
+clobberzp restore  ; clobber over the zp memory normally used by basic/kernel rom, frees up more zp
 
-.block main
+~main
 {
-	.memory borderb1 $d020
-	.memory .byte borderb2 $d020
-	.memory .word screencolors $d020
-	.memory .array($10) screenblock1 $0400      ; 10 bytes
-	.memory .array($0100) screenblock2 $0500    ; 256 bytes
-	.memory .array($0234) screenblock3 $2000    ; some weird size
-	.memory .wordarray($20) screenblock4 $0600      ; 32 words
-	.memory .matrix(40,25) charscreen $0400
-	.var .array($10) var1  $aa
-	.var .wordarray($10) var2  $9988
-	.var .array($10) var3  $11
-	.var var4
-	.var .matrix(40,25) vcharscreen      ; init with 0
-	.var .matrix(40,25) vcharscreen2 111   ; init with 111
+	memory borderb1 $d020
+	memory .byte borderb2 $d020
+	memory .word screencolors $d020
+	memory .array($10) screenblock1 $0400      ; 10 bytes
+	memory .array($0100) screenblock2 $0500    ; 256 bytes
+	memory .array($0234) screenblock3 $2000    ; some weird size
+	memory .wordarray($20) screenblock4 $0600      ; 32 words
+	memory .matrix(40,25) charscreen $0400
+	var .array($10) var1  $aa
+	var .wordarray($10) var2  $9988
+	var .array($10) var3  $11
+	var var4
+	var .matrix(40,25) vcharscreen      ; init with 0
+	var .matrix(40,25) vcharscreen2 111   ; init with 111
 
 start
 	; set some colors

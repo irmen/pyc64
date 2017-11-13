@@ -1,31 +1,31 @@
 ; source IL file
     ; these are comments
 
-.output prg,sys  ; create a c-64 program with basic SYS call to launch it
-; .clobberzp restore  ; clobber over the zp memory normally used by basic/kernel rom, frees up more zp
+output prg,sys  ; create a c-64 program with basic SYS call to launch it
+; clobberzp restore  ; clobber over the zp memory normally used by basic/kernel rom, frees up more zp
 
 
 .include "globals.ill"
 
-.block main
+~ main
 {
-	.memory screen2 $0401
-	.memory screen3 $0402
-	.memory .word screenw $0500
+	memory screen2 $0401
+	memory screen3 $0402
+	memory .word screenw $0500
 
 	; ascii to petscii, 0 terminated
-	.var .text hoi "hello everyone out there."
+	var .text hoi "hello everyone out there."
 
 	; ascii to petscii, with length as first byte
-	.var .ptext hoipascalstr "Hallo!\0x00\x01\x02d ag\0x01."
+	var .ptext hoipascalstr "Hallo!\0x00\x01\x02d ag\0x01."
 
 	; ascii to screen codes, 0 terminated
-	.var .stext hoi_screen "Hallo!\n daar123."
+	var .stext hoi_screen "Hallo!\n daar123."
 
 	; ascii to screen codes, length as first byte
-	.var .pstext hoipascal_screen "Hallo! \n."
+	var .pstext hoipascal_screen "Hallo! \n."
 
-	.var .text hoi2 "@@\f\b\n\r\t@@"        ; should be {..}
+	var .text hoi2 "@@\f\b\n\r\t@@"        ; should be {..}
 
 start
 	call global.make_screen_black
@@ -75,6 +75,6 @@ start
 	return
 }
 
-.block {
+~ {
 
 }

@@ -1,4 +1,5 @@
 import re
+import os
 import ast
 import enum
 from typing import Set, List, Tuple, Optional, Union, Any
@@ -356,7 +357,7 @@ class Parser:
             self.zeropage = Zeropage(self.result.clobberzp)
         while True:
             next_line = self.peek_next_line()[1]
-            if next_line.lstrip().startswith(".block"):
+            if next_line.lstrip().startswith("~"):
                 self.result.add_block(self.parse_block())
             elif next_line.lstrip().startswith(".include"):
                 parsed_include = self.parse_include()
@@ -426,7 +427,7 @@ class Parser:
         self.result.format = ProgramFormat.RAW
         while True:
             num, line = self.next_line()
-            if line.startswith(".output"):
+            if line.startswith("output"):
                 _, _, arg = line.partition(" ")
                 arg = arg.lstrip()
                 self.result.with_sys = False
@@ -440,7 +441,7 @@ class Parser:
                     self.result.format = ProgramFormat.PRG
                 else:
                     raise self.PError("invalid output format")
-            elif line.startswith(".clobberzp"):
+            elif line.startswith("clobberzp"):
                 self.result.clobberzp = True
                 _, _, arg = line.partition(" ")
                 arg = arg.lstrip()
@@ -449,7 +450,7 @@ class Parser:
                 elif arg == "":
                     pass
                 else:
-                    raise self.PError("invalid arg for .clobberzp")
+                    raise self.PError("invalid arg for clobberzp")
             else:
                 self.prev_line()
                 return
@@ -463,17 +464,25 @@ class Parser:
         if not arg.startswith('"') or not arg.endswith('"'):
             raise self.PError("filename must be between quotes")
         filename = arg[1:-1].strip()
-        parser = Parser(filename, zeropage=self.zeropage)
-        return parser.parse()
+        if os.path.isfile(filename):
+            parser = Parser(filename, zeropage=self.zeropage)
+            return parser.parse()
+        else:
+            # try to find the included file in the same location as the sourcefile being compiled
+            filename = os.path.join(os.path.split(self.sourcefile)[0], filename)
+            if os.path.isfile(filename):
+                parser = Parser(filename, zeropage=self.zeropage)
+                return parser.parse()
+        raise FileNotFoundError("Included file not found: " + filename)
 
     def parse_block(self) -> ParseResult.Block:
-        # first line contains block header ".block [name] [addr]" followed by a '{'
+        # first line contains block header "~ [name] [addr]" followed by a '{'
         num, line = self.next_line()
         line = line.lstrip()
-        if not line.startswith(".block"):
-            raise self.PError("expected .block")
+        if not line.startswith("~"):
+            raise self.PError("expected '~' (block)")
         self.cur_block = ParseResult.Block(self.sourcefile, num, self.zeropage)
-        block_args = line.split()[1:]
+        block_args = line[1:].split()
         self.cur_block.name = "il65_block_{:d}".format(len(self.result.blocks))
         arg = ""
         while block_args:
@@ -485,13 +494,16 @@ class Parser:
             elif arg == "{":
                 break
             else:
-                self.cur_block.address = self.parse_number(arg)
+                try:
+                    self.cur_block.address = self.parse_number(arg)
+                except ParseError:
+                    raise self.PError("Invalid number or block name")
                 if self.cur_block.address == 0:
                     raise self.PError("block address must be > 0 (or omitted)")
         if arg != "{":
             _, line = self.peek_next_line()
             if line != "{":
-                raise self.PError("expected { after .block")
+                raise self.PError("expected '{' after block")
             else:
                 self.next_line()
         while True:
@@ -504,13 +516,13 @@ class Parser:
                 self.prev_line()
                 self.cur_block.statements.append(self.parse_asm())
                 continue
-            elif line.startswith(".var"):
+            elif line.startswith("var"):
                 self.parse_dot_var(line)
-            elif line.startswith(".const"):
+            elif line.startswith("const"):
                 self.parse_dot_const(line)
-            elif line.startswith(".memory"):
+            elif line.startswith("memory"):
                 self.parse_dot_memory(line)
-            elif line.startswith(".subx"):
+            elif line.startswith("subx"):
                 self.parse_dot_subx(line)
             elif unstripped_line.startswith((" ", "\t")):
                 self.cur_block.statements.append(self.parse_statement(line))
@@ -538,7 +550,7 @@ class Parser:
 
     def parse_dot_memory(self, line: str) -> None:
         dotargs = line.split()
-        if dotargs[0] != ".memory" or len(dotargs) not in (3, 4):
+        if dotargs[0] != "memory" or len(dotargs) not in (3, 4):
             raise self.PError("invalid memory definition")
         msize = 1
         mtype = VariableType.BYTE
@@ -579,7 +591,7 @@ class Parser:
 
     def parse_dot_const(self, line: str) -> None:
         dotargs = line.split()
-        if dotargs[0] != ".const" or len(dotargs) != 3:
+        if dotargs[0] != "const" or len(dotargs) != 3:
             raise self.PError("invalid const definition")
         varname = dotargs[1]
         if not varname.isidentifier():
@@ -599,9 +611,9 @@ class Parser:
                 raise self.PError(str(x)) from x
 
     def parse_dot_subx(self, line: str) -> None:
-        #  .subx P_CHROUT (char: A) -> (A,X,Y)     $ffd2
-        #  .subx SUBNAME (PARAMETERS) -> (RESULTS)  ADDRESS
-        match = re.match(r"^\.subx\s+(?P<name>\w+)\s+"
+        #  subx P_CHROUT (char: A) -> (A,X,Y)     $ffd2
+        #  subx SUBNAME (PARAMETERS) -> (RESULTS)  ADDRESS
+        match = re.match(r"^subx\s+(?P<name>\w+)\s+"
                          r"\((?P<parameters>[\w\s:,]*)\)"
                          r"\s*->\s*"
                          r"\((?P<results>[\w\s?,]*)\)\s*"
@@ -617,9 +629,9 @@ class Parser:
         self.cur_block.symbols.define_sub(self.cur_block.name, name, self.sourcefile, self.cur_linenum, parameters, results, address)
 
     def parse_dot_var(self, line: str) -> None:
-        match = re.match(r"^.var\s+.(?P<type>(?:s|p|ps|)text)\s+(?P<name>\w+)\s+(?P<value>['\"].+['\"])$", line)
+        match = re.match(r"^var\s+.(?P<type>(?:s|p|ps|)text)\s+(?P<name>\w+)\s+(?P<value>['\"].+['\"])$", line)
         if match:
-            # it's a .var string definition.
+            # it's a var string definition.
             vtype = {
                 "text": VariableType.STRING,
                 "ptext": VariableType.STRING_P,
@@ -636,7 +648,8 @@ class Parser:
             return
 
         args = line.split()
-        if args[0] != ".var" or len(args) < 2 or len(args) > 5:
+        if args[0] != "var" or len(args) < 2 or len(args) > 5:
+            print("ARGS", args, len(args))  # XXX
             raise self.PError("invalid var decl (1)")
 
         def get_vtype(vtype: str) -> Tuple[VariableType, Union[int, Tuple[int, int]]]:
@@ -656,18 +669,18 @@ class Parser:
         vaddr = None
         value = 0
         matrixsize = None  # type: Tuple[int, int]
-        if len(args) == 2:  # .var uninit_bytevar
+        if len(args) == 2:  # var uninit_bytevar
             vname = args[1]
             if not vname.isidentifier():
                 raise self.PError("invalid variable name")
             vtype = VariableType.BYTE
             vlen = 1
-        elif len(args) == 3:  # .var vartype varname
+        elif len(args) == 3:  # var vartype varname
             vname = args[2]
             if not vname.isidentifier():
                 raise self.PError("invalid variable name, or maybe forgot variable type")
             vtype, vlen = get_vtype(args[1])   # type: ignore
-        elif len(args) == 4:  # .var vartype varname value
+        elif len(args) == 4:  # var vartype varname value
             vname = args[2]
             if not vname.isidentifier():
                 raise self.PError("invalid variable name")
@@ -701,7 +714,7 @@ class Parser:
         elif line.startswith("go"):
             return self.parse_call_or_go(line, "go")
         else:
-            raise self.PError("invalid statement inside block")
+            raise self.PError("invalid statement")
 
     def parse_call_or_go(self, line: str, what: str) -> ParseResult.CallStmt:
         args = line.split()

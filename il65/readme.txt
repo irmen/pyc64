@@ -61,9 +61,9 @@ IL program parsing structure:
 
 OUTPUT MODES:
 -------------
-.output raw     ; no load address bytes
-.output prg     ; include the first two load address bytes, (default is $0801), no basic program
-.output prg,sys ; include the first two load address bytes, basic start program with sys call to code, default code start
+output raw     ; no load address bytes
+output prg     ; include the first two load address bytes, (default is $0801), no basic program
+output prg,sys ; include the first two load address bytes, basic start program with sys call to code, default code start
                 ;   immediately after the basic program at $081d, or beyond.
 
 

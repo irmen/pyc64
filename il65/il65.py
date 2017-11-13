@@ -4,6 +4,7 @@ import sys
 import datetime
 import subprocess
 import contextlib
+import argparse
 from functools import partial
 from typing import TextIO, Dict, Set, Union
 from parse import ProgramFormat, Parser, ParseResult, Optimizer
@@ -639,9 +640,11 @@ class Assembler:
 
 
 def main():
-    source_filename = sys.argv[1]
-    assembly_filename = os.path.splitext(source_filename)[0] + ".asm"
-    program_filename = os.path.splitext(source_filename)[0] + ".prg"
+    ap = argparse.ArgumentParser(description="Compiler for IL65 language")
+    ap.add_argument("sourcefile", help="the source .ill/.il65 file to compile")
+    args = ap.parse_args()
+    assembly_filename = os.path.splitext(args.sourcefile)[0] + ".asm"
+    program_filename = os.path.splitext(args.sourcefile)[0] + ".prg"
 
     p = Parser(sys.argv[1])
     parsed = p.parse()
