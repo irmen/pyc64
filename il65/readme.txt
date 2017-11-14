@@ -36,6 +36,9 @@ Usable Hardware registers:
     S  (stack pointer)
     P  (status register)
     These cannot occur as variable names - they will always refer to the hardware registers
+    (also reserved: AX, AY, XY, PC)
+    @todo SC is now reserved as being the S-registers's Carry bit. Identify bits as S.c/S.d/S.i (these you can set/clear, and S.c can be a boolean procedure parameter)
+
 
 The zero page locations $02-$ff can be regarded as 254 other registers.
 Free zero page addresses on the C-64:

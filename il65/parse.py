@@ -8,6 +8,7 @@ from symbols import SymbolTable, Zeropage, VariableType, Identifier, \
 
 
 REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
+# @todo SC --> S.c, S.d, and S.i
 
 
 class ParseError(Exception):
@@ -517,13 +518,13 @@ class Parser:
                 self.cur_block.statements.append(self.parse_asm())
                 continue
             elif line.startswith("var"):
-                self.parse_dot_var(line)
+                self.parse_var_def(line)
             elif line.startswith("const"):
-                self.parse_dot_const(line)
+                self.parse_const_def(line)
             elif line.startswith("memory"):
-                self.parse_dot_memory(line)
+                self.parse_memory_def(line)
             elif line.startswith("subx"):
-                self.parse_dot_subx(line)
+                self.parse_subx_def(line)
             elif unstripped_line.startswith((" ", "\t")):
                 self.cur_block.statements.append(self.parse_statement(line))
                 continue
@@ -548,7 +549,7 @@ class Parser:
         else:
             raise self.PError("invalid label name")
 
-    def parse_dot_memory(self, line: str) -> None:
+    def parse_memory_def(self, line: str) -> None:
         dotargs = line.split()
         if dotargs[0] != "memory" or len(dotargs) not in (3, 4):
             raise self.PError("invalid memory definition")
@@ -589,7 +590,7 @@ class Parser:
         except SymbolError as x:
             raise self.PError(str(x)) from x
 
-    def parse_dot_const(self, line: str) -> None:
+    def parse_const_def(self, line: str) -> None:
         dotargs = line.split()
         if dotargs[0] != "const" or len(dotargs) != 3:
             raise self.PError("invalid const definition")
@@ -598,6 +599,7 @@ class Parser:
             raise self.PError("invalid symbol name")
         if dotargs[2] in REGISTER_SYMBOLS:
             try:
+                # this is a const definition referring to a register, essentially giving the register another name
                 self.cur_block.symbols.define_variable(self.cur_block.name, varname, self.sourcefile, self.cur_linenum,
                                                        VariableType.REGISTER, register=dotargs[2])
             except SymbolError as x:
@@ -610,7 +612,7 @@ class Parser:
             except SymbolError as x:
                 raise self.PError(str(x)) from x
 
-    def parse_dot_subx(self, line: str) -> None:
+    def parse_subx_def(self, line: str) -> None:
         #  subx P_CHROUT (char: A) -> (A,X,Y)     $ffd2
         #  subx SUBNAME (PARAMETERS) -> (RESULTS)  ADDRESS
         match = re.match(r"^subx\s+(?P<name>\w+)\s+"
@@ -628,7 +630,7 @@ class Parser:
         address = self.parse_number(address_str)
         self.cur_block.symbols.define_sub(self.cur_block.name, name, self.sourcefile, self.cur_linenum, parameters, results, address)
 
-    def parse_dot_var(self, line: str) -> None:
+    def parse_var_def(self, line: str) -> None:
         match = re.match(r"^var\s+.(?P<type>(?:s|p|ps|)text)\s+(?P<name>\w+)\s+(?P<value>['\"].+['\"])$", line)
         if match:
             # it's a var string definition.
@@ -673,6 +675,8 @@ class Parser:
             vname = args[1]
             if not vname.isidentifier():
                 raise self.PError("invalid variable name")
+            if vname in REGISTER_SYMBOLS:
+                raise self.PError("cannot use a register name as variable")
             vtype = VariableType.BYTE
             vlen = 1
         elif len(args) == 3:  # var vartype varname
