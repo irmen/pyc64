@@ -8,7 +8,6 @@ from symbols import SymbolTable, Zeropage, VariableType, Identifier, \
 
 
 REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
-# @todo SC --> S.c, S.d, and S.i
 
 
 class ParseError(Exception):
@@ -295,6 +294,7 @@ class ParseResult:
         self.sourcefile = sourcefile
         self.clobberzp = False
         self.restorezp = False
+        self.start_address = 0
         self.blocks = []          # type: List['ParseResult.Block']
 
     def add_block(self, block: 'ParseResult.Block', position: Optional[int]=None) -> None:
@@ -320,10 +320,11 @@ class ParseResult:
 
 
 class Parser:
-    def __init__(self, sourcefile: str, sourcecode: Optional[str]=None, zeropage: Zeropage=None) -> None:
+    def __init__(self, sourcefile: str, sourcecode: Optional[str]=None, zeropage: Zeropage=None, parsing_include: bool=False) -> None:
         self.result = ParseResult(sourcefile)
         self.zeropage = zeropage
         self.sourcefile = sourcefile
+        self.parsing_include = parsing_include     # are we parsing a .included file?
         self.cur_linenum = -1
         self.cur_lineidx = -1
         self.cur_block = None  # type: ParseResult.Block
@@ -345,10 +346,13 @@ class Parser:
         try:
             return self._parse()
         except ParseError as x:
-            print("Error:", str(x))
+            if self.parsing_include:
+                print("Error (in included file):", str(x))
+            else:
+                print("Error:", str(x))
             if x.sourceline:
                 print("\tsource text: '{:s}'".format(x.sourceline))
-            raise   # XXX
+            raise   # XXX temporary solution to get stack trace info in the event of parse errors
             return None
 
     def _parse(self) -> ParseResult:
@@ -370,9 +374,9 @@ class Parser:
                 break
         _, line = self.next_line()
         if line:
-            raise self.PError("missing block or invalid characters")
-        # check if we have a proper main block to contain the program's entry point (if making a prg)
-        if self.result.format == ProgramFormat.PRG:
+            raise self.PError("invalid statement or characters, block expected")
+        if not self.parsing_include:
+            # check if we have a proper main block to contain the program's entry point
             for block in self.result.blocks:
                 if block.name == "main":
                     if "start" not in block.label_names:
@@ -426,9 +430,13 @@ class Parser:
     def parse_header(self) -> None:
         self.result.with_sys = False
         self.result.format = ProgramFormat.RAW
+        output_specified = False
         while True:
             num, line = self.next_line()
             if line.startswith("output"):
+                if output_specified:
+                    raise self.PError("multiple occurrences of 'output'")
+                output_specified = True
                 _, _, arg = line.partition(" ")
                 arg = arg.lstrip()
                 self.result.with_sys = False
@@ -437,12 +445,14 @@ class Parser:
                     pass
                 elif arg == "prg":
                     self.result.format = ProgramFormat.PRG
-                elif arg == "prg,sys":
+                elif arg.replace(' ','') == "prg,sys":
                     self.result.with_sys = True
                     self.result.format = ProgramFormat.PRG
                 else:
                     raise self.PError("invalid output format")
             elif line.startswith("clobberzp"):
+                if self.result.clobberzp:
+                    raise self.PError("multiple occurrences of 'clobberzp'")
                 self.result.clobberzp = True
                 _, _, arg = line.partition(" ")
                 arg = arg.lstrip()
@@ -452,8 +462,24 @@ class Parser:
                     pass
                 else:
                     raise self.PError("invalid arg for clobberzp")
+            elif line.startswith("address"):
+                if self.result.start_address:
+                    raise self.PError("multiple occurrences of 'address'")
+                _, _, arg = line.partition(" ")
+                self.result.start_address = self.parse_number(arg)
+                if self.result.format == ProgramFormat.PRG and self.result.with_sys and self.result.start_address != 0x0801:
+                    raise self.PError("cannot use non-default 'address' when output format includes basic SYS program")
             else:
+                # header parsing finished!
                 self.prev_line()
+                if not self.result.start_address:
+                    # set the proper default start address
+                    if self.result.format == ProgramFormat.PRG:
+                        self.result.start_address = 0x0801  # normal C-64 basic program start address
+                    elif self.result.format == ProgramFormat.RAW:
+                        self.result.start_address = 0xc000  # default start for raw assembly
+                if self.result.format == ProgramFormat.PRG and self.result.with_sys and self.result.start_address != 0x0801:
+                    raise self.PError("cannot use non-default 'address' when output format includes basic SYS program")
                 return
 
     def parse_include(self) -> ParseResult:
@@ -466,13 +492,13 @@ class Parser:
             raise self.PError("filename must be between quotes")
         filename = arg[1:-1].strip()
         if os.path.isfile(filename):
-            parser = Parser(filename, zeropage=self.zeropage)
+            parser = Parser(filename, zeropage=self.zeropage, parsing_include=True)
             return parser.parse()
         else:
             # try to find the included file in the same location as the sourcefile being compiled
             filename = os.path.join(os.path.split(self.sourcefile)[0], filename)
             if os.path.isfile(filename):
-                parser = Parser(filename, zeropage=self.zeropage)
+                parser = Parser(filename, zeropage=self.zeropage, parsing_include=True)
                 return parser.parse()
         raise FileNotFoundError("Included file not found: " + filename)
 
@@ -651,7 +677,6 @@ class Parser:
 
         args = line.split()
         if args[0] != "var" or len(args) < 2 or len(args) > 5:
-            print("ARGS", args, len(args))  # XXX
             raise self.PError("invalid var decl (1)")
 
         def get_vtype(vtype: str) -> Tuple[VariableType, Union[int, Tuple[int, int]]]:
@@ -848,6 +873,7 @@ class Parser:
         return False
 
     def parse_number(self, number: str) -> int:
+        number = number.lstrip()
         try:
             if number[0] in "0123456789":
                 a = int(number)

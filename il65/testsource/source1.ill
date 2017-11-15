@@ -57,7 +57,6 @@ start   ;foo
 	Y = true
 	Y = false
 	A = Y = X = 0		; multi assign!
-	; @todo struct types (and nested field names to access its members)
 
 	; [646,Y] = [$d020,X]
 

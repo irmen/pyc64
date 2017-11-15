@@ -30,14 +30,10 @@ special addresses due to:
 
 
 Usable Hardware registers:
-    A
-    X
-    Y
-    S  (stack pointer)
-    P  (status register)
-    These cannot occur as variable names - they will always refer to the hardware registers
-    (also reserved: AX, AY, XY, PC)
-    @todo SC is now reserved as being the S-registers's Carry bit. Identify bits as S.c/S.d/S.i (these you can set/clear, and S.c can be a boolean procedure parameter)
+    A, X, Y,
+    AX, AY, XY (16-bit combined register pairs)
+    SC  (status register Carry flag)
+    These cannot occur as variable names - they will always refer to the hardware registers.
 
 
 The zero page locations $02-$ff can be regarded as 254 other registers.
@@ -67,6 +63,9 @@ output prg     ; include the first two load address bytes, (default is $0801), n
 output prg,sys ; include the first two load address bytes, basic start program with sys call to code, default code start
                 ;   immediately after the basic program at $081d, or beyond.
 
+address $0801   ; override program start address (default is set to $c000 for raw mode and $0801 for c-64 prg mode)
+                ; cannot be used if output mode is prg,sys because basic programs always have to start at $0801
+
 
 data types:
     all integers are unsigned...?    @todo signed ints
@@ -76,6 +75,8 @@ data types:
     string  0-terminated sequence of bytes  "hello."  (implicit 0-termination byte)
     pstring sequence of bytes where first byte is the length. (no 0-termination byte)
     @todo float?  what floating point format?  (for now: the c-64 one, obviously, but have to specify this as a config statement)
+    @todo struct types (and nested field names to access its members)
+
 
     
     
@@ -182,7 +183,7 @@ for <loopvar> = <from_expression> to <to_expression> [step <step_expression>] {
 }
 
 
-@todo how signed?
+@todo how to do signed integer loopvars?
 
 
 ==> DESUGARING ==>
@@ -206,7 +207,7 @@ il65_for_999_end        ; code continues after this
 
 MEMORY BLOCK OPERATIONS:
 
-@todo
+@todo matrix,list,string memory block operations:
 - matrix type operations (whole matrix, per row, per column, individual row/column)
   operations: set, get, copy (from another matrix with the same dimensions, or list with same length),
   shift-N (up, down, left, right, and diagonals, meant for scrolling)

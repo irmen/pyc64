@@ -1,56 +1,15 @@
-output prg,sys
-clobberzp restore
+output prg
+address  $c000
 
-~ c64 {
-	memory .byte EXTCOL $d020
-}
+~ test {
+        var localvar
 
-~ {
-
-	memory v1 $d020
-	memory v2 $d021
-	memory mword1 $c000
-	var .word word1  $ffff
-	var .word word2  $ffee
-	var .word word3  $ffee
-	var .byte byte1  $aa
-	var .byte byte2  $aa
-	var .array(100) barray $aaaa
-	var .wordarray(100) warray $8877
-
-func
-	c64.EXTCOL = 3
-	v1 = 0
-	zzz.v1++
-	A = zzz.v2
-	[$d020] = zzz.v2
-	zzz.v1 = A
-	word1 ++
-	v1 = v2
-	byte1 = byte2
-	go zzz.func2
-	go func
-	return
-}
-
-~ zzz {
-
-	memory v1 $d420
-	memory v2 $d421
-	var .word word1  $ffff
-	var .word word2  $eeee
-	var .array(100) barray $aaaa
-	var .wordarray(100) warray $8877
-
-func2
-	v2 = 0
-	X = v1
-	go zzz.func2
-	go func2
-	return
+        return
 }
 
 ~ main {
 start
-	return
+        A=0
+        [$d020]=A
+        return
 }
