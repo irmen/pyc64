@@ -69,7 +69,7 @@ _loop   A ++
 	X --
 	Y--
 	[$d020]--
-	call fidget.subroutine 	;  todo support args (start with A,X,Y reg args, later named params that go via stack/memory)
+	call fidget.subroutine
 	go _loop
 	return 155,2,%00000101	; will end up in A, X, Y
 }

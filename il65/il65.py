@@ -8,7 +8,7 @@ import argparse
 from functools import partial
 from typing import TextIO, Dict, Set, Union
 from parse import ProgramFormat, Parser, ParseResult, Optimizer
-from symbols import Zeropage, VariableType, VariableIdentifier
+from symbols import Zeropage, VariableType, VariableDef
 
 
 class CodeError(Exception):
@@ -495,7 +495,7 @@ class CodeGenerator:
                 return
             # assign constant value to a memory location by symbol name
             sym, local = self.parsed.lookup_symbol(lv.name, self.cur_block)
-            if isinstance(sym, VariableIdentifier):
+            if isinstance(sym, VariableDef):
                 if sym.type in (VariableType.BYTE, VariableType.CONSTANT):
                     if not VariableType.BYTE.assignable_from_value(const_value):
                         raise OverflowError("const value doesn't fit in a byte")
@@ -534,7 +534,7 @@ class CodeGenerator:
                 return
             # assign char value to a memory location by symbol name
             sym, local = self.parsed.lookup_symbol(lv.name, self.cur_block)
-            if isinstance(sym, VariableIdentifier):
+            if isinstance(sym, VariableDef):
                 if sym.type in (VariableType.BYTE, VariableType.CONSTANT):
                     self.p("\t\tsta " + str(lv.name))
                 elif sym.type == VariableType.WORD:

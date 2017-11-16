@@ -2,8 +2,7 @@ output prg
 address  $c000
 
 ~ test {
-        var localvar
-
+        var .byte localvar 33
         return
 }
 

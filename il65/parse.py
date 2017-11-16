@@ -3,8 +3,7 @@ import os
 import ast
 import enum
 from typing import Set, List, Tuple, Optional, Union, Any
-from symbols import SymbolTable, Zeropage, VariableType, Identifier, \
-    SubroutineIdentifier, VariableIdentifier, SymbolError, STRING_VARTYPES
+from symbols import SymbolTable, Zeropage, VariableType, SymbolDefinition, SubroutineDef, VariableDef, SymbolError, STRING_VARTYPES
 
 
 REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
@@ -264,7 +263,7 @@ class ParseResult:
                 raise ValueError("can only set either a label or an absolute address")
             self.label = label
             self.address = address
-            self.subroutine = None      # type: SubroutineIdentifier
+            self.subroutine = None      # type: SubroutineDef
             self.unresolved = unresolved
             self.is_goto = is_goto
 
@@ -275,7 +274,7 @@ class ParseResult:
                 if not identifier:
                     raise ParseError(cur_block.sourcefile, cur_block.linenum, "",
                                      "unknown symbol '{:s}' used in this block".format(self.unresolved))
-                if isinstance(identifier, SubroutineIdentifier):
+                if isinstance(identifier, SubroutineDef):
                     self.subroutine = identifier
                 if local:
                     self.label = identifier.name
@@ -306,7 +305,7 @@ class ParseResult:
     def merge(self, parsed: 'ParseResult') -> None:
         self.blocks.extend(parsed.blocks)
 
-    def lookup_symbol(self, name: str, localblock: Block) -> Tuple[Optional[Identifier], bool]:
+    def lookup_symbol(self, name: str, localblock: Block) -> Tuple[Optional[SymbolDefinition], bool]:
         name1, sep, name2 = name.partition(".")
         if sep:
             for b in self.blocks:
@@ -445,7 +444,7 @@ class Parser:
                     pass
                 elif arg == "prg":
                     self.result.format = ProgramFormat.PRG
-                elif arg.replace(' ','') == "prg,sys":
+                elif arg.replace(' ', '') == "prg,sys":
                     self.result.with_sys = True
                     self.result.format = ProgramFormat.PRG
                 else:
@@ -824,7 +823,7 @@ class Parser:
             if sym is None:
                 # symbols is not (yet) known, store a placeholder to resolve later in parse pass 2
                 return ParseResult.PlaceholderSymbol(None, value)
-            elif isinstance(sym, VariableIdentifier):
+            elif isinstance(sym, VariableDef):
                 if local:
                     symbolname = sym.name
                 else:
@@ -850,7 +849,7 @@ class Parser:
                     sym = cur_block.symbols[num_or_name]    # type: ignore
                 except KeyError:
                     raise self.PError("unknown symbol (2): " + num_or_name)
-                if isinstance(sym, VariableIdentifier):
+                if isinstance(sym, VariableDef):
                     if sym.type == VariableType.CONSTANT:
                         # XXX word type how? .w in stmt?
                         return ParseResult.MemMappedValue(sym.value, VariableType.BYTE, length=1, name=sym.name)    # type: ignore

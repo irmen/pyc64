@@ -74,8 +74,17 @@ data types:
     int     16 bits     $8fee
     string  0-terminated sequence of bytes  "hello."  (implicit 0-termination byte)
     pstring sequence of bytes where first byte is the length. (no 0-termination byte)
-    @todo float?  what floating point format?  (for now: the c-64 one, obviously, but have to specify this as a config statement)
+
+    note: floating point numbers are not supported (yet) and will result in a parse error 'invalid number'.
     @todo struct types (and nested field names to access its members)
+
+
+
+EXPRESSIONS
+-----------
+
+@todo expressions.
+@todo allow floating point calculations in the parser in expressions but always truncate them to integer if stored? (like 64tass does)
 
 
     
@@ -224,6 +233,46 @@ MEMORY BLOCK OPERATIONS:
 
 
 these call (or emit inline) optimized pieces of assembly code, so they run as fast as possible
+
+
+
+SUBROUTINES AND SUBROUTINE CALLING
+----------------------------------
+
+External subroutines for instance defined in ROM, can be defined using the 'subx' statement.
+
+subx   <identifier>    ([proc_parameters]) -> ([proc_results])    <address>
+
+proc_parameters = sequence of "<parametername>:<register>" pairs that specify what the input parameters are
+proc_results = sequence of <register> names that specify in which register(s) the output is returned
+               if the name ends with a '?', that means the register doesn't contain a real return value but
+               is clobbered in the process so the original value it had before calling the sub is no longer valid.
+
+example:  "subx   CLOSE    (logical: A) -> (A?, X?, Y?)       $FFC3"
+
+
+@todo user defined subroutines
+
+
+CALLING SUBROUTINES
+-------------------
+
+call subroutine and continue afterwards ('gosub'):
+        call <subroutine> / <label> / <address>
+        @todo call <registerpair> / [<address>]   (indirect)
+
+jump to routine ('goto'):
+        go <subroutine> / <label> / <address>
+        @todo go <registerpair> / [<address>]   (indirect)
+
+
+@todo calling syntax such as:   subroutine ([params...])    -->  parse as:   call subroutine [params...]
+
+
+@todo utilize the subx definiton and support actually calling these external subs via regular calling syntax
+@todo support calling user defined subroutines via regular calling syntax and parameter/result calling convention
+
+@todo support args (start with A,X,Y reg args, later named params that go via stack/memory)
 
 
 
