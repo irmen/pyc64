@@ -1,6 +1,6 @@
 output prg,sys  ; create a c-64 program with basic SYS call to launch it
 
-	.include "globals.ill"
+	.include "c64lib.ill"
 
  ~ main
 {
@@ -37,7 +37,7 @@ start
 	return
 
 start2
-	call global.make_screen_black
+	call global2.make_screen_black
 	call c64.CLEARSCR
 	XY = greeting
 	call global.print_string
@@ -72,5 +72,14 @@ start2
 	call c64.CHROUT
 	return
 
+
+}
+
+~ global2 {
+
+make_screen_black
+		c64.EXTCOL = c64.BGCOL0 = 0
+		c64.COLOR = 3
+		return
 
 }

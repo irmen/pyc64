@@ -1,6 +1,7 @@
+#! /usr/bin/env python3
+
 import os
 import io
-import sys
 import datetime
 import subprocess
 import contextlib
@@ -224,17 +225,17 @@ class CodeGenerator:
     def generate_statement(self, stmt: ParseResult._Stmt) -> None:
         if isinstance(stmt, ParseResult.ReturnStmt):
             if stmt.a:
-                if isinstance(stmt.a, ParseResult.ConstantValue):
+                if isinstance(stmt.a, ParseResult.IntegerValue):
                     self.p("\t\tlda #{:d}".format(stmt.a.value))
                 else:
                     raise CodeError("can only return immediate values for now")  # XXX
             if stmt.x:
-                if isinstance(stmt.x, ParseResult.ConstantValue):
+                if isinstance(stmt.x, ParseResult.IntegerValue):
                     self.p("\t\tldx #{:d}".format(stmt.x.value))
                 else:
                     raise CodeError("can only return immediate values for now")  # XXX
             if stmt.y:
-                if isinstance(stmt.y, ParseResult.ConstantValue):
+                if isinstance(stmt.y, ParseResult.IntegerValue):
                     self.p("\t\tldy #{:d}".format(stmt.y.value))
                 else:
                     raise CodeError("can only return immediate values for now")  # XXX
@@ -308,7 +309,7 @@ class CodeGenerator:
 
     def generate_assignment(self, stmt: ParseResult.AssignmentStmt) -> None:
         self.p("\t\t\t\t\t; src l. {:d}".format(stmt.linenum))
-        if isinstance(stmt.right, ParseResult.ConstantValue):
+        if isinstance(stmt.right, ParseResult.IntegerValue):
             r_str = stmt.right.name if stmt.right.name else "${:x}".format(stmt.right.value)
             # @todo optimize below if there are multiple lvalues that require a pha/pla, do it just once and reuse the value
             for lv in stmt.leftvalues:
@@ -363,7 +364,7 @@ class CodeGenerator:
                 else:
                     raise CodeError("invalid assignment target (4)", str(stmt))
         else:
-            raise CodeError("can only assign immediate, register, and memory mapped values for now", str(stmt))  # @todo support others?
+            raise CodeError("invalid assignment value type", str(stmt))  # @todo support more types?
 
     def generate_assign_mem_to_reg(self, l_register: str, r_str: str) -> None:
         # Register = memory (byte)
@@ -631,13 +632,12 @@ class CodeGenerator:
         return result + '"'
 
 
-class Assembler:
-    def __init__(self, format: ProgramFormat, assembler: str="64tass") -> None:
+class Assembler64Tass:
+    def __init__(self, format: ProgramFormat) -> None:
         self.format = format
-        self.assembler = assembler
 
     def assemble(self, inputfilename: str, outputfilename: str) -> None:
-        args = [self.assembler, "--ascii", "--case-sensitive", "-Wall", "-Wno-strict-bool", "--dump-labels",
+        args = ["64tass", "--ascii", "--case-sensitive", "-Wall", "-Wno-strict-bool", "--dump-labels",
                 "--labels", outputfilename+".labels.txt", "--output", outputfilename, inputfilename]
         if self.format == ProgramFormat.PRG:
             args.append("--cbm-prg")
@@ -655,14 +655,19 @@ class Assembler:
             print("assembler failed with returncode", x.returncode)
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description="Compiler for IL65 language")
+    ap.add_argument("-o", "--output", help="output directory")
     ap.add_argument("sourcefile", help="the source .ill/.il65 file to compile")
     args = ap.parse_args()
     assembly_filename = os.path.splitext(args.sourcefile)[0] + ".asm"
     program_filename = os.path.splitext(args.sourcefile)[0] + ".prg"
+    if args.output:
+        os.makedirs(args.output, mode=0o700, exist_ok=True)
+        assembly_filename = os.path.join(args.output, os.path.split(assembly_filename)[1])
+        program_filename = os.path.join(args.output, os.path.split(program_filename)[1])
 
-    p = Parser(sys.argv[1])
+    p = Parser(args.sourcefile)
     parsed = p.parse()
     if parsed:
         opt = Optimizer(parsed)
@@ -672,7 +677,7 @@ def main():
         cg.optimize()
         with open(assembly_filename, "wt") as out:
             cg.write_assembly(out)
-        assembler = Assembler(parsed.format)
+        assembler = Assembler64Tass(parsed.format)
         assembler.assemble(assembly_filename, program_filename)
 
 

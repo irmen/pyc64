@@ -12,6 +12,7 @@
 *.xbm
 *.directory
 /temp_gfx/
+*.prg
 *.asm
 *.labels.txt
 .mypy_cache/

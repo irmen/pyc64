@@ -10,5 +10,7 @@ address  $c000
 start
         A=0
         [$d020]=A
+        X=false
+        Y=true
         return
 }

@@ -68,15 +68,15 @@ address $0801   ; override program start address (default is set to $c000 for ra
 
 
 data types:
-    all integers are unsigned...?    @todo signed ints
-    bool    true/false   (1/0)
-    byte    8 bits      $8f
-    int     16 bits     $8fee
+    bool    true/false  (aliases for the integer values 1 and 0, not a true datatype by itself)
+    byte    8 bits      $8f    (unsigned, @todo signed bytes)
+    int     16 bits     $8fee  (unsigned, @todo signed ints)
+    @todo long24 long32?  (and signed)
     string  0-terminated sequence of bytes  "hello."  (implicit 0-termination byte)
     pstring sequence of bytes where first byte is the length. (no 0-termination byte)
 
     note: floating point numbers are not supported (yet) and will result in a parse error 'invalid number'.
-    @todo struct types (and nested field names to access its members)
+    (maybe in the future the commodore-style 5-byte and perhaps also the apple-style 4-byte float storage formats will be supported)
 
 
 

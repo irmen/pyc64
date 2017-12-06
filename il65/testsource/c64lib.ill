@@ -1,4 +1,6 @@
-; global definitions
+; IL65 global definitions for the Commodore-64
+; Including memory registers, I/O registers, Basic and Kernel subroutines.
+
 
 output raw
 
@@ -62,10 +64,82 @@ output raw
 
 ; ---- end of VIC-II registers ----
 
+; ---- C64 basic float constants ----
+
+		; constants in five-byte "mflpt" format in the BASIC ROM
+		memory mflpt_pi			$aea8	; 3.1415926...
+		memory mflpt_minus32768		$b1a5	; -32768
+		memory mflpt_1			$b9bc	; 1
+		memory mflpt_half_sqr2		$b9d6	; SQR(2) / 2
+		memory mflpt_sqr2		$b9db	; SQR(2)
+		memory mflpt_minus_point5	$b9e0	; -.5
+		memory mflpt_log_2		$b9e5	; LOG(2)
+		memory mflpt_10			$baf9	; 10
+		memory mflpt_99999999		$bdb3	; 99 999 999
+		memory mflpt_999999999		$bdb8	; 999 999 999
+		memory mflpt_1000000000		$bdbd	; 1 000 000 000
+		memory mflpt_point5		$bf11	; .5, also known as 1 / 2
+		memory mflpt_log_2_reciprocal	$bfbf	; 1 / LOG(2)
+		memory mflpt_half_pi		$e2e0	; PI / 2
+		memory mflpt_double_pi		$e2e5	; 2 * PI (also see $e309)
+		memory mflpt_point25		$e2ea	; .25, also known as 1 / 4
+		memory mflpt_2_pi		$e309	; 2 * PI (also see $e2e5)
+
+; functions - a few points to note:
+; fac1/2 might get clobbered even if not mentioned in the function's name,
+;	because stuff like fac1_times_memAY will load the value from memory
+;	into fac2 first.
+; for subtraction and division, the left operand is in fac2, the right operand in fac1.
+subx	fac1_print		() -> (A?, X?, Y?)	$aabc	; print string representation of contents of fac1
+subx	fac1_to_signedYA	() -> (A?, X?, Y?)	$b1aa	; might throw ILLEGAL QUANTITY
+subx	fac1_to_signed16	() -> (A?, X?, Y?)	$b1bf	; might throw ILLEGAL QUANTITY
+subx	fac1_read_signedYA	() -> (A?, X?, Y?)	$b391	; convert 16 bit signed int to float
+subx	fac1_read_unsignedY	() -> (A?, X?, Y?)	$b3a2	; convert 8 bit unsigned int to float
+subx	fac1_read_string	() -> (A?, X?, Y?)	$b7b5	; $22/23 must point to string, A must be string length
+subx	fac1_to_unsignedYA	() -> (A?, X?, Y?)	$b7f7	; might throw ILLEGAL QUANTITY (result is also in $14/15)
+subx	fac1_add_point5		() -> (A?, X?, Y?)	$b849	; for rounding, call this before fac1_int
+subx	fac1_memAY_minus_fac1	() -> (A?, X?, Y?)	$b850	; subtract fac1 from mflpt value
+subx	fac1_fac2_minus_fac1	() -> (A?, X?, Y?)	$b853
+subx	fac1_add_memAY		() -> (A?, X?, Y?)	$b867	; add mflpt value
+subx	fac1_add_fac2		() -> (A?, X?, Y?)	$b86a
+subx	fac1_log		() -> (A?, X?, Y?)	$b9ea	; LOG()
+subx	fac1_times_memAY	() -> (A?, X?, Y?)	$ba28	; multiply by mflpt value
+subx	fac2_read_memAY		() -> (A?, X?, Y?)	$ba8c	; load mflpt value from memory into fac2
+subx	fac2_read_mem0x22	() -> (A?, X?, Y?)	$ba90	; load mflpt value from memory into fac2
+subx	fac1_times_10		() -> (A?, X?, Y?)	$bae2
+subx	fac1_divide_by_10	() -> (A?, X?, Y?)	$bafe	; CAUTION: result is always positive!
+subx	fac1_divide_memAY_by_fac1  () -> (A?, X?, Y?)	$bb0f	; divide mflpt value by fac1 value
+subx	fac1_read_memAY		() -> (A?, X?, Y?)	$bba2	; load mflpt value from memory into fac1
+subx	fac1_read_mem0x22	() -> (A?, X?, Y?)	$bba6	; load mflpt value from memory into fac1
+subx	fac1_to_memXY		() -> (A?, X?, Y?)	$bbd4	; store fac1 to memory as mflpt
+subx	fac1_read_fac2		() -> (A?, X?, Y?)	$bbfc	; copy fac2 to fac1
+subx	fac2_read_fac1		() -> (A?, X?, Y?)	$bc0c	; copy fac1 to fac2
+subx	fac1_sign_to_A		() -> (A?, X?, Y?)	$bc2b	; $ff, $0, $1 for negative, zero, positive
+subx	fac1_sgn		() -> (A?, X?, Y?)	$bc39	; SGN()
+subx	fac1_abs		() -> (A?, X?, Y?)	$bc58	; ABS()
+subx	fac1_compare_to_memAY	() -> (A?, X?, Y?)	$bc5b	; compare to mflpt value in memory
+subx	fac1_to_signed32	() -> (A?, X?, Y?)	$bc9b
+subx	fac1_int		() -> (A?, X?, Y?)	$bccc	; INT()
+subx	fac1_read_string0	() -> (A?, X?, Y?)	$bcf3	; use b7b5 instead; this only works after calling CHRGET
+subx	fac1_print_unsignedXA	() -> (A?, X?, Y?)	$bdcd
+subx	fac1_to_string		() -> (A?, X?, Y?)	$bddd	; string is stored at $0100 (address returned in AY)
+subx	fac1_sqr		() -> (A?, X?, Y?)	$bf71	; SQR()
+subx	fac1_fac2_to_the_power_of_memAY  () -> (A?, X?, Y?)	$bf78
+subx	fac1_negate		() -> (A?, X?, Y?)	$bfb4
+subx	fac1_exp		() -> (A?, X?, Y?)	$bfed	; EXP()
+; KERNEL ROM FUNCTIONS:
+subx	fac1_rnd		() -> (A?, X?, Y?)	$e097	; RND()
+subx	fac1_cos		() -> (A?, X?, Y?)	$e264	; COS()
+subx	fac1_sin		() -> (A?, X?, Y?)	$e26b	; SIN()
+subx	fac1_tan		() -> (A?, X?, Y?)	$e2b4	; TAN()
+subx	fac1_atn		() -> (A?, X?, Y?)	$e30e	; ATN()
+
+
 ; ---- C64 basic routines ----
 
 subx   CLEARSCR    () -> (A?, X?, Y?)          $E544   ; clear the screen
 subx   HOMECRSR    () -> (A?, X?, Y?)          $E566   ; cursor to top left of screen
+
 
 
 
@@ -122,12 +196,6 @@ subx   IOBASE   () -> (X, Y)              $FFF3    ; read base address of I/O de
 }
 
 ~ global {
-
-make_screen_black
-		c64.EXTCOL = c64.BGCOL0 = 0
-		c64.COLOR = 3
-		return
-
 
 ; ---- print null terminated string from X/Y
 print_string    ; (X, Y) -> (A?, Y?)

@@ -8,8 +8,8 @@ class VariableType(enum.Enum):
     """The type of a variable"""
     BYTE = 1
     WORD = 2
-    CONSTANT = 3
-    REGISTER = 4
+    CONSTANT = 3        # @todo this is not really a data type
+    REGISTER = 4        # @todo this is not really a data type
     CHARACTER = 5
     BYTEARRAY = 6
     WORDARRAY = 7
@@ -18,6 +18,7 @@ class VariableType(enum.Enum):
     STRING_P = 10
     STRING_S = 11
     STRING_PS = 12
+    # @todo these are all unsigned, also support signed byte, word, bytearray, wordarray.
 
     def assignable_from_value(self, value: int) -> bool:
         if self in (VariableType.BYTE, VariableType.REGISTER):
@@ -189,7 +190,7 @@ class SymbolTable:
                 try:
                     address = self.zeropage.get_unused_byte()
                 except LookupError:
-                    raise SymbolError("too many 8-bit variables in zp")  # @todo make var in other memory
+                    raise SymbolError("too many global 8-bit variables in zp")  # @todo make var in other memory
             self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.BYTE, allocate,
                                              value=value, length=1, address=address)
         elif vtype == VariableType.WORD:
@@ -197,7 +198,7 @@ class SymbolTable:
                 try:
                     address = self.zeropage.get_unused_word()
                 except LookupError:
-                    raise SymbolError("too many 16-bit variables in zp")  # @todo make var in other memory
+                    raise SymbolError("too many global 16-bit variables in zp")  # @todo make var in other memory
             self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.WORD, allocate,
                                              value=value, length=1, address=address)
         elif vtype == VariableType.BYTEARRAY:

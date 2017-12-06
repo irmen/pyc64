@@ -54,22 +54,26 @@ class ParseResult:
         def __str__(self):
             return "<Placeholder unresolved {:s}>".format(self.name)
 
-    class ConstantValue(Value):
-        # 'immediate' constant value
+    class IntegerValue(Value):
+        # 'immediate' constant integer value (bool, int, float)
+        #  @todo character, string, are CharValue StringValue this is not really consistent
         def __init__(self, value: int, name: str=None) -> None:
-            if 0 <= value < 0x100:
-                super().__init__(VariableType.BYTE, name)
-            elif value < 0x10000:
-                super().__init__(VariableType.WORD, name)
+            if type(value) is int:
+                if 0 <= value < 0x100:
+                    super().__init__(VariableType.BYTE, name)
+                elif value < 0x10000:
+                    super().__init__(VariableType.WORD, name)
+                else:
+                    raise OverflowError("value too big: ${:x}".format(value))
             else:
-                raise OverflowError("value too big: ${:x}".format(value))
+                raise TypeError("invalid data type")
             self.value = value
 
         def __hash__(self):
             return hash((self.vtype, self.value, self.name))
 
         def __eq__(self, other: Any) -> bool:
-            if not isinstance(other, ParseResult.ConstantValue):
+            if not isinstance(other, ParseResult.IntegerValue):
                 return NotImplemented
             elif self is other:
                 return True
@@ -77,7 +81,7 @@ class ParseResult:
                 return other.vtype == self.vtype and other.value == self.value and other.name == self.name
 
         def __str__(self):
-            return "<ConstantValue {:d} name={}>".format(self.value, self.name)
+            return "<IntegerValue {:d} name={}>".format(self.value, self.name)
 
     class StringValue(Value):
         # string value
@@ -86,7 +90,7 @@ class ParseResult:
             self.value = value
 
         def __hash__(self):
-            return hash(self.value)
+            return hash((self.vtype, self.value, self.name))
 
         def __eq__(self, other: Any) -> bool:
             if not isinstance(other, ParseResult.StringValue):
@@ -106,7 +110,7 @@ class ParseResult:
             self.value = value
 
         def __hash__(self):
-            return hash(self.value)
+            return hash((self.vtype, self.value, self.name))
 
         def __eq__(self, other: Any) -> bool:
             if not isinstance(other, ParseResult.CharValue):
@@ -143,7 +147,7 @@ class ParseResult:
                 return False
             if isinstance(other, ParseResult.StringValue) and len(self.register) < 2:
                 return False
-            if isinstance(other, ParseResult.ConstantValue):
+            if isinstance(other, ParseResult.IntegerValue):
                 return other.value < 0x100 or len(self.register) > 1
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True
@@ -272,6 +276,7 @@ class ParseResult:
             if self.unresolved:
                 identifier, local = parser.result.lookup_symbol(self.unresolved, cur_block)
                 if not identifier:
+                    # @todo use actual line number where the missing symbol is used
                     raise ParseError(cur_block.sourcefile, cur_block.linenum, "",
                                      "unknown symbol '{:s}' used in this block".format(self.unresolved))
                 if isinstance(identifier, SubroutineDef):
@@ -490,12 +495,11 @@ class Parser:
         if not arg.startswith('"') or not arg.endswith('"'):
             raise self.PError("filename must be between quotes")
         filename = arg[1:-1].strip()
-        if os.path.isfile(filename):
-            parser = Parser(filename, zeropage=self.zeropage, parsing_include=True)
-            return parser.parse()
-        else:
-            # try to find the included file in the same location as the sourcefile being compiled
-            filename = os.path.join(os.path.split(self.sourcefile)[0], filename)
+        candidates = [filename,
+                      os.path.join(os.path.split(self.sourcefile)[0], filename),
+                      filename+".ill",
+                      os.path.join(os.path.split(self.sourcefile)[0], filename+".ill")]
+        for filename in candidates:
             if os.path.isfile(filename):
                 parser = Parser(filename, zeropage=self.zeropage, parsing_include=True)
                 return parser.parse()
@@ -515,7 +519,9 @@ class Parser:
             arg = block_args.pop(0)
             if arg.isidentifier():
                 if arg in set(b.name for b in self.result.blocks):
-                    raise self.PError("duplicate block name")
+                    orig = [b for b in self.result.blocks if b.name == arg][0]
+                    raise self.PError("duplicate block name '{0:s}', original definition at {1:s} line {2:d}"
+                                      .format(arg, orig.sourcefile, orig.linenum))
                 self.cur_block.name = arg
             elif arg == "{":
                 break
@@ -734,7 +740,7 @@ class Parser:
         elif line.endswith(("++", "--")):
             incr = line.endswith("++")
             what = self.parse_value(line[:-2].rstrip())
-            if isinstance(what, ParseResult.ConstantValue):
+            if isinstance(what, ParseResult.IntegerValue):
                 raise self.PError("cannot in/decrement a constant value")
             return ParseResult.IncrDecrStmt(what, 1 if incr else -1)
         elif line.startswith("call"):
@@ -760,7 +766,7 @@ class Parser:
         parts = line.split("=")
         rhs = parts.pop()
         l_values = [self.parse_value(part) for part in parts]
-        if any(isinstance(lv, ParseResult.ConstantValue) for lv in l_values):
+        if any(isinstance(lv, ParseResult.IntegerValue) for lv in l_values):
             raise self.PError("can't have a constant as assignment target, did you mean [name] instead?")
         r_value = self.parse_value(rhs)
         for lv in l_values:
@@ -806,7 +812,7 @@ class Parser:
         if not value:
             raise self.PError("value expected")
         if value[0] in "0123456789$%":
-            return ParseResult.ConstantValue(self.parse_number(value))
+            return ParseResult.IntegerValue(self.parse_number(value))
         elif value in REGISTER_SYMBOLS:
             return ParseResult.RegisterValue(value)
         elif (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
@@ -815,9 +821,9 @@ class Parser:
                 return ParseResult.CharValue(strvalue)
             return ParseResult.StringValue(strvalue)
         elif value == "true":
-            return ParseResult.ConstantValue(1)
+            return ParseResult.IntegerValue(1)
         elif value == "false":
-            return ParseResult.ConstantValue(0)
+            return ParseResult.IntegerValue(0)
         elif self.is_identifier(value):
             sym, local = self.result.lookup_symbol(value, cur_block)
             if sym is None:
@@ -831,13 +837,13 @@ class Parser:
                 if sym.type == VariableType.REGISTER:
                     return ParseResult.RegisterValue(sym.register, name=symbolname)
                 elif sym.type == VariableType.CONSTANT:
-                    return ParseResult.ConstantValue(sym.value, name=symbolname)   # type: ignore
+                    return ParseResult.IntegerValue(sym.value, name=symbolname)     # type: ignore
                 elif sym.type == VariableType.CHARACTER:
-                    return ParseResult.CharValue(sym.value, name=symbolname)       # type: ignore
+                    return ParseResult.CharValue(sym.value, name=symbolname)        # type: ignore
                 elif sym.type in (VariableType.BYTE, VariableType.WORD):
                     return ParseResult.MemMappedValue(sym.address, sym.type, sym.length, name=symbolname)
                 elif sym.type in STRING_VARTYPES:
-                    return ParseResult.StringValue(sym.value, name=symbolname)     # type: ignore
+                    return ParseResult.StringValue(sym.value, name=symbolname)      # type: ignore
                 else:
                     raise self.PError("invalid symbol type (1)")
             else:

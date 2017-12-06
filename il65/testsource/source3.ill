@@ -5,7 +5,7 @@ output prg,sys  ; create a c-64 program with basic SYS call to launch it
 ; clobberzp restore  ; clobber over the zp memory normally used by basic/kernel rom, frees up more zp
 
 
-.include "globals.ill"
+.include "c64lib"
 
 ~ main
 {
@@ -28,7 +28,7 @@ output prg,sys  ; create a c-64 program with basic SYS call to launch it
 	var .text hoi2 "@@\f\b\n\r\t@@"        ; should be {..}
 
 start
-	call global.make_screen_black
+	call global2.make_screen_black
 
 	A='?'
 	[$d020] = '?'
@@ -75,6 +75,12 @@ start
 	return
 }
 
-~ {
+~ global2 {
+
+make_screen_black
+		c64.EXTCOL = c64.BGCOL0 = 0
+		c64.COLOR = 3
+		Y = true
+		return
 
 }
