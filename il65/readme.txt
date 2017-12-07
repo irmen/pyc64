@@ -79,6 +79,18 @@ data types:
     (maybe in the future the commodore-style 5-byte and perhaps also the apple-style 4-byte float storage formats will be supported)
 
 
+MACROS
+------
+
+@todo macros are meta-code (written in Python syntax) that actually runs in a preprecessing step
+during the compilation, and produces output value that is then replaced on that point in the input source.
+Allows us to create pre calculated sine tables and such. Something like:
+
+        var .array sinetable {
+                [sin(x) * 10 for x in range(100)]
+        }
+
+
 
 EXPRESSIONS
 -----------

@@ -1,3 +1,4 @@
+import sys
 import re
 import os
 import ast
@@ -495,10 +496,14 @@ class Parser:
         if not arg.startswith('"') or not arg.endswith('"'):
             raise self.PError("filename must be between quotes")
         filename = arg[1:-1].strip()
+        filename_at_source_location = os.path.join(os.path.split(self.sourcefile)[0], filename)
+        filename_at_libs_location = os.path.join(os.path.split(sys.argv[0])[0], "lib", filename)
         candidates = [filename,
-                      os.path.join(os.path.split(self.sourcefile)[0], filename),
+                      filename_at_source_location,
+                      filename_at_libs_location,
                       filename+".ill",
-                      os.path.join(os.path.split(self.sourcefile)[0], filename+".ill")]
+                      filename_at_source_location+".ill",
+                      filename_at_libs_location+".ill"]
         for filename in candidates:
             if os.path.isfile(filename):
                 parser = Parser(filename, zeropage=self.zeropage, parsing_include=True)
