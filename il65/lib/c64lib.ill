@@ -85,6 +85,7 @@ output raw
 		memory mflpt_point25		$e2ea	; .25, also known as 1 / 4
 		memory mflpt_2_pi		$e309	; 2 * PI (also see $e2e5)
 
+; @todo see also https://www.c64-wiki.com/wiki/Floating_point_arithmetic#Routines_for_converting_between_floating_point_and_other_formats
 ; functions - a few points to note:
 ; fac1/2 might get clobbered even if not mentioned in the function's name,
 ;	because stuff like fac1_times_memAY will load the value from memory

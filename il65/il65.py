@@ -160,10 +160,12 @@ class CodeGenerator:
                     self.p("{:s}\t\t.fill {:d}".format(vardef.name, vardef.length))
                 elif vardef.type == VariableType.WORDARRAY:
                     self.p("* = {:s}".format(self.to_hex(vardef.address)))
-                    self.p("{:s}\t\t.fill {:d}\t; {:d} words".format(vardef.name, vardef.length * 2, vardef.length))
+                    self.p("{:s}\t\t.fill {:d}\t\t; {:d} words".format(vardef.name, vardef.length * 2, vardef.length))
                 elif vardef.type == VariableType.MATRIX:
                     self.p("* = {:s}".format(self.to_hex(vardef.address)))
-                    self.p("{:s}\t\t.fill {:d}".format(vardef.name, vardef.matrixsize[0] * vardef.matrixsize[1]))
+                    self.p("{:s}\t\t.fill {:d}\t\t; matrix {:d}*{:d} bytes".format(vardef.name,
+                                                                                 vardef.matrixsize[0] * vardef.matrixsize[1],
+                                                                                 vardef.matrixsize[0], vardef.matrixsize[1]))
                 else:
                     raise ValueError("invalid var type")
         if self.parsed.format == ProgramFormat.PRG:
@@ -193,8 +195,10 @@ class CodeGenerator:
                 elif vardef.type == VariableType.MATRIX:
                     if vardef.address:
                         raise CodeError("matrix vars must not have address; will be allocated by assembler")
-                    self.p("{:s}\t\t.fill {:d}, ${:02x}".format(vardef.name,
-                                                                vardef.matrixsize[0] * vardef.matrixsize[1], vardef.value or 0))
+                    self.p("{:s}\t\t.fill {:d}, ${:02x}\t\t; matrix {:d}*{:d} bytes".format(vardef.name,
+                                                                vardef.matrixsize[0] * vardef.matrixsize[1],
+                                                                vardef.value or 0,
+                                                                vardef.matrixsize[0], vardef.matrixsize[1]))
                 elif vardef.type == VariableType.STRING:
                     # 0-terminated string
                     self.p("{:s}\n\t\t.null {:s}".format(vardef.name, self.output_string(str(vardef.value))))

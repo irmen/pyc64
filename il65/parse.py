@@ -586,7 +586,8 @@ class Parser:
             raise self.PError("invalid label name")
 
     def parse_memory_def(self, line: str) -> None:
-        dotargs = line.split()
+        dotargs = self.psplit(line)
+        print("MEMARGS", dotargs)  # XXX
         if dotargs[0] != "memory" or len(dotargs) not in (3, 4):
             raise self.PError("invalid memory definition")
         msize = 1
@@ -685,7 +686,7 @@ class Parser:
                 raise self.PError(str(x)) from x
             return
 
-        args = line.split()
+        args = self.psplit(line)
         if args[0] != "var" or len(args) < 2 or len(args) > 5:
             raise self.PError("invalid var decl (1)")
 
@@ -714,11 +715,18 @@ class Parser:
                 raise self.PError("cannot use a register name as variable")
             vtype = VariableType.BYTE
             vlen = 1
-        elif len(args) == 3:  # var vartype varname
+        elif len(args) == 3:  # var vartype varname, OR var varname value
             vname = args[2]
             if not vname.isidentifier():
-                raise self.PError("invalid variable name, or maybe forgot variable type")
-            vtype, vlen = get_vtype(args[1])   # type: ignore
+                # assume var varname value
+                vname = args[1]
+                if not vname.isidentifier():
+                    raise self.PError("invalid variable name, or maybe forgot variable type")
+                vtype, vlen = VariableType.BYTE, 1
+                value = self.parse_number(args[2])
+            else:
+                # assume var vartype varname
+                vtype, vlen = get_vtype(args[1])   # type: ignore
         elif len(args) == 4:  # var vartype varname value
             vname = args[2]
             if not vname.isidentifier():
@@ -733,7 +741,7 @@ class Parser:
         try:
             self.cur_block.symbols.define_variable(self.cur_block.name, vname, self.sourcefile, self.cur_linenum, vtype,
                                                    address=vaddr, length=vlen, value=value, matrixsize=matrixsize)
-        except SymbolError as x:
+        except (ValueError, SymbolError) as x:
             raise self.PError(str(x)) from x
 
     def parse_statement(self, line: str) -> ParseResult._Stmt:
@@ -893,9 +901,7 @@ class Parser:
                 a = int(number[1:], 2)
             else:
                 raise self.PError("invalid number; " + number)
-            if 0 <= a <= 0xffff:
-                return a
-            raise ValueError("out of bounds")
+            return a
         except ValueError as vx:
             raise self.PError("invalid number; "+str(vx))
 
@@ -908,9 +914,35 @@ class Parser:
         return self.parse_number(decl[:-1].split("(")[-1])
 
     def _size_from_matrixdecl(self, decl: str) -> Tuple[int, int]:
-        decl = decl[:-1].split("(")[-1]
-        xs, ys = decl.split(",")
+        dimensions = decl[:-1].split("(")[-1]
+        try:
+            xs, ys = dimensions.split(",")
+        except ValueError:
+            raise self.PError("invalid matrix dimensions")
         return self.parse_number(xs), self.parse_number(ys)
+
+    def psplit(self, sentence: str, separator: str=" ", lparen: str="(", rparen: str=")") -> List[str]:
+        """split a sentence but not on separators within parenthesis"""
+        nb_brackets = 0
+        sentence = sentence.strip(separator)  # get rid of leading/trailing seps
+        indices = [0]
+        for i, c in enumerate(sentence):
+            if c == lparen:
+                nb_brackets += 1
+            elif c == rparen:
+                nb_brackets -= 1
+            elif c == separator and nb_brackets == 0:
+                indices.append(i)
+            # handle malformed string
+            if nb_brackets < 0:
+                raise self.PError("syntax error")
+
+        indices.append(len(sentence))
+        # handle missing closing parentheses
+        if nb_brackets > 0:
+            raise self.PError("syntax error")
+        result = [sentence[i:j].strip(separator) for i, j in zip(indices, indices[1:])]
+        return list(filter(None, result))   # remove empty strings
 
 
 class Optimizer:

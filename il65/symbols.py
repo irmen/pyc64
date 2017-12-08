@@ -180,10 +180,25 @@ class SymbolTable:
         if identifier:
             raise SymbolError("identifier was already defined at " + identifier.sourceref)
 
+    def check_value_in_range(self, vtype: VariableType, register: str, length: int, value: Union[str, int]) -> None:
+        if vtype in (VariableType.BYTE, VariableType.BYTEARRAY, VariableType.MATRIX):
+            if value < 0 or value > 0xff:
+                raise ValueError("value too large, must be (unsigned) byte")
+        elif vtype in (VariableType.WORD, VariableType.WORDARRAY):
+            if value < 0 or value > 0xffff:
+                raise ValueError("value too large, must be (unsigned) word")
+        elif vtype in STRING_VARTYPES:
+            if type(value) is not str:
+                raise ValueError("value must be a string")
+        else:
+            raise SymbolError("missing value check for type", vtype, register, length, value)
+
     def define_variable(self, block: str, name: str, sourcefile: str, sourceline: int, vtype: VariableType, *,
                         address: int=None, length: int=0, value: Union[int, str]=0,
                         matrixsize: Tuple[int, int]=None, register: str=None) -> None:
+        # this defines a new variable and also checks if the prefill value is allowed for the variable type.
         self.check_identifier_valid(name)
+        self.check_value_in_range(vtype, register, length, value)
         allocate = address is None
         if vtype == VariableType.BYTE:
             if allocate:
@@ -231,3 +246,4 @@ class SymbolTable:
     def define_label(self, block: str, name: str, sourcefile: str, sourceline: int) -> None:
         self.check_identifier_valid(name)
         self.symbols[name] = LabelDef(block, name, sourcefile, sourceline, False)
+
