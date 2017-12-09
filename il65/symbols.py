@@ -1,14 +1,15 @@
+import math
 import enum
 from functools import total_ordering
 from typing import Optional, Set, Union, Tuple, Dict, Iterable, Sequence
 
 
 @total_ordering
-class VariableType(enum.Enum):
-    """The type of a variable"""
+class DataType(enum.Enum):
+    """The possible data types of values"""
     BYTE = 1
     WORD = 2
-    CONSTANT = 3        # @todo this is not really a data type
+    FLOAT = 3
     REGISTER = 4        # @todo this is not really a data type
     CHARACTER = 5
     BYTEARRAY = 6
@@ -18,13 +19,15 @@ class VariableType(enum.Enum):
     STRING_P = 10
     STRING_S = 11
     STRING_PS = 12
-    # @todo these are all unsigned, also support signed byte, word, bytearray, wordarray.
+    # @todo the integers are all unsigned, also support signed byte, word, bytearray, wordarray.
 
-    def assignable_from_value(self, value: int) -> bool:
-        if self in (VariableType.BYTE, VariableType.REGISTER):
+    def assignable_from_value(self, value: Union[int, float]) -> bool:
+        if self in (DataType.BYTE, DataType.REGISTER):
             return 0 <= value < 0x100
-        if self == VariableType.WORD:
+        if self == DataType.WORD:
             return 0 <= value < 0x10000
+        if self == DataType.FLOAT:
+            return type(value) in (float, int)
         return False
 
     def __lt__(self, other):
@@ -33,7 +36,7 @@ class VariableType(enum.Enum):
         return NotImplemented
 
 
-STRING_VARTYPES = {VariableType.STRING, VariableType.STRING_P, VariableType.STRING_S, VariableType.STRING_PS}
+STRING_VARTYPES = {DataType.STRING, DataType.STRING_P, DataType.STRING_S, DataType.STRING_PS}
 
 
 class SymbolError(Exception):
@@ -50,7 +53,7 @@ class SymbolDefinition:
         self.block = block
         self.name = name
         self.sourceref = "{:s}:{:d}".format(sourcefile, sourceline)
-        self.allocate = allocate     # set to false if the variable is memory mapped instead of allocated
+        self.allocate = allocate     # set to false if the variable is memory mapped (or a constant) instead of allocated
         global _identifier_seq_nr
         self.seq_nr = _identifier_seq_nr
         _identifier_seq_nr += 1
@@ -69,11 +72,11 @@ class LabelDef(SymbolDefinition):
 
 
 class VariableDef(SymbolDefinition):
-    def __init__(self, block: str, name: str, sourcefile: str, sourceline: int, vtype: VariableType, allocate: bool, *,
-                 value: Union[int, str], length: int, address: Optional[int]=None,
+    def __init__(self, block: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, allocate: bool, *,
+                 value: Union[int, float, str], length: int, address: Optional[int]=None,
                  register: str=None, matrixsize: Tuple[int, int]=None) -> None:
         super().__init__(block, name, sourcefile, sourceline, allocate)
-        self.type = vtype
+        self.type = datatype
         self.address = address
         self.length = length
         self.value = value
@@ -89,6 +92,27 @@ class VariableDef(SymbolDefinition):
             return NotImplemented
         v1 = (str(self.value) or "", self.block, self.name or "", self.address or 0, self.seq_nr)
         v2 = (str(other.value) or "", other.block, other.name or "", other.address or 0, self.seq_nr)
+        return v1 < v2
+
+
+class ConstantDef(SymbolDefinition):
+    def __init__(self, block: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
+                 value: Union[int, float, str], length: int, register: str=None) -> None:
+        super().__init__(block, name, sourcefile, sourceline, False)
+        self.type = datatype
+        self.length = length
+        self.value = value
+        self.register = register
+
+    def __repr__(self):
+        return "<Constant {:s}.{:s}, {:s}, len {:s}, value {:s}>"\
+            .format(self.block, self.name, self.type, str(self.length), str(self.value))
+
+    def __lt__(self, other: 'SymbolDefinition') -> bool:
+        if not isinstance(other, ConstantDef):
+            return NotImplemented
+        v1 = (str(self.value) or "", self.block, self.name or "", self.seq_nr)
+        v2 = (str(other.value) or "", other.block, other.name or "", self.seq_nr)
         return v1 < v2
 
 
@@ -180,63 +204,70 @@ class SymbolTable:
         if identifier:
             raise SymbolError("identifier was already defined at " + identifier.sourceref)
 
-    def check_value_in_range(self, vtype: VariableType, register: str, length: int, value: Union[str, int]) -> None:
-        if vtype in (VariableType.BYTE, VariableType.BYTEARRAY, VariableType.MATRIX):
-            if value < 0 or value > 0xff:
+    def check_value_in_range(self, datatype: DataType, register: str, length: int, value: Union[int, float, str]) -> None:
+        if datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX):
+            if value < 0 or value > 0xff:       # type: ignore
                 raise ValueError("value too large, must be (unsigned) byte")
-        elif vtype in (VariableType.WORD, VariableType.WORDARRAY):
-            if value < 0 or value > 0xffff:
+        elif datatype in (DataType.WORD, DataType.WORDARRAY):
+            if value < 0 or value > 0xffff:     # type: ignore
                 raise ValueError("value too large, must be (unsigned) word")
-        elif vtype in STRING_VARTYPES:
+        elif datatype in STRING_VARTYPES:
             if type(value) is not str:
                 raise ValueError("value must be a string")
+        elif datatype == DataType.FLOAT:
+            if type(value) not in (int, float):
+                raise ValueError("value must be a number")
         else:
-            raise SymbolError("missing value check for type", vtype, register, length, value)
+            raise SymbolError("missing value check for type", datatype, register, length, value)
 
-    def define_variable(self, block: str, name: str, sourcefile: str, sourceline: int, vtype: VariableType, *,
-                        address: int=None, length: int=0, value: Union[int, str]=0,
+    def define_variable(self, block: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
+                        address: int=None, length: int=0, value: Union[int, float, str]=0,
                         matrixsize: Tuple[int, int]=None, register: str=None) -> None:
         # this defines a new variable and also checks if the prefill value is allowed for the variable type.
         self.check_identifier_valid(name)
-        self.check_value_in_range(vtype, register, length, value)
+        self.check_value_in_range(datatype, register, length, value)
+        value = self.warn_if_float_trunc(sourcefile, sourceline, datatype, value)
         allocate = address is None
-        if vtype == VariableType.BYTE:
+        if datatype == DataType.BYTE:
             if allocate:
                 try:
-                    address = self.zeropage.get_unused_byte()
+                    address = self.zeropage.get_unused_byte()       # @todo make allocating a global ZP variable explicit in the declaration
                 except LookupError:
                     raise SymbolError("too many global 8-bit variables in zp")  # @todo make var in other memory
-            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.BYTE, allocate,
+            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, DataType.BYTE, allocate,
                                              value=value, length=1, address=address)
-        elif vtype == VariableType.WORD:
+        elif datatype == DataType.WORD:
             if allocate:
                 try:
-                    address = self.zeropage.get_unused_word()
+                    address = self.zeropage.get_unused_word()       # @todo make allocating a global ZP variable explicit in the declaration
                 except LookupError:
                     raise SymbolError("too many global 16-bit variables in zp")  # @todo make var in other memory
-            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.WORD, allocate,
+            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, DataType.WORD, allocate,
                                              value=value, length=1, address=address)
-        elif vtype == VariableType.BYTEARRAY:
-            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.BYTEARRAY, allocate,
+        elif datatype == DataType.FLOAT:
+            if allocate:
+                print("WARNING: FLOATS: cannot allocate outside of zp yet")  # @todo make var in other memory
+                address = 0x7f00   # XXX
+            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, DataType.FLOAT, allocate,
+                                             value=value, length=1, address=address)
+        elif datatype == DataType.BYTEARRAY:
+            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, DataType.BYTEARRAY, allocate,
                                              value=value, length=length, address=address)
-        elif vtype == VariableType.WORDARRAY:
-            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.WORDARRAY, allocate,
+        elif datatype == DataType.WORDARRAY:
+            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, DataType.WORDARRAY, allocate,
                                              value=value, length=length, address=address)
-        elif vtype == VariableType.CONSTANT:
-            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.CONSTANT, False,
-                                             value=value, length=0)
-        elif vtype == VariableType.REGISTER:
-            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.REGISTER, False,
+        elif datatype == DataType.REGISTER:
+            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, DataType.REGISTER, False,
                                              value=0, length=1, register=register)
-        elif vtype in (VariableType.STRING, VariableType.STRING_P, VariableType.STRING_S, VariableType.STRING_PS):
-            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, vtype, True,
+        elif datatype in (DataType.STRING, DataType.STRING_P, DataType.STRING_S, DataType.STRING_PS):
+            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, datatype, True,
                                              value=value, length=len(value))     # type: ignore
-        elif vtype == VariableType.MATRIX:
+        elif datatype == DataType.MATRIX:
             length = matrixsize[0] * matrixsize[1]
-            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, VariableType.MATRIX, allocate,
+            self.symbols[name] = VariableDef(block, name, sourcefile, sourceline, DataType.MATRIX, allocate,
                                              value=value, length=length, address=address, matrixsize=matrixsize)
         else:
-            raise ValueError("unknown type "+str(vtype))
+            raise ValueError("unknown type " + str(datatype))
 
     def define_sub(self, block: str, name: str, sourcefile: str, sourceline: int,
                    parameters: Sequence[Tuple[str, str]], returnvalues: Set[str], address: Optional[int]) -> None:
@@ -247,3 +278,35 @@ class SymbolTable:
         self.check_identifier_valid(name)
         self.symbols[name] = LabelDef(block, name, sourcefile, sourceline, False)
 
+    def define_constant(self, block: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
+                        length: int=0, value: Union[int, float, str]=0, register: str=None) -> None:
+        # this defines a new constant and also checks if the value is allowed for the data type.
+        self.check_identifier_valid(name)
+        self.check_value_in_range(datatype, register, length, value)
+        value = self.warn_if_float_trunc(sourcefile, sourceline, datatype, value)
+        if datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT, DataType.CHARACTER, DataType.REGISTER):
+            self.symbols[name] = ConstantDef(block, name, sourcefile, sourceline, datatype,
+                                             value=value, length=length or 1, register=register)
+        elif datatype in STRING_VARTYPES:
+            self.symbols[name] = ConstantDef(block, name, sourcefile, sourceline, datatype,
+                                             value=value, length=len(value))        # type: ignore
+        else:
+            raise ValueError("invalid data type for constant: " + str(datatype))
+
+    def warn_if_float_trunc(self, sourcefile: str, linenum: int, datatype: DataType,
+                            value: Union[int, float, str]) -> Union[int, float, str]:
+        if datatype == DataType.FLOAT or type(value) is int or type(value) is str:
+            return value
+        frac = math.modf(value)     # type: ignore
+        if frac == 0:
+            return value
+        if datatype in (DataType.REGISTER, DataType.BYTE):
+            print("Warning: {:s}:{:d}: Float value truncated (byte).".format(sourcefile, linenum))
+            return int(value)
+        elif datatype == DataType.WORD:
+            print("Warning: {:s}:{:d}: Float value truncated (word).".format(sourcefile, linenum))
+            return int(value)
+        elif datatype == DataType.FLOAT:
+            return value
+        else:
+            raise TypeError("invalid datatype passed")

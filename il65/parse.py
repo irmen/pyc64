@@ -4,7 +4,8 @@ import os
 import ast
 import enum
 from typing import Set, List, Tuple, Optional, Union, Any
-from symbols import SymbolTable, Zeropage, VariableType, SymbolDefinition, SubroutineDef, VariableDef, SymbolError, STRING_VARTYPES
+from symbols import SymbolTable, Zeropage, DataType, SymbolDefinition, SubroutineDef, \
+    VariableDef, ConstantDef, SymbolError, STRING_VARTYPES
 
 
 REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
@@ -41,7 +42,7 @@ class ParseResult:
             return {symbol.name for symbol in self.symbols.iter_labels()}
 
     class Value:
-        def __init__(self, vtype: VariableType, name: str=None) -> None:
+        def __init__(self, vtype: DataType, name: str=None) -> None:
             self.vtype = vtype
             self.name = name
 
@@ -56,14 +57,12 @@ class ParseResult:
             return "<Placeholder unresolved {:s}>".format(self.name)
 
     class IntegerValue(Value):
-        # 'immediate' constant integer value (bool, int, float)
-        #  @todo character, string, are CharValue StringValue this is not really consistent
         def __init__(self, value: int, name: str=None) -> None:
             if type(value) is int:
                 if 0 <= value < 0x100:
-                    super().__init__(VariableType.BYTE, name)
+                    super().__init__(DataType.BYTE, name)
                 elif value < 0x10000:
-                    super().__init__(VariableType.WORD, name)
+                    super().__init__(DataType.WORD, name)
                 else:
                     raise OverflowError("value too big: ${:x}".format(value))
             else:
@@ -85,9 +84,8 @@ class ParseResult:
             return "<IntegerValue {:d} name={}>".format(self.value, self.name)
 
     class StringValue(Value):
-        # string value
         def __init__(self, value: str, name: str=None) -> None:
-            super().__init__(VariableType.STRING, name)
+            super().__init__(DataType.STRING, name)
             self.value = value
 
         def __hash__(self):
@@ -104,29 +102,9 @@ class ParseResult:
         def __str__(self):
             return "<StringValue {!r:s} name={}>".format(self.value, self.name)
 
-    class CharValue(Value):
-        # character value (1 single character)
-        def __init__(self, value: str, name: str=None) -> None:
-            super().__init__(VariableType.CHARACTER, name)
-            self.value = value
-
-        def __hash__(self):
-            return hash((self.vtype, self.value, self.name))
-
-        def __eq__(self, other: Any) -> bool:
-            if not isinstance(other, ParseResult.CharValue):
-                return NotImplemented
-            elif self is other:
-                return True
-            else:
-                return other.vtype == self.vtype and other.value == self.value and other.name == self.name
-
-        def __str__(self):
-            return "<CharValue {!r:s} name={}>".format(self.value, self.name)
-
     class RegisterValue(Value):
         def __init__(self, register: str, name: str=None) -> None:
-            super().__init__(VariableType.REGISTER, name)
+            super().__init__(DataType.REGISTER, name)
             self.register = register.lower()
 
         def __hash__(self):
@@ -152,10 +130,10 @@ class ParseResult:
                 return other.value < 0x100 or len(self.register) > 1
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True
-            return other.vtype in {VariableType.BYTE, VariableType.REGISTER, VariableType.CHARACTER} or other.vtype in STRING_VARTYPES
+            return other.vtype in {DataType.BYTE, DataType.REGISTER, DataType.CHARACTER} or other.vtype in STRING_VARTYPES
 
     class MemMappedValue(Value):
-        def __init__(self, address: int, vartype: VariableType, length: int, name: str=None) -> None:
+        def __init__(self, address: int, vartype: DataType, length: int, name: str=None) -> None:
             super().__init__(vartype, name)
             self.address = address
             self.length = length
@@ -181,11 +159,10 @@ class ParseResult:
         def assignable_from(self, other: 'ParseResult.Value') -> bool:
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True
-            elif self.vtype == VariableType.BYTE:
-                return other.vtype in {VariableType.BYTE, VariableType.CONSTANT, VariableType.REGISTER, VariableType.CHARACTER}
-            elif self.vtype == VariableType.WORD:
-                return other.vtype in {VariableType.WORD, VariableType.BYTE,
-                                       VariableType.CONSTANT, VariableType.REGISTER, VariableType.CHARACTER}
+            elif self.vtype == DataType.BYTE:
+                return other.vtype in {DataType.BYTE, DataType.REGISTER, DataType.CHARACTER}
+            elif self.vtype == DataType.WORD:
+                return other.vtype in {DataType.WORD, DataType.BYTE, DataType.REGISTER, DataType.CHARACTER}
             return False
 
     class _Stmt:
@@ -471,7 +448,7 @@ class Parser:
                 if self.result.start_address:
                     raise self.PError("multiple occurrences of 'address'")
                 _, _, arg = line.partition(" ")
-                self.result.start_address = self.parse_number(arg)
+                self.result.start_address = self.parse_integer(arg)
                 if self.result.format == ProgramFormat.PRG and self.result.with_sys and self.result.start_address != 0x0801:
                     raise self.PError("cannot use non-default 'address' when output format includes basic SYS program")
             else:
@@ -532,7 +509,7 @@ class Parser:
                 break
             else:
                 try:
-                    self.cur_block.address = self.parse_number(arg)
+                    self.cur_block.address = self.parse_integer(arg)
                 except ParseError:
                     raise self.PError("Invalid number or block name")
                 if self.cur_block.address == 0:
@@ -587,11 +564,10 @@ class Parser:
 
     def parse_memory_def(self, line: str) -> None:
         dotargs = self.psplit(line)
-        print("MEMARGS", dotargs)  # XXX
         if dotargs[0] != "memory" or len(dotargs) not in (3, 4):
             raise self.PError("invalid memory definition")
         msize = 1
-        mtype = VariableType.BYTE
+        mtype = DataType.BYTE
         memtype = dotargs[1]
         matrixsize = None
         if memtype.startswith("."):
@@ -599,19 +575,22 @@ class Parser:
                 pass
             elif memtype == ".word":
                 msize = 2
-                mtype = VariableType.WORD
+                mtype = DataType.WORD
+            elif memtype == ".float":
+                msize = 5   # XXX 5-byte cbm MFLPT format, hardcoded for now
+                mtype = DataType.FLOAT
             elif memtype.startswith(".array(") and memtype.endswith(")"):
                 msize = self._size_from_arraydecl(memtype)
-                mtype = VariableType.BYTEARRAY
+                mtype = DataType.BYTEARRAY
             elif memtype.startswith(".wordarray(") and memtype.endswith(")"):
                 msize = self._size_from_arraydecl(memtype)
-                mtype = VariableType.WORDARRAY
+                mtype = DataType.WORDARRAY
             elif memtype.startswith(".matrix(") and memtype.endswith(")"):
                 if len(dotargs) != 4:
                     raise self.PError("missing matrix memory address")
                 matrixsize = self._size_from_matrixdecl(memtype)
                 msize = matrixsize[0] * matrixsize[1]
-                mtype = VariableType.MATRIX
+                mtype = DataType.MATRIX
             else:
                 raise self.PError("invalid memory type")
             dotargs.pop(1)
@@ -620,7 +599,7 @@ class Parser:
         varname = dotargs[1]
         if not varname.isidentifier():
             raise self.PError("invalid symbol name")
-        memaddress = self.parse_number(dotargs[2])
+        memaddress = self.parse_integer(dotargs[2])
         try:
             self.cur_block.symbols.define_variable(self.cur_block.name, varname, self.sourcefile, self.cur_linenum, mtype,
                                                    length=msize, address=memaddress, matrixsize=matrixsize)
@@ -628,25 +607,52 @@ class Parser:
             raise self.PError(str(x)) from x
 
     def parse_const_def(self, line: str) -> None:
-        dotargs = line.split()
-        if dotargs[0] != "const" or len(dotargs) != 3:
+        dotargs = self.psplit(line)
+        if dotargs[0] != "const" or len(dotargs) not in (3, 4):
             raise self.PError("invalid const definition")
-        varname = dotargs[1]
+        if len(dotargs) == 4:
+            # 'const .datatype symbolname expression'
+            if dotargs[1] == ".byte":
+                datatype = DataType.BYTE
+            elif dotargs[1] == ".word":
+                datatype = DataType.WORD
+            elif dotargs[1] == ".float":
+                datatype = DataType.FLOAT
+            elif dotargs[1] == ".text":
+                datatype = DataType.STRING
+            elif dotargs[1] == ".ptext":
+                datatype = DataType.STRING_P
+            elif dotargs[1] == ".stext":
+                datatype = DataType.STRING_S
+            elif dotargs[1] == ".pstext":
+                datatype = DataType.STRING_PS
+            else:
+                raise self.PError("invalid const datatype")
+            varname = dotargs[2]
+            value = dotargs[3]
+        else:
+            # 'const symbolname expression'
+            datatype = DataType.BYTE
+            varname = dotargs[1]
+            if varname[0] == ".":
+                raise self.PError("invalid const definition, missing constant name or value?")
+            value = dotargs[2]
         if not varname.isidentifier():
             raise self.PError("invalid symbol name")
-        if dotargs[2] in REGISTER_SYMBOLS:
+        if value in REGISTER_SYMBOLS:
+            datatype = DataType.REGISTER
             try:
                 # this is a const definition referring to a register, essentially giving the register another name
-                self.cur_block.symbols.define_variable(self.cur_block.name, varname, self.sourcefile, self.cur_linenum,
-                                                       VariableType.REGISTER, register=dotargs[2])
-            except SymbolError as x:
+                self.cur_block.symbols.define_constant(self.cur_block.name, varname, self.sourcefile, self.cur_linenum,
+                                                       datatype, register=value)
+            except (ValueError, SymbolError) as x:
                 raise self.PError(str(x)) from x
         else:
-            constvalue = self.parse_number(dotargs[2])
+            constvalue = self.parse_expression(value)
             try:
-                self.cur_block.symbols.define_variable(self.cur_block.name, varname, self.sourcefile, self.cur_linenum,
-                                                       VariableType.CONSTANT, value=constvalue)
-            except SymbolError as x:
+                self.cur_block.symbols.define_constant(self.cur_block.name, varname, self.sourcefile, self.cur_linenum,
+                                                       datatype, value=constvalue)
+            except (ValueError, SymbolError) as x:
                 raise self.PError(str(x)) from x
 
     def parse_subx_def(self, line: str) -> None:
@@ -664,7 +670,7 @@ class Parser:
         parameters = [(match.group("name"), match.group("target"))
                       for match in re.finditer(r"(?:(?P<name>[\w]+)\s*:\s*(?P<target>[\w]+))(?:,|$)", parameterlist)]
         results = {match.group("name") for match in re.finditer(r"\s*(?P<name>\w\?+)\s*(?:,|$)", resultlist)}
-        address = self.parse_number(address_str)
+        address = self.parse_integer(address_str)
         self.cur_block.symbols.define_sub(self.cur_block.name, name, self.sourcefile, self.cur_linenum, parameters, results, address)
 
     def parse_var_def(self, line: str) -> None:
@@ -672,10 +678,10 @@ class Parser:
         if match:
             # it's a var string definition.
             vtype = {
-                "text": VariableType.STRING,
-                "ptext": VariableType.STRING_P,
-                "stext": VariableType.STRING_S,
-                "pstext": VariableType.STRING_PS
+                "text": DataType.STRING,
+                "ptext": DataType.STRING_P,
+                "stext": DataType.STRING_S,
+                "pstext": DataType.STRING_PS
             }[match.group("type")]
             vname = match.group("name")
             strvalue = self.parse_string(match.group("value"))
@@ -690,17 +696,19 @@ class Parser:
         if args[0] != "var" or len(args) < 2 or len(args) > 5:
             raise self.PError("invalid var decl (1)")
 
-        def get_vtype(vtype: str) -> Tuple[VariableType, Union[int, Tuple[int, int]]]:
+        def get_vtype(vtype: str) -> Tuple[DataType, Union[int, Tuple[int, int]]]:
             if vtype == ".byte":
-                return VariableType.BYTE, 1
+                return DataType.BYTE, 1
             elif vtype == ".word":
-                return VariableType.WORD, 1
+                return DataType.WORD, 1
+            elif vtype == ".float":
+                return DataType.FLOAT, 1
             elif vtype.startswith(".array(") and vtype.endswith(")"):
-                return VariableType.BYTEARRAY, self._size_from_arraydecl(vtype)
+                return DataType.BYTEARRAY, self._size_from_arraydecl(vtype)
             elif vtype.startswith(".wordarray(") and vtype.endswith(")"):
-                return VariableType.WORDARRAY, self._size_from_arraydecl(vtype)
+                return DataType.WORDARRAY, self._size_from_arraydecl(vtype)
             elif vtype.startswith(".matrix(") and vtype.endswith(")"):
-                return VariableType.MATRIX, self._size_from_matrixdecl(vtype)
+                return DataType.MATRIX, self._size_from_matrixdecl(vtype)
             else:
                 raise self.PError("invalid variable type")
 
@@ -713,29 +721,29 @@ class Parser:
                 raise self.PError("invalid variable name")
             if vname in REGISTER_SYMBOLS:
                 raise self.PError("cannot use a register name as variable")
-            vtype = VariableType.BYTE
+            vtype = DataType.BYTE
             vlen = 1
-        elif len(args) == 3:  # var vartype varname, OR var varname value
+        elif len(args) == 3:  # var vartype varname, OR var varname expression
             vname = args[2]
             if not vname.isidentifier():
-                # assume var varname value
+                # assume var varname expression
                 vname = args[1]
                 if not vname.isidentifier():
                     raise self.PError("invalid variable name, or maybe forgot variable type")
-                vtype, vlen = VariableType.BYTE, 1
-                value = self.parse_number(args[2])
+                vtype, vlen = DataType.BYTE, 1
+                value = self.parse_expression(args[2])
             else:
                 # assume var vartype varname
                 vtype, vlen = get_vtype(args[1])   # type: ignore
-        elif len(args) == 4:  # var vartype varname value
+        elif len(args) == 4:  # var vartype varname expression
             vname = args[2]
             if not vname.isidentifier():
-                raise self.PError("invalid variable name")
+                raise self.PError("invalid variable name, or var syntax")
             vtype, vlen = get_vtype(args[1])   # type: ignore
-            value = self.parse_number(args[3])
+            value = self.parse_expression(args[3])
         else:
             raise self.PError("invalid var decl (2)")
-        if vtype == VariableType.MATRIX:
+        if vtype == DataType.MATRIX:
             matrixsize = vlen   # type: ignore
             vlen = None
         try:
@@ -825,13 +833,14 @@ class Parser:
         if not value:
             raise self.PError("value expected")
         if value[0] in "0123456789$%":
-            return ParseResult.IntegerValue(self.parse_number(value))
+            # @todo floats??
+            return ParseResult.IntegerValue(self.parse_integer(value))
         elif value in REGISTER_SYMBOLS:
             return ParseResult.RegisterValue(value)
         elif (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
             strvalue = self.parse_string(value)
             if len(strvalue) == 1:
-                return ParseResult.CharValue(strvalue)
+                return ParseResult.CharValue(strvalue)      # XXX gone
             return ParseResult.StringValue(strvalue)
         elif value == "true":
             return ParseResult.IntegerValue(1)
@@ -847,13 +856,11 @@ class Parser:
                     symbolname = sym.name
                 else:
                     symbolname = "{:s}.{:s}".format(sym.block, sym.name)
-                if sym.type == VariableType.REGISTER:
+                if sym.type == DataType.REGISTER:
                     return ParseResult.RegisterValue(sym.register, name=symbolname)
-                elif sym.type == VariableType.CONSTANT:
-                    return ParseResult.IntegerValue(sym.value, name=symbolname)     # type: ignore
-                elif sym.type == VariableType.CHARACTER:
-                    return ParseResult.CharValue(sym.value, name=symbolname)        # type: ignore
-                elif sym.type in (VariableType.BYTE, VariableType.WORD):
+                elif sym.type == DataType.CHARACTER:
+                    return ParseResult.CharValue(sym.value, name=symbolname)        # XXX gone
+                elif sym.type in (DataType.BYTE, DataType.WORD):
                     return ParseResult.MemMappedValue(sym.address, sym.type, sym.length, name=symbolname)
                 elif sym.type in STRING_VARTYPES:
                     return ParseResult.StringValue(sym.value, name=symbolname)      # type: ignore
@@ -868,17 +875,15 @@ class Parser:
                     sym = cur_block.symbols[num_or_name]    # type: ignore
                 except KeyError:
                     raise self.PError("unknown symbol (2): " + num_or_name)
-                if isinstance(sym, VariableDef):
-                    if sym.type == VariableType.CONSTANT:
-                        # XXX word type how? .w in stmt?
-                        return ParseResult.MemMappedValue(sym.value, VariableType.BYTE, length=1, name=sym.name)    # type: ignore
-                    else:
-                        raise self.PError("invalid symbol type used as lvalue of assignment (3)")
+                if isinstance(sym, ConstantDef):
+                    # XXX word type how? .w in stmt?
+                    # @todo fix constant
+                    return ParseResult.MemMappedValue(sym.value, sym.type, length=sym.length, name=sym.name)
                 else:
-                    raise self.PError("invalid symbol type used as lvalue of assignment (4)")
+                    raise self.PError("invalid symbol type used as lvalue of assignment (3)")
             else:
-                addr = self.parse_number(num_or_name)
-                return ParseResult.MemMappedValue(addr, VariableType.BYTE, length=1)   # XXX word type how? .w in statement?
+                addr = self.parse_integer(num_or_name)
+                return ParseResult.MemMappedValue(addr, DataType.BYTE, length=1)   # XXX word type how? .w in statement?
         else:
             raise self.PError("invalid value '"+value+"'")
 
@@ -890,20 +895,30 @@ class Parser:
             return blockname.isidentifier() and name.isidentifier()
         return False
 
-    def parse_number(self, number: str) -> int:
+    def parse_integer(self, number: str) -> int:
+        # parse a numeric string into an actual integer
         number = number.lstrip()
         try:
             if number[0] in "0123456789":
-                a = int(number)
-            elif number.startswith("$"):
-                a = int(number[1:], 16)
+                return int(number)
+            elif number.startswith(("$", "0x")):
+                return int(number[1:], 16)
             elif number.startswith("%"):
-                a = int(number[1:], 2)
+                return int(number[1:], 2)
             else:
                 raise self.PError("invalid number; " + number)
-            return a
         except ValueError as vx:
             raise self.PError("invalid number; "+str(vx))
+
+    def parse_number(self, number: str) -> Union[int, float]:
+        # parse a numeric string into an actual number (integer or float)
+        try:
+            return self.parse_integer(number)
+        except (ValueError, ParseError):
+            if number[0] in "-.0123456789":
+                return float(number)
+            else:
+                raise self.PError("invalid number; " + number)
 
     def parse_string(self, string: str) -> str:
         if string.startswith("'") and not string.endswith("'") or string.startswith('"') and not string.endswith('"'):
@@ -911,7 +926,7 @@ class Parser:
         return ast.literal_eval(string)
 
     def _size_from_arraydecl(self, decl: str) -> int:
-        return self.parse_number(decl[:-1].split("(")[-1])
+        return self.parse_integer(decl[:-1].split("(")[-1])
 
     def _size_from_matrixdecl(self, decl: str) -> Tuple[int, int]:
         dimensions = decl[:-1].split("(")[-1]
@@ -919,7 +934,7 @@ class Parser:
             xs, ys = dimensions.split(",")
         except ValueError:
             raise self.PError("invalid matrix dimensions")
-        return self.parse_number(xs), self.parse_number(ys)
+        return self.parse_integer(xs), self.parse_integer(ys)
 
     def psplit(self, sentence: str, separator: str=" ", lparen: str="(", rparen: str=")") -> List[str]:
         """split a sentence but not on separators within parenthesis"""
@@ -943,6 +958,23 @@ class Parser:
             raise self.PError("syntax error")
         result = [sentence[i:j].strip(separator) for i, j in zip(indices, indices[1:])]
         return list(filter(None, result))   # remove empty strings
+
+    def parse_expression(self, text: str) -> Union[int, float, str]:
+        # parses an expression into a constant numeric value
+        # @todo other data types, use ast.parse etc
+        try:
+            return self.parse_number(text)
+        except ParseError:
+            if text[0] == "'" and text[-1] == "'" or text[0] == '"' and text[-1] == '"':
+                if len(text) == 3:
+                    return self.char_to_bytevalue(text[1])
+                else:
+                    return self.parse_string(text)
+            raise
+
+    def char_to_bytevalue(self, character: str) -> int:
+        assert len(character) == 1
+        return ord(character.translate(ascii_to_petscii_trans))
 
 
 class Optimizer:
@@ -1022,3 +1054,86 @@ def value_sortkey(value: ParseResult.Value) -> int:
             return 20000 + value.address
     else:
         return 99999999
+
+
+# ASCII/UNICODE-to-PETSCII translation table
+# Unicode symbols supported that map to a PETSCII character:
+#   £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○
+ascii_to_petscii_trans = str.maketrans({
+    '\f': 147,  # form feed becomes ClearScreen
+    '\n': 13,   # line feed becomes a RETURN
+    '\r': 17,   # CR becomes CursorDown
+    'a': 65,
+    'b': 66,
+    'c': 67,
+    'd': 68,
+    'e': 69,
+    'f': 70,
+    'g': 71,
+    'h': 72,
+    'i': 73,
+    'j': 74,
+    'k': 75,
+    'l': 76,
+    'm': 77,
+    'n': 78,
+    'o': 79,
+    'p': 80,
+    'q': 81,
+    'r': 82,
+    's': 83,
+    't': 84,
+    'u': 85,
+    'v': 86,
+    'w': 87,
+    'x': 88,
+    'y': 89,
+    'z': 90,
+    'A': 97,
+    'B': 98,
+    'C': 99,
+    'D': 100,
+    'E': 101,
+    'F': 102,
+    'G': 103,
+    'H': 104,
+    'I': 105,
+    'J': 106,
+    'K': 107,
+    'L': 108,
+    'M': 109,
+    'N': 110,
+    'O': 111,
+    'P': 112,
+    'Q': 113,
+    'R': 114,
+    'S': 115,
+    'T': 116,
+    'U': 117,
+    'V': 118,
+    'W': 119,
+    'X': 120,
+    'Y': 121,
+    'Z': 122,
+    '{': 179,       # left squiggle
+    '}': 235,       # right squiggle
+    '£': 92,        # pound currency sign
+    '^': 94,        # up arrow
+    '~': 126,       # pi math symbol
+    'π': 126,       # pi symbol
+    '|': 221,       # vertical bar
+    '↑': 94,        # up arrow
+    '⬆': 94,        # up arrow
+    '←': 95,        # left arrow
+    '⬅': 95,        # left arrow
+    '_': 164,       # lower bar/underscore
+    '`': 39,        # single quote
+    '♠': 97,        # spades
+    '●': 113,       # circle
+    '♥': 115,       # hearts
+    '○': 119,       # open circle
+    '♣': 120,       # clubs
+    '♦': 122,       # diamonds
+
+    # @todo add more unicode petscii equivalents see http://style64.org/petscii/
+})

@@ -9,7 +9,7 @@ import argparse
 from functools import partial
 from typing import TextIO, Dict, Set, Union
 from parse import ProgramFormat, Parser, ParseResult, Optimizer
-from symbols import Zeropage, VariableType, VariableDef
+from symbols import Zeropage, DataType, VariableDef
 
 
 class CodeError(Exception):
@@ -84,29 +84,33 @@ class CodeGenerator:
             self.p("\t\tinx")
             self.p("\t\tbne -")
 
-        # first join all the vars from all the blocks that need to be initialized
+        # first join all the vars from all the blocks that need to be initialized (i.e. are allocated in memory
+        # other than the block itself, such as ZP memory)
         # the iteration over the variables has a specific sort order to optimize init sequence
+        # @todo vars not allocated in zp should be defined in-line in the block itself and contain their initial value directly
         vars_to_init = list(sorted(v for block in self.parsed.blocks for v in block.symbols.iter_variables()
-                            if v.allocate and v.type in (VariableType.BYTE, VariableType.WORD)))
-        prev_value = 0      # type: Union[str, int]
+                            if v.allocate and v.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT)))
+        prev_value = 0
         if vars_to_init:
             self.p("; init block vars")
             self.p("\t\tlda #0\n\t\tldx #0")
             for variable in vars_to_init:
                 vname = variable.block + "." + variable.name
                 vvalue = variable.value
-                if variable.type == VariableType.BYTE:
+                if variable.type == DataType.BYTE:
                     if vvalue != prev_value:
                         self.p("\t\tlda #${:02x}".format(vvalue))
                         prev_value = vvalue
                     self.p("\t\tsta {:s}".format(vname))
-                elif variable.type == VariableType.WORD:
+                elif variable.type == DataType.WORD:
                     if vvalue != prev_value:
                         self.p("\t\tlda #<${:04x}".format(vvalue))
                         self.p("\t\tldx #>${:04x}".format(vvalue))
                         prev_value = vvalue
                     self.p("\t\tsta {:s}".format(vname))
                     self.p("\t\tstx {:s}+1".format(vname))
+                elif variable.type == DataType.FLOAT:
+                    self.p("\t\t; @todo should init float var {:s} = {:g}".format(vname, vvalue))    # XXX init float var
             self.p("; end init block vars")
         self.p("\t\tcld\t\t\t; clear decimal flag")
         self.p("\t\tclc\t\t\t; clear carry flag")
@@ -148,24 +152,24 @@ class CodeGenerator:
         if self.parsed.format == ProgramFormat.PRG:
             self.p("_il65_addr_save = *")
         mem_vars = [vi for vi in block.symbols.iter_variables()
-                    if not vi.allocate and vi.type not in (VariableType.REGISTER, VariableType.CONSTANT)]
+                    if not vi.allocate and vi.type != DataType.REGISTER]
         if mem_vars:
             self.p("; memory mapped variables")
             for vardef in mem_vars:
                 # create a definition for variables at a specific place in memory (memory-mapped)
-                if vardef.type in (VariableType.BYTE, VariableType.WORD):
+                if vardef.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
                     self.p("\t\t{:s} = {:s}".format(vardef.name, self.to_hex(vardef.address)))
-                elif vardef.type == VariableType.BYTEARRAY:
+                elif vardef.type == DataType.BYTEARRAY:
                     self.p("* = {:s}".format(self.to_hex(vardef.address)))
                     self.p("{:s}\t\t.fill {:d}".format(vardef.name, vardef.length))
-                elif vardef.type == VariableType.WORDARRAY:
+                elif vardef.type == DataType.WORDARRAY:
                     self.p("* = {:s}".format(self.to_hex(vardef.address)))
                     self.p("{:s}\t\t.fill {:d}\t\t; {:d} words".format(vardef.name, vardef.length * 2, vardef.length))
-                elif vardef.type == VariableType.MATRIX:
+                elif vardef.type == DataType.MATRIX:
                     self.p("* = {:s}".format(self.to_hex(vardef.address)))
                     self.p("{:s}\t\t.fill {:d}\t\t; matrix {:d}*{:d} bytes".format(vardef.name,
-                                                                                 vardef.matrixsize[0] * vardef.matrixsize[1],
-                                                                                 vardef.matrixsize[0], vardef.matrixsize[1]))
+                                                                                   vardef.matrixsize[0] * vardef.matrixsize[1],
+                                                                                   vardef.matrixsize[0], vardef.matrixsize[1]))
                 else:
                     raise ValueError("invalid var type")
         if self.parsed.format == ProgramFormat.PRG:
@@ -175,53 +179,48 @@ class CodeGenerator:
             self.p("; normal variables")
             for vardef in non_mem_vars:
                 # create a definition for a variable that takes up space and will be initialized at startup
-                if vardef.type in (VariableType.BYTE, VariableType.WORD):
+                if vardef.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
                     if vardef.address:
                         self.p("\t\t{:s} = {:s}".format(vardef.name, self.to_hex(vardef.address)))
                     else:
                         # @todo non-zeropage variables not yet supported
                         raise CodeError("byte or word vars must have address for now (assigned via symboltable var allocator)")
-                elif vardef.type in (VariableType.BYTEARRAY, VariableType.WORDARRAY):
+                elif vardef.type in (DataType.BYTEARRAY, DataType.WORDARRAY):
                     if vardef.address:
                         raise CodeError("array or wordarray vars must not have address; will be allocated by assembler")
-                    if vardef.type == VariableType.BYTEARRAY:
+                    if vardef.type == DataType.BYTEARRAY:
                         self.p("{:s}\t\t.fill {:d}, ${:02x}".format(vardef.name, vardef.length, vardef.value or 0))
-                    elif vardef.type == VariableType.WORDARRAY:
+                    elif vardef.type == DataType.WORDARRAY:
                         f_hi, f_lo = divmod(vardef.value or 0, 256)  # type: ignore
                         self.p("{:s}\t\t.fill {:d}, [${:02x}, ${:02x}]\t; {:d} words of ${:04x}"
                                .format(vardef.name, vardef.length * 2, f_lo, f_hi, vardef.length, vardef.value or 0))
                     else:
                         raise TypeError("invalid vartype", vardef.type)
-                elif vardef.type == VariableType.MATRIX:
+                elif vardef.type == DataType.MATRIX:
                     if vardef.address:
                         raise CodeError("matrix vars must not have address; will be allocated by assembler")
-                    self.p("{:s}\t\t.fill {:d}, ${:02x}\t\t; matrix {:d}*{:d} bytes".format(vardef.name,
-                                                                vardef.matrixsize[0] * vardef.matrixsize[1],
-                                                                vardef.value or 0,
-                                                                vardef.matrixsize[0], vardef.matrixsize[1]))
-                elif vardef.type == VariableType.STRING:
+                    self.p("{:s}\t\t.fill {:d}, ${:02x}\t\t; matrix {:d}*{:d} bytes"
+                           .format(vardef.name,
+                                   vardef.matrixsize[0] * vardef.matrixsize[1],
+                                   vardef.value or 0,
+                                   vardef.matrixsize[0], vardef.matrixsize[1]))
+                elif vardef.type == DataType.STRING:
                     # 0-terminated string
                     self.p("{:s}\n\t\t.null {:s}".format(vardef.name, self.output_string(str(vardef.value))))
-                elif vardef.type == VariableType.STRING_P:
+                elif vardef.type == DataType.STRING_P:
                     # pascal string
                     self.p("{:s}\n\t\t.ptext {:s}".format(vardef.name, self.output_string(str(vardef.value))))
-                elif vardef.type == VariableType.STRING_S:
+                elif vardef.type == DataType.STRING_S:
                     # 0-terminated string in screencode encoding
                     self.p(".enc 'screen'")
                     self.p("{:s}\n\t\t.null {:s}".format(vardef.name, self.output_string(str(vardef.value), True)))
                     self.p(".enc 'none'")
-                elif vardef.type == VariableType.STRING_PS:
+                elif vardef.type == DataType.STRING_PS:
                     # 0-terminated pascal string in screencode encoding
                     self.p(".enc 'screen'")
                     self.p("{:s}\n\t\t.ptext {:s}".format(vardef.name, self.output_string(str(vardef.value), True)))
                     self.p(".enc 'none'")
-                elif vardef.type == VariableType.CONSTANT:
-                    if vardef.name in ("true", "false"):
-                        # these names are built-in in 64tass, don't output them again
-                        pass
-                    else:
-                        self.p("\t\t{:s} = {:s}".format(vardef.name, self.to_hex(vardef.value)))  # type: ignore
-                elif vardef.type == VariableType.REGISTER:
+                elif vardef.type == DataType.REGISTER:
                     pass
                 else:
                     raise CodeError("unknown variable type " + str(vardef.type))
@@ -267,12 +266,12 @@ class CodeGenerator:
                             self.p("\t\tde{:s}".format(stmt.what.register))
                 elif isinstance(stmt.what, ParseResult.MemMappedValue):
                     r_str = stmt.what.name or self.to_hex(stmt.what.address)
-                    if stmt.what.vtype == VariableType.BYTE:
+                    if stmt.what.vtype == DataType.BYTE:
                         if stmt.howmuch == 1:
                             self.p("\t\tinc " + r_str)
                         else:
                             self.p("\t\tdec " + r_str)
-                    elif stmt.what.vtype == VariableType.WORD:
+                    elif stmt.what.vtype == DataType.WORD:
                         # @todo verify this asm code
                         if stmt.howmuch == 1:
                             self.p("\t\tinc " + r_str)
@@ -345,24 +344,15 @@ class CodeGenerator:
                     self.generate_assign_char_to_memory(lv, r_str)
                 else:
                     raise CodeError("invalid assignment target (2)", str(stmt))
-        elif isinstance(stmt.right, ParseResult.CharValue):
-            r_str = self.output_string(stmt.right.value, True)
-            for lv in stmt.leftvalues:
-                if isinstance(lv, ParseResult.RegisterValue):
-                    self.generate_assign_char_to_reg(lv, r_str)
-                elif isinstance(lv, ParseResult.MemMappedValue):
-                    self.generate_assign_char_to_memory(lv, r_str)
-                else:
-                    raise CodeError("invalid assignment target (3)", str(stmt))
         elif isinstance(stmt.right, ParseResult.MemMappedValue):
-            if stmt.right.vtype != VariableType.BYTE:
+            if stmt.right.vtype != DataType.BYTE:
                 raise CodeError("can only assign memory mapped byte values for now", str(stmt))  # @todo support others?
             r_str = stmt.right.name if stmt.right.name else "${:x}".format(stmt.right.address)
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):
                     self.generate_assign_mem_to_reg(lv.register, r_str)
                 elif isinstance(lv, ParseResult.MemMappedValue):
-                    if lv.vtype != VariableType.BYTE:
+                    if lv.vtype != DataType.BYTE:
                         raise CodeError("can only assign a memory mapped byte value into another byte")
                     self.generate_assign_mem_to_mem(lv, r_str)
                 else:
@@ -381,9 +371,9 @@ class CodeGenerator:
     def generate_assign_reg_to_memory(self, lv: ParseResult.MemMappedValue, r_register: str) -> None:
         # Memory = Register
         lv_string = lv.name or self.to_hex(lv.address)
-        if lv.vtype == VariableType.BYTE:
+        if lv.vtype == DataType.BYTE:
             self.p("\t\tst{:s} {}".format(r_register, lv_string))
-        elif lv.vtype == VariableType.WORD:
+        elif lv.vtype == DataType.WORD:
             self.p("\t\tst{:s} {}".format(r_register, lv_string))  # lsb
             # now set the msb to zero
             if self.reg_values['x'] == 0:
@@ -491,7 +481,7 @@ class CodeGenerator:
         with self.save_a_reg_for_assignment(const_value):
             if not lv.name:
                 # assign a single byte value to a memory location
-                if not VariableType.BYTE.assignable_from_value(const_value):
+                if not DataType.BYTE.assignable_from_value(const_value):
                     raise OverflowError("const value doesn't fit in a byte")
                 if self.reg_values['a'] != const_value:
                     self.p("\t\tlda #" + const_str)
@@ -501,14 +491,14 @@ class CodeGenerator:
             # assign constant value to a memory location by symbol name
             sym, local = self.parsed.lookup_symbol(lv.name, self.cur_block)
             if isinstance(sym, VariableDef):
-                if sym.type in (VariableType.BYTE, VariableType.CONSTANT):
-                    if not VariableType.BYTE.assignable_from_value(const_value):
+                if sym.type == DataType.BYTE:
+                    if not DataType.BYTE.assignable_from_value(const_value):
                         raise OverflowError("const value doesn't fit in a byte")
                     if self.reg_values['a'] != const_value:
                         self.p("\t\tlda #" + const_str)
                         self.reg_values['a'] = const_value
                     self.p("\t\tsta " + str(lv.name))
-                elif sym.type == VariableType.WORD:
+                elif sym.type == DataType.WORD:
                     p1 = "\t\tlda #<" + const_str
                     p2 = "\t\tlda #>" + const_str
                     self.p(p1)
@@ -540,9 +530,9 @@ class CodeGenerator:
             # assign char value to a memory location by symbol name
             sym, local = self.parsed.lookup_symbol(lv.name, self.cur_block)
             if isinstance(sym, VariableDef):
-                if sym.type in (VariableType.BYTE, VariableType.CONSTANT):
+                if sym.type == DataType.BYTE:
                     self.p("\t\tsta " + str(lv.name))
-                elif sym.type == VariableType.WORD:
+                elif sym.type == DataType.WORD:
                     self.p("\t\tsta " + str(lv.name))
                     self.p("\t\tlda #0")
                     self.reg_values['a'] = 0
