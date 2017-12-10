@@ -1,5 +1,12 @@
 #! /usr/bin/env python3
 
+"""
+Intermediate Language for 6502/6510 microprocessors
+
+Written by Irmen de Jong (irmen@razorvine.net)
+License: GNU GPL 3.0, see LICENSE
+"""
+
 import os
 import io
 import datetime
@@ -26,10 +33,26 @@ class CodeGenerator:
         self.cur_block = None    # type: ParseResult.Block
 
     def generate(self) -> None:
+        self.sanitycheck()
         self.header()
         self.initialize_variables()
         self.blocks()
         self.footer()
+
+    def sanitycheck(self) -> None:
+        # duplicate block names?
+        all_blocknames = [b.name for b in self.parsed.blocks if b.name]
+        unique_blocknames = set(all_blocknames)
+        if len(all_blocknames) != len(unique_blocknames):
+            for name in unique_blocknames:
+                all_blocknames.remove(name)
+            raise CodeError("there are duplicate block names", all_blocknames)
+        # ZP block contains no code?
+        for zpblock in [b for b in self.parsed.blocks if b.name == "ZP"]:
+            if zpblock.label_names:
+                raise CodeError("ZP block cannot contain labels")
+            if zpblock.statements:
+                raise CodeError("ZP block cannot contain code statements")
 
     def optimize(self) -> None:
         # optimize the generated assembly code
@@ -73,7 +96,7 @@ class CodeGenerator:
             return "${:04x}".format(number)
         raise OverflowError(number)
 
-    def initialize_variables(self) -> None:
+    def initialize_variables(self) -> None:     # @todo per-block init routine
         must_save_zp = self.parsed.clobberzp and self.parsed.restorezp
         if must_save_zp:
             self.p("; save zp")
@@ -87,15 +110,15 @@ class CodeGenerator:
         # first join all the vars from all the blocks that need to be initialized (i.e. are allocated in memory
         # other than the block itself, such as ZP memory)
         # the iteration over the variables has a specific sort order to optimize init sequence
-        # @todo vars not allocated in zp should be defined in-line in the block itself and contain their initial value directly
         vars_to_init = list(sorted(v for block in self.parsed.blocks for v in block.symbols.iter_variables()
                             if v.allocate and v.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT)))
+        vars_to_init = [] # @todo vars not allocated in zp should be defined in-line in the block itself and contain their initial value directly
         prev_value = 0
         if vars_to_init:
             self.p("; init block vars")
             self.p("\t\tlda #0\n\t\tldx #0")
             for variable in vars_to_init:
-                vname = variable.block + "." + variable.name
+                vname = "@todo_blocklabel." + variable.name  # XXX blocklabel
                 vvalue = variable.value
                 if variable.type == DataType.BYTE:
                     if vvalue != prev_value:
@@ -114,8 +137,9 @@ class CodeGenerator:
             self.p("; end init block vars")
         self.p("\t\tcld\t\t\t; clear decimal flag")
         self.p("\t\tclc\t\t\t; clear carry flag")
+        main_block_label = [b.label for b in self.parsed.blocks if b.name == "main"][0]
         if must_save_zp:
-            self.p("\t\tjsr main.start\t\t; call user code")
+            self.p("\t\tjsr {:s}.start\t\t; call user code".format(main_block_label))
             self.p("; restore zp")
             self.p("\t\tphp\n\t\tpha\n\t\ttxa\n\t\tpha\n\t\tsei")
             self.p("\t\tldx #2")
@@ -127,16 +151,26 @@ class CodeGenerator:
             self.p("\t\trts")
             self.p("_il65_zp_backup\t\t.fill 254, 0")
         else:
-            self.p("\t\tjmp main.start\t\t; call user code")
+            self.p("\t\tjmp {:s}.start\t\t; call user code".format(main_block_label))
 
     def blocks(self) -> None:
+        # if there's a Zeropage block, it always goes first
+        for zpblock in [b for b in self.parsed.blocks if b.name == "ZP"]:
+            assert not zpblock.statements
+            self.cur_block = zpblock
+            self.p("\n; ---- zero page block: '{:s}' ----\t\t; src l. {:d}\n".format(zpblock.name, zpblock.linenum))
+            self.p("{:s}\t.proc\n".format(zpblock.label))
+            self.generate_block_vars(zpblock)
+            self.p("\t.pend\n")
         for block in sorted(self.parsed.blocks, key=lambda b: b.address):
+            if block.name == "ZP":
+                continue    # zeropage block is already processed
             self.cur_block = block
             self.p("\n; ---- next block: '{:s}' ----\t\t; src l. {:d}\n".format(block.name, block.linenum))
             if block.address:
                 self.p(".cerror * > ${0:04x}, 'block address overlaps by ', *-${0:04x},' bytes'".format(block.address))
                 self.p("* = ${:04x}".format(block.address))
-            self.p("{:s}\t.proc\n".format(block.name))
+            self.p("{:s}\t.proc\n".format(block.label))
             self.generate_block_vars(block)
             subroutines = list(block.symbols.iter_subroutines())
             if subroutines:
@@ -151,8 +185,7 @@ class CodeGenerator:
     def generate_block_vars(self, block: ParseResult.Block) -> None:
         if self.parsed.format == ProgramFormat.PRG:
             self.p("_il65_addr_save = *")
-        mem_vars = [vi for vi in block.symbols.iter_variables()
-                    if not vi.allocate and vi.type != DataType.REGISTER]
+        mem_vars = [vi for vi in block.symbols.iter_variables() if not vi.allocate and not vi.register]
         if mem_vars:
             self.p("; memory mapped variables")
             for vardef in mem_vars:
@@ -220,8 +253,6 @@ class CodeGenerator:
                     self.p(".enc 'screen'")
                     self.p("{:s}\n\t\t.ptext {:s}".format(vardef.name, self.output_string(str(vardef.value), True)))
                     self.p(".enc 'none'")
-                elif vardef.type == DataType.REGISTER:
-                    pass
                 else:
                     raise CodeError("unknown variable type " + str(vardef.type))
 
@@ -266,12 +297,12 @@ class CodeGenerator:
                             self.p("\t\tde{:s}".format(stmt.what.register))
                 elif isinstance(stmt.what, ParseResult.MemMappedValue):
                     r_str = stmt.what.name or self.to_hex(stmt.what.address)
-                    if stmt.what.vtype == DataType.BYTE:
+                    if stmt.what.datatype == DataType.BYTE:
                         if stmt.howmuch == 1:
                             self.p("\t\tinc " + r_str)
                         else:
                             self.p("\t\tdec " + r_str)
-                    elif stmt.what.vtype == DataType.WORD:
+                    elif stmt.what.datatype == DataType.WORD:
                         # @todo verify this asm code
                         if stmt.howmuch == 1:
                             self.p("\t\tinc " + r_str)
@@ -284,7 +315,7 @@ class CodeGenerator:
                             self.p("\t\tdec {:s}+1".format(r_str))
                             self.p("+")
                     else:
-                        raise CodeError("cannot in/decrement memory of type " + str(stmt.what.vtype))
+                        raise CodeError("cannot in/decrement memory of type " + str(stmt.what.datatype))
                 else:
                     raise CodeError("cannot in/decrement " + str(stmt.what))
             elif stmt.howmuch > 0:
@@ -292,15 +323,21 @@ class CodeGenerator:
             elif stmt.howmuch < 0:
                 raise NotImplementedError("decr by > 1")  # XXX
         elif isinstance(stmt, ParseResult.CallStmt):
+            if stmt.call_label:
+                call_target = stmt.call_label
+                if stmt.call_module:
+                    call_target = stmt.call_module + "." + stmt.call_label
+            else:
+                call_target = self.to_hex(stmt.address)
             if stmt.subroutine:
                 if stmt.subroutine.clobbered_registers:
                     with self.save_registers_for_subroutine_call(stmt.subroutine.clobbered_registers, stmt.is_goto):
-                        self.p("\t\tjsr " + (stmt.label or self.to_hex(stmt.address)))
+                        self.p("\t\tjsr " + call_target)
                     return
             if stmt.is_goto:
-                self.p("\t\tjmp " + (stmt.label or self.to_hex(stmt.address)))
+                self.p("\t\tjmp " + call_target)
             else:
-                self.p("\t\tjsr " + (stmt.label or self.to_hex(stmt.address)))
+                self.p("\t\tjsr " + call_target)
         elif isinstance(stmt, ParseResult.InlineAsm):
             self.p("\t\t; inline asm, src l. {:d}".format(stmt.linenum))
             for line in stmt.asmlines:
@@ -345,14 +382,14 @@ class CodeGenerator:
                 else:
                     raise CodeError("invalid assignment target (2)", str(stmt))
         elif isinstance(stmt.right, ParseResult.MemMappedValue):
-            if stmt.right.vtype != DataType.BYTE:
+            if stmt.right.datatype != DataType.BYTE:
                 raise CodeError("can only assign memory mapped byte values for now", str(stmt))  # @todo support others?
             r_str = stmt.right.name if stmt.right.name else "${:x}".format(stmt.right.address)
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):
                     self.generate_assign_mem_to_reg(lv.register, r_str)
                 elif isinstance(lv, ParseResult.MemMappedValue):
-                    if lv.vtype != DataType.BYTE:
+                    if lv.datatype != DataType.BYTE:
                         raise CodeError("can only assign a memory mapped byte value into another byte")
                     self.generate_assign_mem_to_mem(lv, r_str)
                 else:
@@ -371,9 +408,9 @@ class CodeGenerator:
     def generate_assign_reg_to_memory(self, lv: ParseResult.MemMappedValue, r_register: str) -> None:
         # Memory = Register
         lv_string = lv.name or self.to_hex(lv.address)
-        if lv.vtype == DataType.BYTE:
+        if lv.datatype == DataType.BYTE:
             self.p("\t\tst{:s} {}".format(r_register, lv_string))
-        elif lv.vtype == DataType.WORD:
+        elif lv.datatype == DataType.WORD:
             self.p("\t\tst{:s} {}".format(r_register, lv_string))  # lsb
             # now set the msb to zero
             if self.reg_values['x'] == 0:
@@ -386,7 +423,7 @@ class CodeGenerator:
                 self.p("\t\tstx ${0:02x}\n\t\tldx #0\n\t\tstx {1}+1\n\t\tldx ${0:02x}"
                        .format(Zeropage.SCRATCH_B1, lv_string))
         else:
-            raise CodeError("invalid lvalue type", lv.vtype)
+            raise CodeError("invalid lvalue type", lv.datatype)
 
     def generate_assign_reg_to_reg(self, lv: ParseResult.RegisterValue, r_register: str) -> None:
         # Register = Register
@@ -489,23 +526,26 @@ class CodeGenerator:
                 self.p("\t\tsta " + self.to_hex(lv.address))
                 return
             # assign constant value to a memory location by symbol name
-            sym, local = self.parsed.lookup_symbol(lv.name, self.cur_block)
+            symblock, sym = self.parsed.lookup_symbol(lv.name, self.cur_block)
             if isinstance(sym, VariableDef):
+                assign_target = lv.name
+                if symblock is not self.cur_block:
+                    assign_target = symblock.label + "." + sym.name
                 if sym.type == DataType.BYTE:
                     if not DataType.BYTE.assignable_from_value(const_value):
                         raise OverflowError("const value doesn't fit in a byte")
                     if self.reg_values['a'] != const_value:
                         self.p("\t\tlda #" + const_str)
                         self.reg_values['a'] = const_value
-                    self.p("\t\tsta " + str(lv.name))
+                    self.p("\t\tsta " + assign_target)
                 elif sym.type == DataType.WORD:
                     p1 = "\t\tlda #<" + const_str
                     p2 = "\t\tlda #>" + const_str
                     self.p(p1)
-                    self.p("\t\tsta " + str(lv.name))
+                    self.p("\t\tsta " + assign_target)
                     self.p(p2)
                     self.reg_values['a'] = const_value
-                    self.p("\t\tsta {}+1".format(lv.name))
+                    self.p("\t\tsta {}+1".format(assign_target))
                 else:
                     raise TypeError("invalid lvalue type " + str(sym))
             else:
@@ -528,15 +568,18 @@ class CodeGenerator:
                 self.p("\t\tsta " + self.to_hex(lv.address))
                 return
             # assign char value to a memory location by symbol name
-            sym, local = self.parsed.lookup_symbol(lv.name, self.cur_block)
+            symblock, sym = self.parsed.lookup_symbol(lv.name, self.cur_block)
             if isinstance(sym, VariableDef):
+                assign_target = lv.name
+                if symblock is not self.cur_block:
+                    assign_target = symblock.label + "." + sym.name
                 if sym.type == DataType.BYTE:
-                    self.p("\t\tsta " + str(lv.name))
+                    self.p("\t\tsta " + assign_target)
                 elif sym.type == DataType.WORD:
-                    self.p("\t\tsta " + str(lv.name))
+                    self.p("\t\tsta " + assign_target)
                     self.p("\t\tlda #0")
                     self.reg_values['a'] = 0
-                    self.p("\t\tsta {}+1".format(lv.name))
+                    self.p("\t\tsta {}+1".format(assign_target))
                 else:
                     raise TypeError("invalid lvalue type " + str(sym))
             else:

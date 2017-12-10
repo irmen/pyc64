@@ -5,7 +5,26 @@ output raw
 clobberzp
 
 ; @todo allow expressions everywhere a number or string is now present can parse them using ast.parse?
-;  allow simple functions such as abs, min, max, sin, cos
+;  allow simple functions such as abs, len, max, min, pow, round, sum,
+;  and the bunch of functions from the Math module such as sin, cos, trunc etc
+
+~ ZP {
+        ; ZeroPage block definition:
+        ; base address is set to $04 (because $00 and $01 are used by the hardware, and $02/$03 are scratch)
+        ; everything here ends up in the zeropage, as long as there is space.
+        ; you can NOT put subroutines in here (yet).
+}
+
+~ ZP $0004 {
+        var    zpvar1
+        memory zpvar2  $f0
+        const  zpconst  1.234
+}
+
+~ ZP {
+        ; will be merged with other ZP blocks!
+        var zpvar1b     $88
+}
 
 
 ~ main {
@@ -25,8 +44,8 @@ clobberzp
         var  .float             initfloat1      0
         var  .float             initfloat2      -1.234e-14
         var  .float             initfloat3      9.87e+14
-        var  .float             initfloat4      9.87e+234               ; overflow
-        var  .float             initfloat5      9.87e-234               ; underflow
+        var  .float             initfloat4      1.70141183e+38
+        var  .float             initfloat5      -1.70141183e+38
         var  .float             initfloat6      1.234
         var  .array( 10)        uninit_bytearray
         var  .array(10 )        init_bytearray  $12
@@ -63,6 +82,9 @@ clobberzp
         const  .ptext           ctext4   "constant-ptext"
         const  .stext           ctext5   "constant-stext"
         const  .pstext          ctext6   "constant-pstext"
+        const                   regalias1       A
+        const   .byte           regalias2       X
+        const   .word           regalias3       AX
 
 
         ; variables where value is an expression

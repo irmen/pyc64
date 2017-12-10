@@ -12,7 +12,7 @@ output prg,sys  ; create a c-64 program with basic SYS call to launch it
 	memory border $d020
 	memory cursor 646
 	const cyan 3
-	const redw $2002
+	const .word redw $2002
 	const color A
 	var 			uninitbyte1
 	var .byte		uninitbyte2
@@ -85,8 +85,8 @@ somelabel1
 	var .array(100)  some_array1    $aa  ; initialized with $aa bytes
 	const white 1
 	const red 2
-	const border2 $d020
-	const screen2 $d021
+	const .word border2 $d020
+	const .word screen2 $d021
 }
 
 ~{

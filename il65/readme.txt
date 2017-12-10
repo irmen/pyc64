@@ -1,9 +1,13 @@
-il65 - "Intermediate Language for 65xx microprocessors"
--------------------------------------------------------
+------------------------------------------------------------
+il65 - "Intermediate Language for 6502/6510 microprocessors"
+------------------------------------------------------------
+    Written by Irmen de Jong (irmen@razorvine.net)
+    License: GNU GPL 3.0, see LICENSE
+------------------------------------------------------------
+
 
 The python program parses it and generates 6502 assembler code.
 It uses the 64tass macro cross assembler to assemble it into binary files.
-
 
 
 
@@ -71,7 +75,7 @@ data types:
     byte    8 bits      $8f    (unsigned, @todo signed bytes)
     int     16 bits     $8fee  (unsigned, @todo signed ints)
     bool    true/false  (aliases for the integer values 1 and 0, not a true datatype by itself)
-    char    '@' (converted to a byte
+    char    '@' (converted to a byte)
     @todo long24 long32?  (and signed)
     string  0-terminated sequence of bytes  "hello."  (implicit 0-termination byte)
     pstring sequence of bytes where first byte is the length. (no 0-termination byte)
@@ -79,7 +83,23 @@ data types:
 
 
     note: floating point numbers are not supported (yet) and will result in a parse error 'invalid number'.
-    (maybe in the future the commodore-style 5-byte and perhaps also the apple-style 4-byte float storage formats will be supported)
+    (maybe in the future the 5-byte cbm MFLPT format will be supported)
+    largest c64 float: 1.70141183e+38   (negative: -1.70141183e+38)
+
+
+
+BLOCKS
+------
+
+~ blockname [address] {
+        statements
+}
+
+The blockname "ZP" is reserved and always means the ZeroPage. Its start address is always set to $04,
+because $00/$01 are used by the hardware and $02/$03 are reserved as general purpose scratch registers.
+
+Block names cannot occur more than once, EXCEPT 'ZP' where the contents of every occurrence of it are merged.
+Block address must be >= $0200 (because $00-$fff is the ZP and $100-$200 is the cpu stack)
 
 
 MACROS
@@ -274,11 +294,11 @@ CALLING SUBROUTINES
 
 call subroutine and continue afterwards ('gosub'):
         call <subroutine> / <label> / <address>
-        @todo call <registerpair> / [<address>]   (indirect)
+        @todo call [<registerpair>] / [<address>]   (indirect)
 
 jump to routine ('goto'):
         go <subroutine> / <label> / <address>
-        @todo go <registerpair> / [<address>]   (indirect)
+        @todo go [<registerpair>] / [<address>]   (indirect)
 
 
 @todo calling syntax such as:   subroutine ([params...])    -->  parse as:   call subroutine [params...]

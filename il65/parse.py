@@ -1,14 +1,18 @@
+"""
+Intermediate Language for 6502/6510 microprocessors
+
+Written by Irmen de Jong (irmen@razorvine.net)
+License: GNU GPL 3.0, see LICENSE
+"""
+
 import sys
 import re
 import os
 import ast
 import enum
-from typing import Set, List, Tuple, Optional, Union, Any
+from typing import Set, List, Tuple, Optional, Union, Any, Dict
 from symbols import SymbolTable, Zeropage, DataType, SymbolDefinition, SubroutineDef, \
-    VariableDef, ConstantDef, SymbolError, STRING_VARTYPES
-
-
-REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
+    VariableDef, ConstantDef, SymbolError, STRING_DATATYPES, REGISTER_SYMBOLS, REGISTER_WORDS, REGISTER_BYTES
 
 
 class ParseError(Exception):
@@ -28,7 +32,10 @@ class ProgramFormat(enum.Enum):
 
 
 class ParseResult:
+
     class Block:
+        _unnamed_block_labels = {}  # type: Dict[ParseResult.Block, str]
+
         def __init__(self, sourcefile: str, linenum: int, zeropage: Zeropage) -> None:
             self.sourcefile = sourcefile
             self.linenum = linenum
@@ -41,9 +48,21 @@ class ParseResult:
         def label_names(self) -> Set[str]:
             return {symbol.name for symbol in self.symbols.iter_labels()}
 
+        @property
+        def label(self) -> str:
+            if self.name == "ZP":
+                return "il65_zeropage"
+            if self.name:
+                return self.name
+            if self in self._unnamed_block_labels:
+                return self._unnamed_block_labels[self]
+            label = "il65_block_{:d}".format(len(self._unnamed_block_labels))
+            self._unnamed_block_labels[self] = label
+            return label
+
     class Value:
-        def __init__(self, vtype: DataType, name: str=None) -> None:
-            self.vtype = vtype
+        def __init__(self, datatype: DataType, name: str=None) -> None:
+            self.datatype = datatype
             self.name = name
 
         def assignable_from(self, other: 'ParseResult.Value') -> bool:
@@ -70,7 +89,7 @@ class ParseResult:
             self.value = value
 
         def __hash__(self):
-            return hash((self.vtype, self.value, self.name))
+            return hash((self.datatype, self.value, self.name))
 
         def __eq__(self, other: Any) -> bool:
             if not isinstance(other, ParseResult.IntegerValue):
@@ -78,7 +97,7 @@ class ParseResult:
             elif self is other:
                 return True
             else:
-                return other.vtype == self.vtype and other.value == self.value and other.name == self.name
+                return other.datatype == self.datatype and other.value == self.value and other.name == self.name
 
         def __str__(self):
             return "<IntegerValue {:d} name={}>".format(self.value, self.name)
@@ -89,7 +108,7 @@ class ParseResult:
             self.value = value
 
         def __hash__(self):
-            return hash((self.vtype, self.value, self.name))
+            return hash((self.datatype, self.value, self.name))
 
         def __eq__(self, other: Any) -> bool:
             if not isinstance(other, ParseResult.StringValue):
@@ -97,18 +116,19 @@ class ParseResult:
             elif self is other:
                 return True
             else:
-                return other.vtype == self.vtype and other.value == self.value and other.name == self.name
+                return other.datatype == self.datatype and other.value == self.value and other.name == self.name
 
         def __str__(self):
             return "<StringValue {!r:s} name={}>".format(self.value, self.name)
 
     class RegisterValue(Value):
-        def __init__(self, register: str, name: str=None) -> None:
-            super().__init__(DataType.REGISTER, name)
+        def __init__(self, register: str, datatype: DataType, name: str=None) -> None:
+            assert datatype in (DataType.BYTE, DataType.WORD)
+            super().__init__(datatype, name)
             self.register = register.lower()
 
         def __hash__(self):
-            return hash((self.vtype, self.register, self.name))
+            return hash((self.datatype, self.register, self.name))
 
         def __eq__(self, other: Any) -> bool:
             if not isinstance(other, ParseResult.RegisterValue):
@@ -116,10 +136,10 @@ class ParseResult:
             elif self is other:
                 return True
             else:
-                return other.vtype == self.vtype and other.register == self.register and other.name == self.name
+                return other.datatype == self.datatype and other.register == self.register and other.name == self.name
 
         def __str__(self):
-            return "<RegisterValue {:s} name={}>".format(self.register, self.name)
+            return "<RegisterValue {:s} type {:s} name={}>".format(self.register, self.datatype, self.name)
 
         def assignable_from(self, other: 'ParseResult.Value') -> bool:
             if isinstance(other, ParseResult.RegisterValue) and len(self.register) != len(other.register):
@@ -130,7 +150,11 @@ class ParseResult:
                 return other.value < 0x100 or len(self.register) > 1
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True
-            return other.vtype in {DataType.BYTE, DataType.REGISTER, DataType.CHARACTER} or other.vtype in STRING_VARTYPES
+            if self.datatype == DataType.BYTE:
+                return other.datatype == DataType.BYTE
+            if self.datatype == DataType.WORD:
+                return other.datatype in (DataType.BYTE, DataType.WORD) or other.datatype in STRING_DATATYPES
+            return False
 
     class MemMappedValue(Value):
         def __init__(self, address: int, vartype: DataType, length: int, name: str=None) -> None:
@@ -139,7 +163,7 @@ class ParseResult:
             self.length = length
 
         def __hash__(self):
-            return hash((self.vtype, self.address, self.length, self.name))
+            return hash((self.datatype, self.address, self.length, self.name))
 
         def __eq__(self, other: Any) -> bool:
             if not isinstance(other, ParseResult.MemMappedValue):
@@ -147,7 +171,7 @@ class ParseResult:
             elif self is other:
                 return True
             else:
-                return other.vtype == self.vtype and other.address == self.address and \
+                return other.datatype == self.datatype and other.address == self.address and \
                        other.length == self.length and other.name == self.name
 
         def __str__(self):
@@ -159,15 +183,15 @@ class ParseResult:
         def assignable_from(self, other: 'ParseResult.Value') -> bool:
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True
-            elif self.vtype == DataType.BYTE:
-                return other.vtype in {DataType.BYTE, DataType.REGISTER, DataType.CHARACTER}
-            elif self.vtype == DataType.WORD:
-                return other.vtype in {DataType.WORD, DataType.BYTE, DataType.REGISTER, DataType.CHARACTER}
+            elif self.datatype == DataType.BYTE:
+                return other.datatype == DataType.BYTE
+            elif self.datatype == DataType.WORD:
+                return other.datatype in (DataType.WORD, DataType.BYTE)
             return False
 
     class _Stmt:
-        def resolve_pass_2(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                           stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
+                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
             pass
 
     class Label(_Stmt):
@@ -184,8 +208,8 @@ class ParseResult:
         def __str__(self):
             return "<Assign {:s} to {:s}>".format(str(self.right), ",".join(str(lv) for lv in self.leftvalues))
 
-        def resolve_pass_2(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                           stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
+                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
             if isinstance(self.right, ParseResult.PlaceholderSymbol):
                 value = parser.parse_value(self.right.name, cur_block)
                 if isinstance(value, ParseResult.PlaceholderSymbol):
@@ -202,7 +226,7 @@ class ParseResult:
                     lv_resolved.append(lv)
             self.leftvalues = lv_resolved
             if any(isinstance(lv, ParseResult.PlaceholderSymbol) for lv in self.leftvalues) or \
-               isinstance(self.right, ParseResult.PlaceholderSymbol):
+                    isinstance(self.right, ParseResult.PlaceholderSymbol):
                 raise ParseError(cur_block.sourcefile, cur_block.linenum, "",
                                  "unresolved placeholders in assignment statement")
             # check assignability again
@@ -218,8 +242,8 @@ class ParseResult:
             self.x = x
             self.y = y
 
-        def resolve_pass_2(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                           stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
+                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
             if isinstance(self.a, ParseResult.PlaceholderSymbol) or \
                isinstance(self.x, ParseResult.PlaceholderSymbol) or \
                isinstance(self.y, ParseResult.PlaceholderSymbol):
@@ -231,8 +255,8 @@ class ParseResult:
             self.what = what
             self.howmuch = howmuch
 
-        def resolve_pass_2(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                           stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
+                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
             if isinstance(self.what, ParseResult.PlaceholderSymbol):
                 value = parser.parse_value(self.what.name, cur_block)
                 if isinstance(value, ParseResult.PlaceholderSymbol):
@@ -240,29 +264,29 @@ class ParseResult:
                 self.what = value
 
     class CallStmt(_Stmt):
-        def __init__(self, label: str=None, address: Optional[int]=None, unresolved: str=None, is_goto: bool=False) -> None:
-            if label and address:
-                raise ValueError("can only set either a label or an absolute address")
-            self.label = label
+        def __init__(self, line_number: int, address: Optional[int]=None, unresolved: str=None, is_goto: bool=False) -> None:
             self.address = address
             self.subroutine = None      # type: SubroutineDef
             self.unresolved = unresolved
             self.is_goto = is_goto
+            self.call_module = ""
+            self.call_label = ""
+            self.line_number = line_number
 
-        def resolve_pass_2(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                           stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
+                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
             if self.unresolved:
-                identifier, local = parser.result.lookup_symbol(self.unresolved, cur_block)
+                symblock, identifier = parser.result.lookup_symbol(self.unresolved, cur_block)
                 if not identifier:
-                    # @todo use actual line number where the missing symbol is used
-                    raise ParseError(cur_block.sourcefile, cur_block.linenum, "",
-                                     "unknown symbol '{:s}' used in this block".format(self.unresolved))
+                    sourceline = [l[1] for l in parser.lines if l[0] == self.line_number][0]
+                    raise ParseError(cur_block.sourcefile, self.line_number, sourceline, "unknown symbol '{:s}'".format(self.unresolved))
                 if isinstance(identifier, SubroutineDef):
                     self.subroutine = identifier
-                if local:
-                    self.label = identifier.name
+                if cur_block is symblock:
+                    self.call_module, self.call_label = "", identifier.name
                 else:
-                    self.label = "{:s}.{:s}".format(identifier.block, identifier.name)
+                    self.call_module = symblock.label
+                self.call_label = identifier.name
                 self.unresolved = None
 
     class InlineAsm(_Stmt):
@@ -288,17 +312,18 @@ class ParseResult:
     def merge(self, parsed: 'ParseResult') -> None:
         self.blocks.extend(parsed.blocks)
 
-    def lookup_symbol(self, name: str, localblock: Block) -> Tuple[Optional[SymbolDefinition], bool]:
+    def lookup_symbol(self, name: str, localblock: Block) -> Tuple[Optional[Block], Optional[SymbolDefinition]]:
+        # search for a symbol. Returns (containing_block, symbol) if found, else (None, None).
         name1, sep, name2 = name.partition(".")
         if sep:
             for b in self.blocks:
                 if b.name == name1:
                     if name2 in b.symbols:
-                        return b.symbols[name2], name1 == localblock.name
-                    return None, False
+                        return b, b.symbols[name2]
+                    return None, None
         elif name1 in localblock.symbols:
-            return localblock.symbols[name1], True
-        return None, False
+            return localblock, localblock.symbols[name1]
+        return None, None
 
 
 class Parser:
@@ -338,14 +363,16 @@ class Parser:
             return None
 
     def _parse(self) -> ParseResult:
-        print("parsing (pass 1)", self.sourcefile)
+        print("\nparsing (pass 1)", self.sourcefile)
         self.parse_header()
         if not self.zeropage:
             self.zeropage = Zeropage(self.result.clobberzp)
         while True:
             next_line = self.peek_next_line()[1]
             if next_line.lstrip().startswith("~"):
-                self.result.add_block(self.parse_block())
+                block = self.parse_block()
+                if block:
+                    self.result.add_block(block)
             elif next_line.lstrip().startswith(".include"):
                 parsed_include = self.parse_include()
                 if parsed_include:
@@ -365,18 +392,18 @@ class Parser:
                         self.cur_linenum = block.linenum
                         raise self.PError("The 'main' block should contain the program entry point 'start'")
                     if not any(s for s in block.statements if isinstance(s, ParseResult.ReturnStmt)):
-                        print("Warning: {:s}:{:d}: The 'main' block is lacking a return statement.".format(self.sourcefile, block.linenum))
+                        print("warning: {:s}:{:d}: The 'main' block is lacking a return statement.".format(self.sourcefile, block.linenum))
                     break
             else:
                 raise self.PError("A block named 'main' should be defined for the program's entry point 'start'")
         # parsing pass 2
-        print("parsing (pass 2)", self.sourcefile)
+        print("\nparsing (pass 2)", self.sourcefile)
         # fix up labels that are unknown:
         for block in self.result.blocks:
             statements = list(block.statements)
             for index, stmt in enumerate(statements):
                 try:
-                    stmt.resolve_pass_2(self, block, index, statements)
+                    stmt.resolve_symbol_references(self, block, index, statements)
                 except LookupError as x:
                     self.cur_linenum = block.linenum
                     raise self.PError("Symbol reference error in this block") from x
@@ -495,25 +522,42 @@ class Parser:
             raise self.PError("expected '~' (block)")
         self.cur_block = ParseResult.Block(self.sourcefile, num, self.zeropage)
         block_args = line[1:].split()
-        self.cur_block.name = "il65_block_{:d}".format(len(self.result.blocks))
         arg = ""
+        is_zp_block = False
         while block_args:
             arg = block_args.pop(0)
             if arg.isidentifier():
+                print("  parsing block '" + arg + "'")
+                if arg.lower() == "zeropage" or arg in ("zp", "zP", "Zp"):
+                    raise self.PError("zero page block should be named 'ZP'")
+                is_zp_block = arg == "ZP"
                 if arg in set(b.name for b in self.result.blocks):
                     orig = [b for b in self.result.blocks if b.name == arg][0]
-                    raise self.PError("duplicate block name '{0:s}', original definition at {1:s} line {2:d}"
-                                      .format(arg, orig.sourcefile, orig.linenum))
-                self.cur_block.name = arg
+                    if not is_zp_block:
+                        raise self.PError("duplicate block name '{0:s}', original definition at {1:s} line {2:d}"
+                                          .format(arg, orig.sourcefile, orig.linenum))
+                    self.cur_block = orig  # zero page block occurrences are merged
+                else:
+                    self.cur_block.name = arg
             elif arg == "{":
                 break
+            elif arg.endswith("{"):
+                # when there is no whitespace before the {
+                block_args.insert(0, "{")
+                block_args.insert(0, arg[:-1])
+                continue
             else:
                 try:
-                    self.cur_block.address = self.parse_integer(arg)
+                    block_address = self.parse_integer(arg)
                 except ParseError:
                     raise self.PError("Invalid number or block name")
-                if self.cur_block.address == 0:
-                    raise self.PError("block address must be > 0 (or omitted)")
+                if block_address == 0 or (block_address < 0x0200 and not is_zp_block):
+                    raise self.PError("block address must be >= $0200 (or omitted)")
+                if is_zp_block:
+                    if block_address not in (0, 0x04):
+                        raise self.PError("zero page block address must be $04 (or omittted)")
+                    block_address = 0x04
+                self.cur_block.address = block_address
         if arg != "{":
             _, line = self.peek_next_line()
             if line != "{":
@@ -525,8 +569,12 @@ class Parser:
             unstripped_line = line
             line = line.strip()
             if line == "}":
+                if is_zp_block and any(b.name == "ZP" for b in self.result.blocks):
+                    return None     # we already have the ZP block
                 return self.cur_block
             if line.startswith("asm"):
+                if is_zp_block:
+                    raise self.PError("ZP block cannot contain code statements")
                 self.prev_line()
                 self.cur_block.statements.append(self.parse_asm())
                 continue
@@ -535,13 +583,19 @@ class Parser:
             elif line.startswith("const"):
                 self.parse_const_def(line)
             elif line.startswith("memory"):
-                self.parse_memory_def(line)
+                self.parse_memory_def(line, is_zp_block)
             elif line.startswith("subx"):
+                if is_zp_block:
+                    raise self.PError("ZP block cannot contain subroutines")
                 self.parse_subx_def(line)
             elif unstripped_line.startswith((" ", "\t")):
+                if is_zp_block:
+                    raise self.PError("ZP block cannot contain code statements")
                 self.cur_block.statements.append(self.parse_statement(line))
                 continue
             elif line:
+                if is_zp_block:
+                    raise self.PError("ZP block cannot contain code labels")
                 self.parse_label(line)
             else:
                 raise self.PError("missing } to close block from line " + str(self.cur_block.linenum))
@@ -562,7 +616,7 @@ class Parser:
         else:
             raise self.PError("invalid label name")
 
-    def parse_memory_def(self, line: str) -> None:
+    def parse_memory_def(self, line: str, is_zeropage: bool=False) -> None:
         dotargs = self.psplit(line)
         if dotargs[0] != "memory" or len(dotargs) not in (3, 4):
             raise self.PError("invalid memory definition")
@@ -600,8 +654,11 @@ class Parser:
         if not varname.isidentifier():
             raise self.PError("invalid symbol name")
         memaddress = self.parse_integer(dotargs[2])
+        if is_zeropage and memaddress > 0xff:
+            raise self.PError("address must lie in zeropage $00-$ff")
         try:
-            self.cur_block.symbols.define_variable(self.cur_block.name, varname, self.sourcefile, self.cur_linenum, mtype,
+            self.cur_block.symbols.define_variable(self.cur_block.name, varname,
+                                                   self.sourcefile, self.cur_linenum, mtype,
                                                    length=msize, address=memaddress, matrixsize=matrixsize)
         except SymbolError as x:
             raise self.PError(str(x)) from x
@@ -640,18 +697,17 @@ class Parser:
         if not varname.isidentifier():
             raise self.PError("invalid symbol name")
         if value in REGISTER_SYMBOLS:
-            datatype = DataType.REGISTER
             try:
                 # this is a const definition referring to a register, essentially giving the register another name
-                self.cur_block.symbols.define_constant(self.cur_block.name, varname, self.sourcefile, self.cur_linenum,
-                                                       datatype, register=value)
+                self.cur_block.symbols.define_constant(self.cur_block.name, varname,
+                                                       self.sourcefile, self.cur_linenum, datatype, register=value)
             except (ValueError, SymbolError) as x:
                 raise self.PError(str(x)) from x
         else:
             constvalue = self.parse_expression(value)
             try:
-                self.cur_block.symbols.define_constant(self.cur_block.name, varname, self.sourcefile, self.cur_linenum,
-                                                       datatype, value=constvalue)
+                self.cur_block.symbols.define_constant(self.cur_block.name, varname,
+                                                       self.sourcefile, self.cur_linenum, datatype, value=constvalue)
             except (ValueError, SymbolError) as x:
                 raise self.PError(str(x)) from x
 
@@ -671,13 +727,14 @@ class Parser:
                       for match in re.finditer(r"(?:(?P<name>[\w]+)\s*:\s*(?P<target>[\w]+))(?:,|$)", parameterlist)]
         results = {match.group("name") for match in re.finditer(r"\s*(?P<name>\w\?+)\s*(?:,|$)", resultlist)}
         address = self.parse_integer(address_str)
-        self.cur_block.symbols.define_sub(self.cur_block.name, name, self.sourcefile, self.cur_linenum, parameters, results, address)
+        self.cur_block.symbols.define_sub(self.cur_block.name, name,
+                                          self.sourcefile, self.cur_linenum, parameters, results, address)
 
     def parse_var_def(self, line: str) -> None:
         match = re.match(r"^var\s+.(?P<type>(?:s|p|ps|)text)\s+(?P<name>\w+)\s+(?P<value>['\"].+['\"])$", line)
         if match:
             # it's a var string definition.
-            vtype = {
+            datatype = {
                 "text": DataType.STRING,
                 "ptext": DataType.STRING_P,
                 "stext": DataType.STRING_S,
@@ -687,7 +744,7 @@ class Parser:
             strvalue = self.parse_string(match.group("value"))
             try:
                 self.cur_block.symbols.define_variable(self.cur_block.name, vname,
-                                                       self.sourcefile, self.cur_linenum, vtype, value=strvalue)
+                                                       self.sourcefile, self.cur_linenum, datatype, value=strvalue)
             except SymbolError as x:
                 raise self.PError(str(x)) from x
             return
@@ -696,24 +753,24 @@ class Parser:
         if args[0] != "var" or len(args) < 2 or len(args) > 5:
             raise self.PError("invalid var decl (1)")
 
-        def get_vtype(vtype: str) -> Tuple[DataType, Union[int, Tuple[int, int]]]:
-            if vtype == ".byte":
+        def get_datatype(datatype: str) -> Tuple[DataType, Union[int, Tuple[int, int]]]:
+            if datatype == ".byte":
                 return DataType.BYTE, 1
-            elif vtype == ".word":
+            elif datatype == ".word":
                 return DataType.WORD, 1
-            elif vtype == ".float":
+            elif datatype == ".float":
                 return DataType.FLOAT, 1
-            elif vtype.startswith(".array(") and vtype.endswith(")"):
-                return DataType.BYTEARRAY, self._size_from_arraydecl(vtype)
-            elif vtype.startswith(".wordarray(") and vtype.endswith(")"):
-                return DataType.WORDARRAY, self._size_from_arraydecl(vtype)
-            elif vtype.startswith(".matrix(") and vtype.endswith(")"):
-                return DataType.MATRIX, self._size_from_matrixdecl(vtype)
+            elif datatype.startswith(".array(") and datatype.endswith(")"):
+                return DataType.BYTEARRAY, self._size_from_arraydecl(datatype)
+            elif datatype.startswith(".wordarray(") and datatype.endswith(")"):
+                return DataType.WORDARRAY, self._size_from_arraydecl(datatype)
+            elif datatype.startswith(".matrix(") and datatype.endswith(")"):
+                return DataType.MATRIX, self._size_from_matrixdecl(datatype)
             else:
                 raise self.PError("invalid variable type")
 
         vaddr = None
-        value = 0
+        value = 0    # type: Union[int, float, str]
         matrixsize = None  # type: Tuple[int, int]
         if len(args) == 2:  # var uninit_bytevar
             vname = args[1]
@@ -721,7 +778,7 @@ class Parser:
                 raise self.PError("invalid variable name")
             if vname in REGISTER_SYMBOLS:
                 raise self.PError("cannot use a register name as variable")
-            vtype = DataType.BYTE
+            datatype = DataType.BYTE
             vlen = 1
         elif len(args) == 3:  # var vartype varname, OR var varname expression
             vname = args[2]
@@ -730,24 +787,25 @@ class Parser:
                 vname = args[1]
                 if not vname.isidentifier():
                     raise self.PError("invalid variable name, or maybe forgot variable type")
-                vtype, vlen = DataType.BYTE, 1
+                datatype, vlen = DataType.BYTE, 1
                 value = self.parse_expression(args[2])
             else:
                 # assume var vartype varname
-                vtype, vlen = get_vtype(args[1])   # type: ignore
+                datatype, vlen = get_datatype(args[1])   # type: ignore
         elif len(args) == 4:  # var vartype varname expression
             vname = args[2]
             if not vname.isidentifier():
                 raise self.PError("invalid variable name, or var syntax")
-            vtype, vlen = get_vtype(args[1])   # type: ignore
+            datatype, vlen = get_datatype(args[1])   # type: ignore
             value = self.parse_expression(args[3])
         else:
             raise self.PError("invalid var decl (2)")
-        if vtype == DataType.MATRIX:
+        if datatype == DataType.MATRIX:
             matrixsize = vlen   # type: ignore
             vlen = None
         try:
-            self.cur_block.symbols.define_variable(self.cur_block.name, vname, self.sourcefile, self.cur_linenum, vtype,
+            self.cur_block.symbols.define_variable(self.cur_block.name, vname,
+                                                   self.sourcefile, self.cur_linenum, datatype,
                                                    address=vaddr, length=vlen, value=value, matrixsize=matrixsize)
         except (ValueError, SymbolError) as x:
             raise self.PError(str(x)) from x
@@ -776,9 +834,9 @@ class Parser:
         if len(args) != 2:
             raise self.PError("invalid call/go arguments")
         if what == "go":
-            return ParseResult.CallStmt(unresolved=args[1], is_goto=True)
+            return ParseResult.CallStmt(self.cur_linenum, unresolved=args[1], is_goto=True)
         elif what == "call":
-            return ParseResult.CallStmt(unresolved=args[1], is_goto=False)
+            return ParseResult.CallStmt(self.cur_linenum, unresolved=args[1], is_goto=False)
         else:
             raise ValueError("invalid what")
 
@@ -835,34 +893,39 @@ class Parser:
         if value[0] in "0123456789$%":
             # @todo floats??
             return ParseResult.IntegerValue(self.parse_integer(value))
-        elif value in REGISTER_SYMBOLS:
-            return ParseResult.RegisterValue(value)
+        elif value in REGISTER_WORDS:
+            return ParseResult.RegisterValue(value, DataType.WORD)
+        elif value in REGISTER_BYTES:
+            return ParseResult.RegisterValue(value, DataType.BYTE)
         elif (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
             strvalue = self.parse_string(value)
             if len(strvalue) == 1:
-                return ParseResult.CharValue(strvalue)      # XXX gone
+                petscii_code = self.char_to_bytevalue(strvalue)
+                return ParseResult.IntegerValue(petscii_code)
             return ParseResult.StringValue(strvalue)
         elif value == "true":
             return ParseResult.IntegerValue(1)
         elif value == "false":
             return ParseResult.IntegerValue(0)
         elif self.is_identifier(value):
-            sym, local = self.result.lookup_symbol(value, cur_block)
+            symblock, sym = self.result.lookup_symbol(value, cur_block)
             if sym is None:
                 # symbols is not (yet) known, store a placeholder to resolve later in parse pass 2
                 return ParseResult.PlaceholderSymbol(None, value)
-            elif isinstance(sym, VariableDef):
-                if local:
+            elif isinstance(sym, (VariableDef, ConstantDef)):
+                if cur_block is symblock:
                     symbolname = sym.name
                 else:
-                    symbolname = "{:s}.{:s}".format(sym.block, sym.name)
-                if sym.type == DataType.REGISTER:
-                    return ParseResult.RegisterValue(sym.register, name=symbolname)
-                elif sym.type == DataType.CHARACTER:
-                    return ParseResult.CharValue(sym.value, name=symbolname)        # XXX gone
+                    symbolname = "{:s}.{:s}".format(sym.blockname, sym.name)
+                if sym.register:
+                    return ParseResult.RegisterValue(sym.register, sym.type, name=symbolname)
                 elif sym.type in (DataType.BYTE, DataType.WORD):
-                    return ParseResult.MemMappedValue(sym.address, sym.type, sym.length, name=symbolname)
-                elif sym.type in STRING_VARTYPES:
+                    if isinstance(sym, ConstantDef):
+                        symbolvalue = sym.value
+                    else:
+                        symbolvalue = sym.address
+                    return ParseResult.MemMappedValue(symbolvalue, sym.type, sym.length, name=symbolname)
+                elif sym.type in STRING_DATATYPES:
                     return ParseResult.StringValue(sym.value, name=symbolname)      # type: ignore
                 else:
                     raise self.PError("invalid symbol type (1)")
@@ -876,14 +939,12 @@ class Parser:
                 except KeyError:
                     raise self.PError("unknown symbol (2): " + num_or_name)
                 if isinstance(sym, ConstantDef):
-                    # XXX word type how? .w in stmt?
-                    # @todo fix constant
                     return ParseResult.MemMappedValue(sym.value, sym.type, length=sym.length, name=sym.name)
                 else:
                     raise self.PError("invalid symbol type used as lvalue of assignment (3)")
             else:
                 addr = self.parse_integer(num_or_name)
-                return ParseResult.MemMappedValue(addr, DataType.BYTE, length=1)   # XXX word type how? .w in statement?
+                return ParseResult.MemMappedValue(addr, DataType.BYTE, length=1)   # XXX word type?
         else:
             raise self.PError("invalid value '"+value+"'")
 
@@ -916,7 +977,10 @@ class Parser:
             return self.parse_integer(number)
         except (ValueError, ParseError):
             if number[0] in "-.0123456789":
-                return float(number)
+                flt = float(number)
+                if flt < -1.70141183e+38 or flt > 1.70141183e+38:
+                    raise self.PError("floating point number too large to be stored in 5-byte cbm MFLPT format")
+                return flt
             else:
                 raise self.PError("invalid number; " + number)
 
@@ -936,17 +1000,17 @@ class Parser:
             raise self.PError("invalid matrix dimensions")
         return self.parse_integer(xs), self.parse_integer(ys)
 
-    def psplit(self, sentence: str, separator: str=" ", lparen: str="(", rparen: str=")") -> List[str]:
+    def psplit(self, sentence: str, separators: str=" \t", lparen: str="(", rparen: str=")") -> List[str]:
         """split a sentence but not on separators within parenthesis"""
         nb_brackets = 0
-        sentence = sentence.strip(separator)  # get rid of leading/trailing seps
+        sentence = sentence.strip(separators)  # get rid of leading/trailing seps
         indices = [0]
         for i, c in enumerate(sentence):
             if c == lparen:
                 nb_brackets += 1
             elif c == rparen:
                 nb_brackets -= 1
-            elif c == separator and nb_brackets == 0:
+            elif c in separators and nb_brackets == 0:
                 indices.append(i)
             # handle malformed string
             if nb_brackets < 0:
@@ -956,7 +1020,7 @@ class Parser:
         # handle missing closing parentheses
         if nb_brackets > 0:
             raise self.PError("syntax error")
-        result = [sentence[i:j].strip(separator) for i, j in zip(indices, indices[1:])]
+        result = [sentence[i:j].strip(separators) for i, j in zip(indices, indices[1:])]
         return list(filter(None, result))   # remove empty strings
 
     def parse_expression(self, text: str) -> Union[int, float, str]:
@@ -972,9 +1036,12 @@ class Parser:
                     return self.parse_string(text)
             raise
 
-    def char_to_bytevalue(self, character: str) -> int:
+    def char_to_bytevalue(self, character: str, petscii: bool=True) -> int:
         assert len(character) == 1
-        return ord(character.translate(ascii_to_petscii_trans))
+        if petscii:
+            return ord(character.translate(ascii_to_petscii_trans))
+        else:
+            raise NotImplementedError("screencode conversion not yet implemented for chars")
 
 
 class Optimizer:
@@ -1135,5 +1202,5 @@ ascii_to_petscii_trans = str.maketrans({
     '♣': 120,       # clubs
     '♦': 122,       # diamonds
 
-    # @todo add more unicode petscii equivalents see http://style64.org/petscii/
+    # @todo add more unicode petscii equivalents see http://style64.org/petscii/  also add them to pyc65
 })
