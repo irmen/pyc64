@@ -137,17 +137,17 @@ class SubroutineDef(SymbolDefinition):
         self.clobbered_registers = set()    # type: Set[str]
         for _, param in parameters:
             if param in REGISTER_BYTES:
-                self.input_registers.add(param.lower())
+                self.input_registers.add(param)
             elif param in REGISTER_WORDS:
-                self.input_registers.add(param[0].lower())
-                self.input_registers.add(param[1].lower())
+                self.input_registers.add(param[0])
+                self.input_registers.add(param[1])
             else:
                 raise SymbolError("invalid parameter spec: " + param)
         for register in returnvalues:
             if register in REGISTER_SYMBOLS_RETURNVALUES:
-                self.return_registers.add(register.lower())
+                self.return_registers.add(register)
             elif len(register) == 2 and register[1] == '?' and register[0] in "AXY":
-                self.clobbered_registers.add(register[0].lower())
+                self.clobbered_registers.add(register[0])
             else:
                 raise SymbolError("invalid return value spec: " + register)
 
@@ -219,39 +219,16 @@ class SymbolTable:
         if identifier:
             raise SymbolError("identifier was already defined at " + identifier.sourceref)
 
-    def check_value_in_range(self, datatype: DataType, register: str, length: int, value: Union[int, float, str]) -> None:
-        if register:
-            if register in REGISTER_BYTES:
-                if value < 0 or value > 0xff:  # type: ignore
-                    raise ValueError("value too large, must be (unsigned) byte for a single register")
-            elif register in REGISTER_WORDS:
-                if value < 0 or value > 0xffff:  # type: ignore
-                    raise ValueError("value too large, must be (unsigned) word for 2 combined registers")
-            else:
-                raise ValueError("strange register")
-        elif datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX):
-            if value < 0 or value > 0xff:       # type: ignore
-                raise ValueError("value too large, must be (unsigned) byte")
-        elif datatype in (DataType.WORD, DataType.WORDARRAY):
-            if value < 0 or value > 0xffff:     # type: ignore
-                raise ValueError("value too large, must be (unsigned) word")
-        elif datatype in STRING_DATATYPES:
-            if type(value) is not str:
-                raise ValueError("value must be a string")
-        elif datatype == DataType.FLOAT:
-            if type(value) not in (int, float):
-                raise ValueError("value must be a number")
-        else:
-            raise SymbolError("missing value check for type", datatype, register, length, value)
-
     def define_variable(self, blockname: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
                         address: int=None, length: int=0, value: Union[int, float, str]=0,
                         matrixsize: Tuple[int, int]=None, register: str=None) -> None:
         # this defines a new variable and also checks if the prefill value is allowed for the variable type.
         assert value is not None
         self.check_identifier_valid(name)
-        self.check_value_in_range(datatype, register, length, value)
-        value = self.trunc_float_if_needed(sourcefile, sourceline, datatype, value)
+        range_error = check_value_in_range(datatype, register, length, value)
+        if range_error:
+            raise ValueError(range_error)
+        value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)
         allocate = address is None
         if datatype == DataType.BYTE:
             if allocate:
@@ -313,8 +290,10 @@ class SymbolTable:
         elif register in REGISTER_WORDS:
             if datatype != DataType.WORD and datatype not in STRING_DATATYPES:
                 raise ValueError("invalid datatype for 16 bit combined registers: " + str(datatype))
-        value = self.trunc_float_if_needed(sourcefile, sourceline, datatype, value)
-        self.check_value_in_range(datatype, register, length, value)
+        value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)
+        range_error = check_value_in_range(datatype, register, length, value)
+        if range_error:
+            raise ValueError(range_error)
         if datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
             self.symbols[name] = ConstantDef(blockname, name, sourcefile, sourceline, datatype,
                                              value=value, length=length or 1, register=register)
@@ -324,20 +303,45 @@ class SymbolTable:
         else:
             raise ValueError("invalid data type for constant: " + str(datatype))
 
-    def trunc_float_if_needed(self, sourcefile: str, linenum: int, datatype: DataType,
-                              value: Union[int, float, str]) -> Union[int, float, str]:
-        if datatype == DataType.FLOAT or type(value) is int or type(value) is str:
-            return value
-        frac = math.modf(value)     # type: ignore
-        if frac == 0:
-            return value
-        if datatype == DataType.BYTE:
-            print("warning: {:s}:{:d}: Float value truncated (byte).".format(sourcefile, linenum))
-            return int(value)
-        elif datatype == DataType.WORD:
-            print("warning: {:s}:{:d}: Float value truncated (word).".format(sourcefile, linenum))
-            return int(value)
-        elif datatype == DataType.FLOAT:
-            return value
+
+def trunc_float_if_needed(sourcefile: str, linenum: int, datatype: DataType,
+                          value: Union[int, float, str]) -> Union[int, float, str]:
+    if datatype == DataType.FLOAT or type(value) is int or type(value) is str:
+        return value
+    frac = math.modf(value)     # type: ignore
+    if frac == 0:
+        return value
+    if datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX):
+        print("warning: {:s}:{:d}: Float value truncated.".format(sourcefile, linenum))
+        return int(value)
+    elif datatype == DataType.FLOAT:
+        return value
+    else:
+        raise TypeError("invalid datatype passed")
+
+
+def check_value_in_range(datatype: DataType, register: str, length: int, value: Union[int, float, str]) -> Optional[str]:
+    if register:
+        if register in REGISTER_BYTES:
+            if value < 0 or value > 0xff:  # type: ignore
+                return "value out of range, must be (unsigned) byte for a single register"
+        elif register in REGISTER_WORDS:
+            if value < 0 or value > 0xffff:  # type: ignore
+                return "value out of range, must be (unsigned) word for 2 combined registers"
         else:
-            raise TypeError("invalid datatype passed")
+            return "strange register..."
+    elif datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX):
+        if value < 0 or value > 0xff:       # type: ignore
+            return "value out of range, must be (unsigned) byte"
+    elif datatype in (DataType.WORD, DataType.WORDARRAY):
+        if value < 0 or value > 0xffff:     # type: ignore
+            return "value out of range, must be (unsigned) word"
+    elif datatype in STRING_DATATYPES:
+        if type(value) is not str:
+            return "value must be a string"
+    elif datatype == DataType.FLOAT:
+        if type(value) not in (int, float):
+            return "value must be a number"
+    else:
+        raise SymbolError("missing value check for type", datatype, register, length, value)
+    return None  # all ok !

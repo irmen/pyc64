@@ -16,7 +16,7 @@ import argparse
 from functools import partial
 from typing import TextIO, Dict, Set, Union
 from parse import ProgramFormat, Parser, ParseResult, Optimizer
-from symbols import Zeropage, DataType, VariableDef
+from symbols import Zeropage, DataType, VariableDef, REGISTER_BYTES, REGISTER_WORDS
 
 
 class CodeError(Exception):
@@ -112,8 +112,8 @@ class CodeGenerator:
         # the iteration over the variables has a specific sort order to optimize init sequence
         vars_to_init = list(sorted(v for block in self.parsed.blocks for v in block.symbols.iter_variables()
                             if v.allocate and v.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT)))
-        vars_to_init = [] # @todo vars not allocated in zp should be defined in-line in the block itself and contain their initial value directly
-        prev_value = 0
+        vars_to_init = []  # @todo vars not allocated in zp should be defined in the block itself and contain their initial value directly
+        prev_value = 0  # type: Union[str, int, float]
         if vars_to_init:
             self.p("; init block vars")
             self.p("\t\tlda #0\n\t\tldx #0")
@@ -133,7 +133,7 @@ class CodeGenerator:
                     self.p("\t\tsta {:s}".format(vname))
                     self.p("\t\tstx {:s}+1".format(vname))
                 elif variable.type == DataType.FLOAT:
-                    self.p("\t\t; @todo should init float var {:s} = {:g}".format(vname, vvalue))    # XXX init float var
+                    self.p("\t\t; @todo should init float var {:s} = {}".format(vname, vvalue))    # XXX init float var
             self.p("; end init block vars")
         self.p("\t\tcld\t\t\t; clear decimal flag")
         self.p("\t\tclc\t\t\t; clear carry flag")
@@ -278,7 +278,7 @@ class CodeGenerator:
             if not self.previous_stmt_was_assignment:
                 # if the previous statement was not assignment, clear the reg values and assume nothing
                 # otherwise, the previous values continue to be used
-                self.reg_values = {"a": None, "x": None, "y": None}
+                self.reg_values = {'A': None, 'X': None, 'Y': None}
             self.generate_assignment(stmt)
         elif isinstance(stmt, ParseResult.Label):
             self.p("\n{:s}\t\t\t\t; src l. {:d}".format(stmt.name, stmt.linenum))
@@ -286,15 +286,15 @@ class CodeGenerator:
             if stmt.howmuch in (-1, 1):
                 if isinstance(stmt.what, ParseResult.RegisterValue):
                     if stmt.howmuch == 1:
-                        if stmt.what.register == 'a':
+                        if stmt.what.register == 'A':
                             self.p("\t\tadc #1")
                         else:
-                            self.p("\t\tin{:s}".format(stmt.what.register))
+                            self.p("\t\tin{:s}".format(stmt.what.register.lower()))
                     else:
-                        if stmt.what.register == 'a':
+                        if stmt.what.register == 'A':
                             self.p("\t\tsbc #1")
                         else:
-                            self.p("\t\tde{:s}".format(stmt.what.register))
+                            self.p("\t\tde{:s}".format(stmt.what.register.lower()))
                 elif isinstance(stmt.what, ParseResult.MemMappedValue):
                     r_str = stmt.what.name or self.to_hex(stmt.what.address)
                     if stmt.what.datatype == DataType.BYTE:
@@ -399,8 +399,8 @@ class CodeGenerator:
 
     def generate_assign_mem_to_reg(self, l_register: str, r_str: str) -> None:
         # Register = memory (byte)
-        if l_register in ("a", "x", "y"):
-            self.p("\t\tld{:s} {:s}".format(l_register, r_str))
+        if l_register in ('A', 'X', 'Y'):
+            self.p("\t\tld{:s} {:s}".format(l_register.lower(), r_str))
             self.reg_values[l_register] = None
         else:
             raise CodeError("invalid register for memory byte assignment", l_register, r_str)
@@ -409,15 +409,15 @@ class CodeGenerator:
         # Memory = Register
         lv_string = lv.name or self.to_hex(lv.address)
         if lv.datatype == DataType.BYTE:
-            self.p("\t\tst{:s} {}".format(r_register, lv_string))
+            self.p("\t\tst{:s} {}".format(r_register.lower(), lv_string))
         elif lv.datatype == DataType.WORD:
-            self.p("\t\tst{:s} {}".format(r_register, lv_string))  # lsb
+            self.p("\t\tst{:s} {}".format(r_register.lower(), lv_string))  # lsb
             # now set the msb to zero
-            if self.reg_values['x'] == 0:
+            if self.reg_values['X'] == 0:
                 self.p("\t\tstx {}+1".format(lv_string))
-            elif self.reg_values['y'] == 0:
+            elif self.reg_values['Y'] == 0:
                 self.p("\t\tsty {}+1".format(lv_string))
-            elif self.reg_values['a'] == 0:
+            elif self.reg_values['A'] == 0:
                 self.p("\t\tsta {}+1".format(lv_string))
             else:
                 self.p("\t\tstx ${0:02x}\n\t\tldx #0\n\t\tstx {1}+1\n\t\tldx ${0:02x}"
@@ -428,56 +428,56 @@ class CodeGenerator:
     def generate_assign_reg_to_reg(self, lv: ParseResult.RegisterValue, r_register: str) -> None:
         # Register = Register
         if lv.register != r_register:
-            if lv.register == 'a':  # x/y -> a
-                self.p("\t\tt{:s}a".format(r_register))
-                self.reg_values['a'] = self.reg_values[r_register]
-            elif lv.register == 'y':
-                if r_register == 'a':
+            if lv.register == 'A':  # x/y -> a
+                self.p("\t\tt{:s}a".format(r_register.lower()))
+                self.reg_values['A'] = self.reg_values[r_register]
+            elif lv.register == 'Y':
+                if r_register == 'A':
                     # a -> y
                     self.p("\t\ttay")
-                    self.reg_values['y'] = self.reg_values['a']
+                    self.reg_values['Y'] = self.reg_values['A']
                 else:
                     # x -> y, 6502 doesn't have txy
                     self.p("\t\tstx ${0:02x}\n\t\tldy ${0:02x}".format(Zeropage.SCRATCH_B1))
-                    self.reg_values['y'] = self.reg_values['x']
-            elif lv.register == 'x':
-                if r_register == 'a':
+                    self.reg_values['Y'] = self.reg_values['X']
+            elif lv.register == 'X':
+                if r_register == 'A':
                     # a -> x
                     self.p("\t\ttax")
-                    self.reg_values['x'] = self.reg_values['a']
+                    self.reg_values['X'] = self.reg_values['A']
                 else:
                     # y -> x, 6502 doesn't have tyx
                     self.p("\t\tsty ${0:02x}\n\t\tldx ${0:02x}".format(Zeropage.SCRATCH_B1))
-                    self.reg_values['x'] = self.reg_values['y']
-            elif len(lv.register) == 2:
+                    self.reg_values['X'] = self.reg_values['Y']
+            elif lv.register in REGISTER_WORDS:
                 if len(r_register) == 1:
                     raise CodeError("need register pair to assign to other register pair")
-                if lv.register == "ax" and r_register == "ay":
+                if lv.register == "AX" and r_register == "AY":
                     # y -> x, 6502 doesn't have tyx
                     self.p("\t\tsty ${0:02x}\n\t\tldx ${0:02x}".format(Zeropage.SCRATCH_B1))
-                    self.reg_values['x'] = self.reg_values['y']
-                elif lv.register == "ax" and r_register == "xy":
+                    self.reg_values['X'] = self.reg_values['Y']
+                elif lv.register == "AX" and r_register == "XY":
                     self.p("\t\ttxa")
                     # y -> x, 6502 doesn't have tyx
                     self.p("\t\tsty ${0:02x}\n\t\tldx ${0:02x}".format(Zeropage.SCRATCH_B1))
-                    self.reg_values['a'] = self.reg_values['x']
-                    self.reg_values['x'] = self.reg_values['y']
-                elif lv.register == "ay" and r_register == "ax":
+                    self.reg_values['A'] = self.reg_values['X']
+                    self.reg_values['X'] = self.reg_values['Y']
+                elif lv.register == "AY" and r_register == "AX":
                     # x -> y, 6502 doesn't have txy
                     self.p("\t\tstx ${0:02x}\n\t\tldy ${0:02x}".format(Zeropage.SCRATCH_B1))
-                    self.reg_values['y'] = self.reg_values['x']
-                elif lv.register == "ay" and r_register == "xy":
+                    self.reg_values['Y'] = self.reg_values['X']
+                elif lv.register == "AY" and r_register == "XY":
                     self.p("\t\ttxa")
-                    self.reg_values['a'] = self.reg_values['x']
-                elif lv.register == "xy" and r_register == "ax":
+                    self.reg_values['A'] = self.reg_values['X']
+                elif lv.register == "XY" and r_register == "AX":
                     self.p("\t\ttax")
                     # x -> y, 6502 doesn't have txy
                     self.p("\t\tstx ${0:02x}\n\t\tldy ${0:02x}".format(Zeropage.SCRATCH_B1))
-                    self.reg_values['x'] = self.reg_values['a']
-                    self.reg_values['y'] = self.reg_values['x']
-                elif lv.register == "xy" and r_register == "ay":
+                    self.reg_values['X'] = self.reg_values['A']
+                    self.reg_values['Y'] = self.reg_values['X']
+                elif lv.register == "XY" and r_register == "AY":
                     self.p("\t\ttax")
-                    self.reg_values['x'] = self.reg_values['a']
+                    self.reg_values['X'] = self.reg_values['A']
                 else:
                     raise CodeError("invalid register combination", lv.register, r_register)
             else:
@@ -486,29 +486,29 @@ class CodeGenerator:
     @contextlib.contextmanager
     def save_a_reg_for_assignment(self, value_being_set: Union[int, str]):
         # only use this for assignment statement generation
-        if value_being_set is None or self.reg_values['a'] != value_being_set:
+        if value_being_set is None or self.reg_values['A'] != value_being_set:
             self.p("\t\tpha")
-            save_a_value = self.reg_values['a']
+            save_a_value = self.reg_values['A']
             yield
             self.p("\t\tpla")
-            self.reg_values['a'] = save_a_value
+            self.reg_values['A'] = save_a_value
         else:
             yield
 
     @contextlib.contextmanager
     def save_registers_for_subroutine_call(self, registers: Set[str], is_goto: bool):
-        if 'a' in registers:
+        if 'A' in registers:
             self.p("\t\tpha")
-        if 'x' in registers:
+        if 'X' in registers:
             self.p("\t\ttxa\n\t\tpha")
-        if 'y' in registers:
+        if 'Y' in registers:
             self.p("\t\ttya\n\t\tpha")
         yield
-        if 'y' in registers:
+        if 'Y' in registers:
             self.p("\t\tpla\n\t\ttay")
-        if 'x' in registers:
+        if 'X' in registers:
             self.p("\t\tpla\n\t\ttax")
-        if 'a' in registers:
+        if 'A' in registers:
             self.p("\t\tpla")
         if is_goto:
             self.p("\t\trts")
@@ -520,9 +520,9 @@ class CodeGenerator:
                 # assign a single byte value to a memory location
                 if not DataType.BYTE.assignable_from_value(const_value):
                     raise OverflowError("const value doesn't fit in a byte")
-                if self.reg_values['a'] != const_value:
+                if self.reg_values['A'] != const_value:
                     self.p("\t\tlda #" + const_str)
-                    self.reg_values['a'] = const_value
+                    self.reg_values['A'] = const_value
                 self.p("\t\tsta " + self.to_hex(lv.address))
                 return
             # assign constant value to a memory location by symbol name
@@ -534,9 +534,9 @@ class CodeGenerator:
                 if sym.type == DataType.BYTE:
                     if not DataType.BYTE.assignable_from_value(const_value):
                         raise OverflowError("const value doesn't fit in a byte")
-                    if self.reg_values['a'] != const_value:
+                    if self.reg_values['A'] != const_value:
                         self.p("\t\tlda #" + const_str)
-                        self.reg_values['a'] = const_value
+                        self.reg_values['A'] = const_value
                     self.p("\t\tsta " + assign_target)
                 elif sym.type == DataType.WORD:
                     p1 = "\t\tlda #<" + const_str
@@ -544,7 +544,7 @@ class CodeGenerator:
                     self.p(p1)
                     self.p("\t\tsta " + assign_target)
                     self.p(p2)
-                    self.reg_values['a'] = const_value
+                    self.reg_values['A'] = const_value
                     self.p("\t\tsta {}+1".format(assign_target))
                 else:
                     raise TypeError("invalid lvalue type " + str(sym))
@@ -555,15 +555,15 @@ class CodeGenerator:
         # Address/Memory = Memory (byte)
         with self.save_a_reg_for_assignment(None):
             self.p("\t\tlda " + r_str)
-            self.reg_values['a'] = None
+            self.reg_values['A'] = None
             self.p("\t\tsta " + (lv.name or self.to_hex(lv.address)))
 
     def generate_assign_char_to_memory(self, lv: ParseResult.MemMappedValue, char_str: str) -> None:
         # Memory = Character
         with self.save_a_reg_for_assignment(char_str):
-            if self.reg_values['a'] != char_str:
+            if self.reg_values['A'] != char_str:
                 self.p("\t\tlda #" + char_str)
-                self.reg_values['a'] = char_str
+                self.reg_values['A'] = char_str
             if not lv.name:
                 self.p("\t\tsta " + self.to_hex(lv.address))
                 return
@@ -578,7 +578,7 @@ class CodeGenerator:
                 elif sym.type == DataType.WORD:
                     self.p("\t\tsta " + assign_target)
                     self.p("\t\tlda #0")
-                    self.reg_values['a'] = 0
+                    self.reg_values['A'] = 0
                     self.p("\t\tsta {}+1".format(assign_target))
                 else:
                     raise TypeError("invalid lvalue type " + str(sym))
@@ -587,27 +587,27 @@ class CodeGenerator:
 
     def generate_assign_const_to_reg(self, l_register: str, r_str: str, r_value: int) -> None:
         # Register = Constant
-        if l_register in ("a", "x", "y"):
+        if l_register in ('A', 'X', 'Y'):
             if self.reg_values[l_register] != r_value:
                 # optimize to txa/tax/tya/tay if possible
-                if l_register == "a" and self.reg_values['x'] == r_value:
+                if l_register == 'A' and self.reg_values['X'] == r_value:
                     self.p("\t\ttxa")
-                elif l_register == "a" and self.reg_values['y'] == r_value:
+                elif l_register == 'A' and self.reg_values['Y'] == r_value:
                     self.p("\t\ttya")
-                elif l_register == "x" and self.reg_values['a'] == r_value:
+                elif l_register == 'X' and self.reg_values['A'] == r_value:
                     self.p("\t\ttax")
-                elif l_register == "y" and self.reg_values['a'] == r_value:
+                elif l_register == 'Y' and self.reg_values['A'] == r_value:
                     self.p("\t\ttay")
                 else:
-                    self.p("\t\tld{:s} #{:s}".format(l_register, r_str))
+                    self.p("\t\tld{:s} #{:s}".format(l_register.lower(), r_str))
                 self.reg_values[l_register] = r_value
-        elif l_register == "sc":
+        elif l_register == "SC":
             # set/clear S carry bit
             if r_value:
                 self.p("\t\tsec")
             else:
                 self.p("\t\tclc")
-        elif len(l_register) == 2:
+        elif l_register in REGISTER_WORDS:
             high, low = divmod(r_value, 256)
             self.generate_assign_const_to_reg(l_register[0], "<" + r_str, low)
             self.generate_assign_const_to_reg(l_register[1], ">" + r_str, high)
@@ -616,20 +616,20 @@ class CodeGenerator:
 
     def generate_assign_char_to_reg(self, lv: ParseResult.RegisterValue, char_str: str) -> None:
         # Register = Char (string of length 1)
-        if lv.register not in ("a", "x", "y"):
+        if lv.register not in ('A', 'X', 'Y'):
             raise CodeError("invalid register for char assignment", lv.register)
-        if (lv.register == "a" and self.reg_values['a'] != char_str) or \
-                (lv.register in ("x", "y") and self.reg_values[lv.register] != char_str):
-            self.p("\t\tld{:s} #{:s}".format(lv.register, char_str))
+        if (lv.register == 'A' and self.reg_values['A'] != char_str) or \
+                (lv.register in ('X', 'Y') and self.reg_values[lv.register] != char_str):
+            self.p("\t\tld{:s} #{:s}".format(lv.register.lower(), char_str))
             self.reg_values[lv.register] = char_str
 
     def generate_assign_string_to_reg(self, lv: ParseResult.RegisterValue, rvalue: ParseResult.StringValue) -> None:
         # Register = Char (string of length > 1)
-        if lv.register not in ("ax", "ay", "xy"):
-            raise CodeError("need register pair for string address assignment", lv.register)
+        if lv.register not in ("AX", "AY", "XY"):
+            raise CodeError("need register pair AX, AY or XY for string address assignment", lv.register)
         if rvalue.name:
-            self.p("\t\tld{:s} #<{:s}".format(lv.register[0], rvalue.name))
-            self.p("\t\tld{:s} #>{:s}".format(lv.register[1], rvalue.name))
+            self.p("\t\tld{:s} #<{:s}".format(lv.register[0].lower(), rvalue.name))
+            self.p("\t\tld{:s} #>{:s}".format(lv.register[1].lower(), rvalue.name))
             self.reg_values[lv.register[0]] = None
             self.reg_values[lv.register[1]] = None
         else:

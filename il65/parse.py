@@ -9,10 +9,17 @@ import sys
 import re
 import os
 import ast
+import math
 import enum
 from typing import Set, List, Tuple, Optional, Union, Any, Dict
 from symbols import SymbolTable, Zeropage, DataType, SymbolDefinition, SubroutineDef, \
+    check_value_in_range, trunc_float_if_needed, \
     VariableDef, ConstantDef, SymbolError, STRING_DATATYPES, REGISTER_SYMBOLS, REGISTER_WORDS, REGISTER_BYTES
+
+
+# 5-byte cbm MFLPT format limitations:
+FLOAT_MAX_NEGATIVE = -1.70141183e+38
+FLOAT_MAX_POSITIVE = 1.70141183e+38
 
 
 class ParseError(Exception):
@@ -65,12 +72,12 @@ class ParseResult:
             self.datatype = datatype
             self.name = name
 
-        def assignable_from(self, other: 'ParseResult.Value') -> bool:
-            return False
+        def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
+            return False, "incompatible value for assignment"
 
     class PlaceholderSymbol(Value):
-        def assignable_from(self, other: 'ParseResult.Value') -> bool:
-            return True
+        def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
+            return True, ""
 
         def __str__(self):
             return "<Placeholder unresolved {:s}>".format(self.name)
@@ -102,6 +109,28 @@ class ParseResult:
         def __str__(self):
             return "<IntegerValue {:d} name={}>".format(self.value, self.name)
 
+    class FloatValue(Value):
+        def __init__(self, value: float, name: str=None) -> None:
+            if type(value) is float:
+                super().__init__(DataType.FLOAT, name)
+                self.value = value
+            else:
+                raise TypeError("invalid data type")
+
+        def __hash__(self):
+            return hash((self.datatype, self.value, self.name))
+
+        def __eq__(self, other: Any) -> bool:
+            if not isinstance(other, ParseResult.FloatValue):
+                return NotImplemented
+            elif self is other:
+                return True
+            else:
+                return other.datatype == self.datatype and other.value == self.value and other.name == self.name
+
+        def __str__(self):
+            return "<FloatValue {} name={}>".format(self.value, self.name)
+
     class StringValue(Value):
         def __init__(self, value: str, name: str=None) -> None:
             super().__init__(DataType.STRING, name)
@@ -124,8 +153,9 @@ class ParseResult:
     class RegisterValue(Value):
         def __init__(self, register: str, datatype: DataType, name: str=None) -> None:
             assert datatype in (DataType.BYTE, DataType.WORD)
+            assert register in REGISTER_SYMBOLS
             super().__init__(datatype, name)
-            self.register = register.lower()
+            self.register = register
 
         def __hash__(self):
             return hash((self.datatype, self.register, self.name))
@@ -141,20 +171,27 @@ class ParseResult:
         def __str__(self):
             return "<RegisterValue {:s} type {:s} name={}>".format(self.register, self.datatype, self.name)
 
-        def assignable_from(self, other: 'ParseResult.Value') -> bool:
+        def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
             if isinstance(other, ParseResult.RegisterValue) and len(self.register) != len(other.register):
-                return False
-            if isinstance(other, ParseResult.StringValue) and len(self.register) < 2:
-                return False
-            if isinstance(other, ParseResult.IntegerValue):
-                return other.value < 0x100 or len(self.register) > 1
+                return False, "register size mismatch"
+            if isinstance(other, ParseResult.StringValue) and self.register in REGISTER_BYTES:
+                return False, "string address requires 16 bits combined register"
+            if isinstance(other, (ParseResult.IntegerValue, ParseResult.FloatValue)):
+                range_error = check_value_in_range(self.datatype, self.register, 1, other.value)
+                if range_error:
+                    return False, range_error
+                return True, ""
             if isinstance(other, ParseResult.PlaceholderSymbol):
-                return True
+                return True, ""
             if self.datatype == DataType.BYTE:
-                return other.datatype == DataType.BYTE
+                if other.datatype != DataType.BYTE:
+                    return False, "(unsigned) byte required"
+                return True, ""
             if self.datatype == DataType.WORD:
-                return other.datatype in (DataType.BYTE, DataType.WORD) or other.datatype in STRING_DATATYPES
-            return False
+                if other.datatype in (DataType.BYTE, DataType.WORD) or other.datatype in STRING_DATATYPES:
+                    return True, ""
+                return False, "(unsigned) byte, word or string required"
+            return False, "incompatible value for assignment"
 
     class MemMappedValue(Value):
         def __init__(self, address: int, vartype: DataType, length: int, name: str=None) -> None:
@@ -180,14 +217,18 @@ class ParseResult:
             else:
                 return "<MemMappedValue ${:04x} #={:d} name={}>".format(self.address, self.length, self.name)
 
-        def assignable_from(self, other: 'ParseResult.Value') -> bool:
+        def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
             if isinstance(other, ParseResult.PlaceholderSymbol):
-                return True
+                return True, ""
             elif self.datatype == DataType.BYTE:
-                return other.datatype == DataType.BYTE
+                if other.datatype == DataType.BYTE:
+                    return True, ""
+                return False, "(unsigned) byte required"
             elif self.datatype == DataType.WORD:
-                return other.datatype in (DataType.WORD, DataType.BYTE)
-            return False
+                if other.datatype in (DataType.WORD, DataType.BYTE):
+                    return True, ""
+                return False, "(unsigned) byte or word required"
+            return False, "incompatible value for assignment"
 
     class _Stmt:
         def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
@@ -211,14 +252,14 @@ class ParseResult:
         def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
                                       stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
             if isinstance(self.right, ParseResult.PlaceholderSymbol):
-                value = parser.parse_value(self.right.name, cur_block)
+                value = parser.parse_expression(self.right.name, cur_block)
                 if isinstance(value, ParseResult.PlaceholderSymbol):
                     raise ParseError(cur_block.sourcefile, cur_block.linenum, "", "cannot resolve symbol: " + self.right.name)
                 self.right = value
             lv_resolved = []
             for lv in self.leftvalues:
                 if isinstance(lv, ParseResult.PlaceholderSymbol):
-                    value = parser.parse_value(lv.name, cur_block)
+                    value = parser.parse_expression(lv.name, cur_block)
                     if isinstance(value, ParseResult.PlaceholderSymbol):
                         raise ParseError(cur_block.sourcefile, cur_block.linenum, "", "cannot resolve symbol: " + lv.name)
                     lv_resolved.append(value)
@@ -231,8 +272,10 @@ class ParseResult:
                                  "unresolved placeholders in assignment statement")
             # check assignability again
             for lv in self.leftvalues:
-                if not lv.assignable_from(self.right):
-                    raise ParseError(cur_block.sourcefile, cur_block.linenum, "", "cannot assign {0} to {1}".format(self.right, lv))
+                assignable, reason = lv.assignable_from(self.right)
+                if not assignable:
+                    raise ParseError(cur_block.sourcefile, cur_block.linenum, "",
+                                     "cannot assign {0} to {1}; {2}".format(self.right, lv, reason))
 
     class ReturnStmt(_Stmt):
         def __init__(self, a: Optional['ParseResult.Value']=None,
@@ -258,7 +301,7 @@ class ParseResult:
         def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
                                       stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
             if isinstance(self.what, ParseResult.PlaceholderSymbol):
-                value = parser.parse_value(self.what.name, cur_block)
+                value = parser.parse_expression(self.what.name, cur_block)
                 if isinstance(value, ParseResult.PlaceholderSymbol):
                     raise ParseError(cur_block.sourcefile, cur_block.linenum, "", "cannot resolve symbol: " + self.what.name)
                 self.what = value
@@ -704,7 +747,7 @@ class Parser:
             except (ValueError, SymbolError) as x:
                 raise self.PError(str(x)) from x
         else:
-            constvalue = self.parse_expression(value)
+            constvalue = self.parse_primitive_value(value)
             try:
                 self.cur_block.symbols.define_constant(self.cur_block.name, varname,
                                                        self.sourcefile, self.cur_linenum, datatype, value=constvalue)
@@ -767,7 +810,7 @@ class Parser:
             elif datatype.startswith(".matrix(") and datatype.endswith(")"):
                 return DataType.MATRIX, self._size_from_matrixdecl(datatype)
             else:
-                raise self.PError("invalid variable type")
+                raise self.PError("invalid data type: " + datatype)
 
         vaddr = None
         value = 0    # type: Union[int, float, str]
@@ -781,23 +824,23 @@ class Parser:
             datatype = DataType.BYTE
             vlen = 1
         elif len(args) == 3:  # var vartype varname, OR var varname expression
-            vname = args[2]
-            if not vname.isidentifier():
+            if args[1][0] != '.':
                 # assume var varname expression
                 vname = args[1]
                 if not vname.isidentifier():
                     raise self.PError("invalid variable name, or maybe forgot variable type")
                 datatype, vlen = DataType.BYTE, 1
-                value = self.parse_expression(args[2])
+                value = self.parse_primitive_value(args[2])
             else:
                 # assume var vartype varname
                 datatype, vlen = get_datatype(args[1])   # type: ignore
+                vname = args[2]
         elif len(args) == 4:  # var vartype varname expression
             vname = args[2]
             if not vname.isidentifier():
                 raise self.PError("invalid variable name, or var syntax")
             datatype, vlen = get_datatype(args[1])   # type: ignore
-            value = self.parse_expression(args[3])
+            value = self.parse_primitive_value(args[3])
         else:
             raise self.PError("invalid var decl (2)")
         if datatype == DataType.MATRIX:
@@ -818,7 +861,7 @@ class Parser:
             return self.parse_return(line)
         elif line.endswith(("++", "--")):
             incr = line.endswith("++")
-            what = self.parse_value(line[:-2].rstrip())
+            what = self.parse_expression(line[:-2].rstrip())
             if isinstance(what, ParseResult.IntegerValue):
                 raise self.PError("cannot in/decrement a constant value")
             return ParseResult.IncrDecrStmt(what, 1 if incr else -1)
@@ -844,13 +887,16 @@ class Parser:
         # parses assigning a value to one or more targets
         parts = line.split("=")
         rhs = parts.pop()
-        l_values = [self.parse_value(part) for part in parts]
+        l_values = [self.parse_expression(part) for part in parts]
         if any(isinstance(lv, ParseResult.IntegerValue) for lv in l_values):
             raise self.PError("can't have a constant as assignment target, did you mean [name] instead?")
-        r_value = self.parse_value(rhs)
+        r_value = self.parse_expression(rhs)
         for lv in l_values:
-            if not lv.assignable_from(r_value):
-                raise self.PError("cannot assign {0} to {1}".format(r_value, lv))
+            assignable, reason = lv.assignable_from(r_value)
+            if not assignable:
+                raise self.PError("cannot assign {0} to {1}; {2}".format(r_value, lv, reason))
+            if lv.datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX) and r_value.datatype == DataType.FLOAT:
+                trunc_float_if_needed(self.sourcefile, self.cur_linenum, lv.datatype, r_value.value)  # for the warning
         return ParseResult.AssignmentStmt(l_values, r_value, self.cur_linenum)
 
     def parse_return(self, line: str) -> ParseResult.ReturnStmt:
@@ -864,11 +910,11 @@ class Parser:
         if len(values) == 0:
             return ParseResult.ReturnStmt()
         else:
-            a = self.parse_value(values[0]) if values[0] else None
+            a = self.parse_expression(values[0]) if values[0] else None
             if len(values) > 1:
-                x = self.parse_value(values[1]) if values[1] else None
+                x = self.parse_expression(values[1]) if values[1] else None
                 if len(values) > 2:
-                    y = self.parse_value(values[2]) if values[2] else None
+                    y = self.parse_expression(values[2]) if values[2] else None
                     if len(values) > 3:
                         raise self.PError("too many returnvalues")
         return ParseResult.ReturnStmt(a, x, y)
@@ -885,33 +931,42 @@ class Parser:
                 return ParseResult.InlineAsm(asm_line_num, asmlines)
             asmlines.append(line)
 
-    def parse_value(self, value: str, cur_block: Optional[ParseResult.Block]=None) -> ParseResult.Value:
+    def parse_expression(self, text: str, cur_block: Optional[ParseResult.Block]=None) -> ParseResult.Value:
+        # parse an expression into whatever it is (primitive value, register, memory, register, etc)
         cur_block = cur_block or self.cur_block
-        value = value.strip()
-        if not value:
+        text = text.strip()
+        if not text:
             raise self.PError("value expected")
-        if value[0] in "0123456789$%":
-            # @todo floats??
-            return ParseResult.IntegerValue(self.parse_integer(value))
-        elif value in REGISTER_WORDS:
-            return ParseResult.RegisterValue(value, DataType.WORD)
-        elif value in REGISTER_BYTES:
-            return ParseResult.RegisterValue(value, DataType.BYTE)
-        elif (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
-            strvalue = self.parse_string(value)
+        if text[0] in "-.0123456789$%":
+            number = self.parse_number(text)
+            try:
+                if type(number) is int:
+                    return ParseResult.IntegerValue(int(number))
+                elif type(number) is float:
+                    return ParseResult.FloatValue(number)
+                else:
+                    raise TypeError("invalid number type")
+            except (ValueError, OverflowError) as ex:
+                raise self.PError(str(ex))
+        elif text in REGISTER_WORDS:
+            return ParseResult.RegisterValue(text, DataType.WORD)
+        elif text in REGISTER_BYTES:
+            return ParseResult.RegisterValue(text, DataType.BYTE)
+        elif (text.startswith("'") and text.endswith("'")) or (text.startswith('"') and text.endswith('"')):
+            strvalue = self.parse_string(text)
             if len(strvalue) == 1:
                 petscii_code = self.char_to_bytevalue(strvalue)
                 return ParseResult.IntegerValue(petscii_code)
             return ParseResult.StringValue(strvalue)
-        elif value == "true":
+        elif text == "true":
             return ParseResult.IntegerValue(1)
-        elif value == "false":
+        elif text == "false":
             return ParseResult.IntegerValue(0)
-        elif self.is_identifier(value):
-            symblock, sym = self.result.lookup_symbol(value, cur_block)
+        elif self.is_identifier(text):
+            symblock, sym = self.result.lookup_symbol(text, cur_block)
             if sym is None:
                 # symbols is not (yet) known, store a placeholder to resolve later in parse pass 2
-                return ParseResult.PlaceholderSymbol(None, value)
+                return ParseResult.PlaceholderSymbol(None, text)
             elif isinstance(sym, (VariableDef, ConstantDef)):
                 if cur_block is symblock:
                     symbolname = sym.name
@@ -924,29 +979,35 @@ class Parser:
                         symbolvalue = sym.value
                     else:
                         symbolvalue = sym.address
-                    return ParseResult.MemMappedValue(symbolvalue, sym.type, sym.length, name=symbolname)
+                    if type(symbolvalue) is int:
+                        return ParseResult.MemMappedValue(int(symbolvalue), sym.type, sym.length, name=symbolname)
+                    else:
+                        raise TypeError("integer required")
                 elif sym.type in STRING_DATATYPES:
                     return ParseResult.StringValue(sym.value, name=symbolname)      # type: ignore
                 else:
                     raise self.PError("invalid symbol type (1)")
             else:
                 raise self.PError("invalid symbol type (2)")
-        elif value.startswith('[') and value.endswith(']'):
-            num_or_name = value[1:-1].strip()
+        elif text.startswith('[') and text.endswith(']'):
+            num_or_name = text[1:-1].strip()
             if num_or_name.isidentifier():
                 try:
                     sym = cur_block.symbols[num_or_name]    # type: ignore
                 except KeyError:
                     raise self.PError("unknown symbol (2): " + num_or_name)
                 if isinstance(sym, ConstantDef):
-                    return ParseResult.MemMappedValue(sym.value, sym.type, length=sym.length, name=sym.name)
+                    if type(sym.value) is int:
+                        return ParseResult.MemMappedValue(int(sym.value), sym.type, length=sym.length, name=sym.name)
+                    else:
+                        raise TypeError("integer required")
                 else:
                     raise self.PError("invalid symbol type used as lvalue of assignment (3)")
             else:
                 addr = self.parse_integer(num_or_name)
                 return ParseResult.MemMappedValue(addr, DataType.BYTE, length=1)   # XXX word type?
         else:
-            raise self.PError("invalid value '"+value+"'")
+            raise self.PError("invalid value '" + text + "'")
 
     def is_identifier(self, name: str) -> bool:
         if name.isidentifier():
@@ -967,27 +1028,31 @@ class Parser:
             elif number.startswith("%"):
                 return int(number[1:], 2)
             else:
-                raise self.PError("invalid number; " + number)
+                raise self.PError("invalid number")
         except ValueError as vx:
             raise self.PError("invalid number; "+str(vx))
 
-    def parse_number(self, number: str) -> Union[int, float]:
-        # parse a numeric string into an actual number (integer or float)
+    def parse_number(self, text: str) -> Union[int, float]:
+        # parse string into an int or float
         try:
-            return self.parse_integer(number)
+            return self.parse_integer(text)
         except (ValueError, ParseError):
-            if number[0] in "-.0123456789":
-                flt = float(number)
-                if flt < -1.70141183e+38 or flt > 1.70141183e+38:
-                    raise self.PError("floating point number too large to be stored in 5-byte cbm MFLPT format")
-                return flt
+            if text == "true":
+                return 1
+            elif text == "false":
+                return 0
+            elif text[0] in "-.0123456789":
+                flt = float(text)
+                if FLOAT_MAX_NEGATIVE <= flt <= FLOAT_MAX_POSITIVE:
+                    return flt
+                raise self.PError("floating point number too large to be stored in 5-byte cbm MFLPT format")
             else:
-                raise self.PError("invalid number; " + number)
+                raise self.PError("invalid number")
 
-    def parse_string(self, string: str) -> str:
-        if string.startswith("'") and not string.endswith("'") or string.startswith('"') and not string.endswith('"'):
+    def parse_string(self, text: str) -> str:
+        if text.startswith("'") and not text.endswith("'") or text.startswith('"') and not text.endswith('"'):
             raise self.PError("mismatched string quotes")
-        return ast.literal_eval(string)
+        return ast.literal_eval(text)
 
     def _size_from_arraydecl(self, decl: str) -> int:
         return self.parse_integer(decl[:-1].split("(")[-1])
@@ -1023,9 +1088,8 @@ class Parser:
         result = [sentence[i:j].strip(separators) for i, j in zip(indices, indices[1:])]
         return list(filter(None, result))   # remove empty strings
 
-    def parse_expression(self, text: str) -> Union[int, float, str]:
-        # parses an expression into a constant numeric value
-        # @todo other data types, use ast.parse etc
+    def parse_primitive_value(self, text: str) -> Union[int, float, str]:
+        # parses a primitive value (integer, float or string)
         try:
             return self.parse_number(text)
         except ParseError:

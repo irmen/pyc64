@@ -9,91 +9,140 @@ clobberzp
 ;  and the bunch of functions from the Math module such as sin, cos, trunc etc
 
 ~ ZP {
-        ; ZeroPage block definition:
-        ; base address is set to $04 (because $00 and $01 are used by the hardware, and $02/$03 are scratch)
-        ; everything here ends up in the zeropage, as long as there is space.
-        ; you can NOT put subroutines in here (yet).
+	; ZeroPage block definition:
+	; base address is set to $04 (because $00 and $01 are used by the hardware, and $02/$03 are scratch)
+	; everything here ends up in the zeropage, as long as there is space.
+	; you can NOT put subroutines in here (yet).
 }
 
 ~ ZP $0004 {
-        var    zpvar1
-        memory zpvar2  $f0
-        const  zpconst  1.234
+	var    zpvar1
+	memory zpvar2  $f0
+	const  zpconst  1.234
 }
 
 ~ ZP {
-        ; will be merged with other ZP blocks!
-        var zpvar1b     $88
+	; will be merged with other ZP blocks!
+	var zpvar1b     $88
 }
 
 
 ~ main {
 
-        ; variables
-        var                     uninitbyte1
-        var  .byte              uninitbyte2
-        var                     initbyte1       $12
-        var  .byte              initbyte2       $12
-        var  .byte              initbyte3       99.876
-        var                     initchar1       '@'
-        var  .byte              initchar2       '@'
-        var  .word              uninitword
-        var  .word              initword        $1234
-        var  .word              initword2       9876.554321
-        var  .float             uninitfloat
-        var  .float             initfloat1      0
-        var  .float             initfloat2      -1.234e-14
-        var  .float             initfloat3      9.87e+14
-        var  .float             initfloat4      1.70141183e+38
-        var  .float             initfloat5      -1.70141183e+38
-        var  .float             initfloat6      1.234
-        var  .array( 10)        uninit_bytearray
-        var  .array(10 )        init_bytearray  $12
-        var  .wordarray( 10 )   uninit_wordarray
-        var  .wordarray(10)     init_wordarray  $1234
+	; variables
+	var			uninitbyte1
+	var	.byte		uninitbyte2
+	var     		initbyte1	 $12
+	var                     initbyte1b      true
+	var  .byte              initbyte2       $12
+	var  .byte              initbyte2b      false
+	var  .byte              initbyte3       99.876
+	var                     initchar1       '@'
+	var  .byte              initchar2       '@'
+	var  .word              uninitword
+	var  .word              initword1       $1234
+	var  .word              initword1b      true
+	var  .word              initword2       false
+	var  .word              initword3       9876.554321
+	var  .float             uninitfloat
+	var  .float             initfloat1      0
+	var  .float             initfloat1b     true
+	var  .float             initfloat2      -1.234e-14
+	var  .float             initfloat3      9.87e+14
+	var  .float             initfloat4      1.70141183e+38
+	var  .float             initfloat5      -1.70141183e+38
+	var  .float             initfloat6      1.234
+	var  .array( 10)        uninit_bytearray
+	var  .array(10 )        init_bytearray  $12
+	var  .array(10 )        init_bytearrayb  true
+	var  .array(10 )        init_bytearrayc  '@'
+	var  .wordarray( 10 )   uninit_wordarray
+	var  .wordarray(10)     init_wordarray  $1234
+	var  .wordarray(10)     init_wordarrayb  true
+	var  .wordarray(10)     init_wordarrayc  '@'
 
-        var  .text              text    "hello-null"
-        var  .ptext             ptext   'hello-pascal'
-        var  .stext             stext   'screencodes-null'
-        var  .pstext            pstext  "screencodes-pascal"
+	var  .text              text    "hello-null"
+	var  .ptext             ptext   'hello-pascal'
+	var  .stext             stext   'screencodes-null'
+	var  .pstext            pstext  "screencodes-pascal"
 
-        var  .matrix( 10, 20 ) uninitmatrix
-        var  .matrix(10, 20)   initmatrix1      $12
+	var  .matrix( 10, 20 ) uninitmatrix
+	var  .matrix(10, 20)   initmatrix1      $12
+	var  .matrix(10, 20)   initmatrix1b     true
+	var  .matrix(10, 20)   initmatrix1c     '@'
+	var  .matrix(10, 20)   initmatrix1d     123.456
 
-        ; memory-mapped variables
-        memory                          membyte1        $c000
-        memory  .byte                   membyte2        $c0
-        memory  .word                   memword1        $c000
-        memory  .float                  memfloat        $c000
-        memory  .array(10 )             membytes        $c000
-        memory  .wordarray( 10)         memwords        $c000
-        memory  .matrix( 10, 20 )       memmatrix       $c000
+	; memory-mapped variables
+	memory                          membyte1        $c000
+	memory  .byte                   membyte2        $c0
+	memory  .word                   memword1        $c000
+	memory  .float                  memfloat        $c000
+	memory  .array(10 )             membytes        $c000
+	memory  .wordarray( 10)         memwords        $c000
+	memory  .matrix( 10, 20 )       memmatrix       $c000
 
-        ; constants   (= aliases for their constant value that will be substituted in their place)
-        const                   cbyte1          1
-        const  .byte            cbyte2          1
-        const  .byte            cbyte3          '@'
-        const  .word            cword2          $1234
-        const  .word            cword3          '@'
-        const  .word            cword5          9876.5432
-        const                   cfloat1         1.2345
-        const  .float           cfloat2         2.3456
-        const  .text            ctext3   "constant-text"
-        const  .ptext           ctext4   "constant-ptext"
-        const  .stext           ctext5   "constant-stext"
-        const  .pstext          ctext6   "constant-pstext"
-        const                   regalias1       A
-        const   .byte           regalias2       X
-        const   .word           regalias3       AX
+	; constants   (= aliases for their constant value that will be substituted in their place)
+	const                   cbyte1          1
+	const                   cbyte1b         false
+	const  .byte            cbyte2          1
+	const  .byte            cbyte3          '@'
+	const  .byte            cbyte4          true
+	const  .word            cbyte6          false
+	const  .word            cword2          $1234
+	const  .word            cword3          '@'
+	const  .word            cword5          9876.5432
+	const                   cfloat1         1.2345
+	const  .float           cfloat2         2.3456
+	const  .float           cfloat3         true
+	const  .text            ctext3   	"constant-text"
+	const  .ptext           ctext4   	"constant-ptext"
+	const  .stext           ctext5   	"constant-stext"
+	const  .pstext          ctext6   	"constant-pstext"
+	const                   regalias1       A
+	const   .byte           regalias2       X
+	const   .word           regalias3       AX
 
 
-        ; variables where value is an expression
-        ;var     .byte           expr_byte       1+2+3+0x04
-        ;var     .word           expr_word       2*3*4*0x100
-        ;etc etc
+	; variables where value is an expression
+	;var     .byte           expr_byte       1+2+3+0x04
+	;var     .word           expr_word       2*3*4*0x100
+	;etc etc
 
 
 start
-        return
+	A = 0
+	A = '@'
+	A = 1.2345
+	A = true
+	A = false
+	A = 255
+	
+	XY = 0
+	XY = '@'
+	XY = 1.2345
+	XY = 456.66
+	XY = 65535
+	XY = true
+	XY = false
+	;XY = "textXY"	; @todo should be unsugared into  auto-storing the string somewhere as a var and assign pointer to var
+	
+	[$c000] = 255
+	[$c000] = '@'
+	;[$c000] = 1.2345	; @todo trunc warning
+	;[$c000] = 456.66	; @todo overflow
+	[$c000] = true
+	[$c000] = false
+	;[$c000.word] = 65535
+	;[$c000.word] = 65536    ; @todo overflow
+	;[$c000.word] = 456.66	; @todo trunc warning
+	;[$c000.word] = "text"	; @todo should be unsugared into  auto-storing the string somewhere as a var and assign pointer to var
+
+	SC = 0
+	SC = false
+	SC = 1.1
+	SC = 255
+	SC = '@'
+
+	return
 }
 
