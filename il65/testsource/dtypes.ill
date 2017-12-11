@@ -1,5 +1,4 @@
-; data type tests
-; these are comments
+; var defintions and immediate primitve data type tests
 
 output raw
 clobberzp
@@ -78,7 +77,7 @@ clobberzp
 	memory  .wordarray( 10)         memwords        $c000
 	memory  .matrix( 10, 20 )       memmatrix       $c000
 
-	; constants   (= aliases for their constant value that will be substituted in their place)
+	; constants   (= names for constant values, can never occur as lvalue)
 	const                   cbyte1          1
 	const                   cbyte1b         false
 	const  .byte            cbyte2          1
@@ -95,9 +94,6 @@ clobberzp
 	const  .ptext           ctext4   	"constant-ptext"
 	const  .stext           ctext5   	"constant-stext"
 	const  .pstext          ctext6   	"constant-pstext"
-	const                   regalias1       A
-	const   .byte           regalias2	X
-	const   .word           regalias3	AX
 
 
 	; variables where value is an expression
@@ -107,6 +103,9 @@ clobberzp
 
 
 start
+
+; --- immediate primitive value assignments ----
+
 	A = 0
 	A = '@'
 	A = 1.2345
@@ -129,20 +128,48 @@ start
 
 	[$c000] = 255
 	[$c000] = '@'
-	[$c000] = 1.2345	; @todo trunc warning
-	[$c000] = 456.66	; @todo overflow
+	[$c000] = 1.2345
 	[$c000] = true
 	[$c000] = false
 	[$c000.word] = 65535
-	[$c000.word] = 456.66	; @todo trunc warning
+	[$c000.word] = 456.66
 	[$c000.word] = "text"
 	[$c000.word] = ""
+	[$c000.float] = 65535
+	[$c000.float] = 456.66
+	[$c000.float] = 1.70141183e+38
 
 	SC = 0
 	SC = false
 	SC = 1.1
 	SC = 255
 	SC = '@'
+
+	uninitbyte1 = 99
+	uninitbyte1 = 1.234
+	uninitbyte1 = '@'
+	initbyte1 = 99
+	initbyte1 = 1.234
+	initbyte1 = '@'
+	uninitword = 99
+	uninitword = 5.6778
+	uninitword = "test"
+	uninitword = '@'
+	initfloat1 = 99
+	initfloat1 = 9.8765
+	initfloat1 = '@'
+	uninitfloat = 99
+	uninitfloat = 9.8765
+	uninitfloat = '@'
+
+        membyte1 = 22
+        memword1 = 2233
+        memfloat = 3.4567
+
+        ;cbyte1 = 1 ;error
+        ;cword2 = 2 ;error
+        ;ctext3 = 1 ;error
+        ;ctext3 = "s" ;error
 
 	return
 }

@@ -9,6 +9,7 @@ License: GNU GPL 3.0, see LICENSE
 
 import os
 import io
+import math
 import datetime
 import subprocess
 import contextlib
@@ -16,7 +17,7 @@ import argparse
 from functools import partial
 from typing import TextIO, Dict, Set, Union
 from parse import ProgramFormat, Parser, ParseResult, Optimizer
-from symbols import Zeropage, DataType, VariableDef, REGISTER_BYTES, REGISTER_WORDS
+from symbols import Zeropage, DataType, VariableDef, REGISTER_WORDS
 
 
 class CodeError(Exception):
@@ -95,6 +96,21 @@ class CodeGenerator:
         if number < 0x10000:
             return "${:04x}".format(number)
         raise OverflowError(number)
+
+    @staticmethod
+    def to_mflpt5(number: float) -> bytearray:
+        # algorithm here https://sourceforge.net/p/acme-crossass/code-0/62/tree/trunk/ACME_Lib/cbm/mflpt.a
+        # @todo check if this float to mflpt5 converter actually is correct
+        if number == 0.0:
+            return bytearray([0, 0, 0, 0, 0])
+        w, sign = (float.hex(number), 0x00) if number > 0 else (float.hex(number)[1:], 0x80)  # float.hex uses 64bit IEE754
+        mantissa, exp = int(w[4:17], 16), int(w[18:])
+        exp += 128   # bias
+        if exp < 1 or exp > 255:
+            raise OverflowError("floating point number out of 5-byte mflpt range", number)
+        mantissa >>= 20   # convert from 52 to 32 bits
+        mant_bytes = mantissa.to_bytes(4, "big")
+        return bytearray([exp, sign | mant_bytes[0], mant_bytes[1], mant_bytes[2], mant_bytes[3]])
 
     def initialize_variables(self) -> None:
         must_save_zp = self.parsed.clobberzp and self.parsed.restorezp
@@ -242,7 +258,8 @@ class CodeGenerator:
                         elif vardef.type == DataType.WORD:
                             self.p("{:s}\t\t.word {:s}".format(vardef.name, self.to_hex(int(vardef.value))))
                         elif vardef.type == DataType.FLOAT:
-                            self.p("{:s}\t\t.byte 0,0,0,0,0".format(vardef.name))  # @todo store float value in 5 byte format
+                            self.p("{:s}\t\t.byte ${:02x}, ${:02x}, ${:02x}, ${:02x}, ${:02x}"
+                                   .format(vardef.name, *self.to_mflpt5(float(vardef.value))))
                         else:
                             raise TypeError("weird datatype")
                 elif vardef.type in (DataType.BYTEARRAY, DataType.WORDARRAY):
@@ -255,7 +272,7 @@ class CodeGenerator:
                         self.p("{:s}\t\t.fill {:d}, [${:02x}, ${:02x}]\t; {:d} words of ${:04x}"
                                .format(vardef.name, vardef.length * 2, f_lo, f_hi, vardef.length, vardef.value or 0))
                     else:
-                        raise TypeError("invalid vartype", vardef.type)
+                        raise TypeError("invalid datatype", vardef.type)
                 elif vardef.type == DataType.MATRIX:
                     if vardef.address:
                         raise CodeError("matrix vars must not have address; will be allocated by assembler")
@@ -381,9 +398,9 @@ class CodeGenerator:
             # @todo optimize below if there are multiple lvalues that require a pha/pla, do it just once and reuse the value
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):
-                    self.generate_assign_const_to_reg(lv.register, r_str, stmt.right.value)
+                    self.generate_assign_immediate_integer_to_reg(lv.register, r_str, stmt.right.value)
                 elif isinstance(lv, ParseResult.MemMappedValue):
-                    self.generate_assign_const_to_mem(lv, r_str, stmt.right.value)
+                    self.generate_assign_immediate_integer_to_mem(lv, r_str, stmt.right.value)
                 else:
                     raise CodeError("invalid assignment target (1)", str(stmt))
         elif isinstance(stmt.right, ParseResult.RegisterValue):
@@ -422,8 +439,28 @@ class CodeGenerator:
                     self.generate_assign_mem_to_mem(lv, r_str)
                 else:
                     raise CodeError("invalid assignment target (4)", str(stmt))
+        elif isinstance(stmt.right, ParseResult.FloatValue):
+            mflpt = self.to_mflpt5(stmt.right.value)
+            for lv in stmt.leftvalues:
+                if isinstance(lv, ParseResult.MemMappedValue) and lv.datatype == DataType.FLOAT:
+                    self.generate_store_immediate_float(lv, stmt.right.value, mflpt)
+                else:
+                    raise CodeError("cannot assign float to ", str(lv))
         else:
             raise CodeError("invalid assignment value type", str(stmt))
+
+    def generate_store_immediate_float(self, mmv: ParseResult.MemMappedValue, floatvalue: float,
+                                       mflpt: bytearray, emit_pha: bool=True) -> None:
+        target = mmv.name or self.to_hex(mmv.address)
+        if emit_pha:
+            self.p("\t\tpha\t\t\t; {:s} = {}".format(target, floatvalue))
+        else:
+            self.p("\t\t\t\t\t; {:s} = {}".format(target, floatvalue))
+        for num in range(5):
+            self.p("\t\tlda #${:02x}".format(mflpt[num]))
+            self.p("\t\tsta {:s}+{:d}".format(target, num))
+        if emit_pha:
+            self.p("\t\tpla")
 
     def generate_assign_mem_to_reg(self, l_register: str, r_str: str) -> None:
         # Register = memory (byte)
@@ -541,8 +578,7 @@ class CodeGenerator:
         if is_goto:
             self.p("\t\trts")
 
-    def generate_assign_const_to_mem(self, lv: ParseResult.MemMappedValue, const_str: str, const_value: int) -> None:
-        # Memory = Constant
+    def generate_assign_immediate_integer_to_mem(self, lv: ParseResult.MemMappedValue, const_str: str, const_value: int) -> None:
         with self.save_a_reg_for_assignment(const_value):
             if not lv.name:
                 # assign a single byte value to a memory location
@@ -574,6 +610,9 @@ class CodeGenerator:
                     self.p(p2)
                     self.reg_values['A'] = const_value
                     self.p("\t\tsta {}+1".format(assign_target))
+                elif sym.type == DataType.FLOAT:
+                    floatvalue = float(const_value)
+                    self.generate_store_immediate_float(lv, floatvalue, self.to_mflpt5(floatvalue), False)
                 else:
                     raise TypeError("invalid lvalue type " + str(sym))
             else:
@@ -613,8 +652,7 @@ class CodeGenerator:
             else:
                 raise TypeError("invalid lvalue type " + str(sym))
 
-    def generate_assign_const_to_reg(self, l_register: str, r_str: str, r_value: int) -> None:
-        # Register = Constant
+    def generate_assign_immediate_integer_to_reg(self, l_register: str, r_str: str, r_value: int) -> None:
         if l_register in ('A', 'X', 'Y'):
             if self.reg_values[l_register] != r_value:
                 # optimize to txa/tax/tya/tay if possible
@@ -637,10 +675,10 @@ class CodeGenerator:
                 self.p("\t\tclc")
         elif l_register in REGISTER_WORDS:
             high, low = divmod(r_value, 256)
-            self.generate_assign_const_to_reg(l_register[0], "<" + r_str, low)
-            self.generate_assign_const_to_reg(l_register[1], ">" + r_str, high)
+            self.generate_assign_immediate_integer_to_reg(l_register[0], "<" + r_str, low)
+            self.generate_assign_immediate_integer_to_reg(l_register[1], ">" + r_str, high)
         else:
-            raise CodeError("invalid register in const assignment", l_register, r_value)
+            raise CodeError("invalid register in immediate integer assignment", l_register, r_value)
 
     def generate_assign_char_to_reg(self, lv: ParseResult.RegisterValue, char_str: str) -> None:
         # Register = Char (string of length 1)

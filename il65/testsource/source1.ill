@@ -13,7 +13,6 @@ output prg,sys  ; create a c-64 program with basic SYS call to launch it
 	memory cursor 646
 	const cyan 3
 	const .word redw $2002
-	const color A
 	var 			uninitbyte1
 	var .byte		uninitbyte2
 	var .word		uninitword1
@@ -24,17 +23,16 @@ output prg,sys  ; create a c-64 program with basic SYS call to launch it
 
 
 start   ;foo
-	color = 0
 	X = 55
 	Y = $77
 	Y = X
 	Y = X
 	X = 66
-	screen = color
+	screen = 0
 	screen = border =  cursor = X = Y = A = X = Y = A = border = cursor = border = cursor = 66  ; multi-assign!
 	border = false
 	border = true
-	border = color
+	border = 0
 	border = 0
 	[$d020] = 0
 	screen = X

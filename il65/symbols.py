@@ -107,12 +107,11 @@ class VariableDef(SymbolDefinition):
 
 class ConstantDef(SymbolDefinition):
     def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
-                 value: Union[int, float, str], length: int, register: str=None) -> None:
+                 value: Union[int, float, str], length: int) -> None:
         super().__init__(blockname, name, sourcefile, sourceline, False)
         self.type = datatype
         self.length = length
         self.value = value
-        self.register = register
 
     def __repr__(self):
         return "<Constant {:s}.{:s}, {:s}, len {:s}, value {:s}>"\
@@ -275,26 +274,19 @@ class SymbolTable:
         self.symbols[name] = LabelDef(blockname, name, sourcefile, sourceline, False)
 
     def define_constant(self, blockname: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
-                        length: int=0, value: Union[int, float, str]=0, register: str=None) -> None:
+                        length: int=0, value: Union[int, float, str]=0) -> None:
         # this defines a new constant and also checks if the value is allowed for the data type.
         assert value is not None
         self.check_identifier_valid(name)
-        if register in REGISTER_BYTES:
-            if datatype != DataType.BYTE:
-                raise ValueError("invalid datatype for single register: " + str(datatype))
-        elif register in REGISTER_WORDS:
-            if datatype != DataType.WORD and datatype not in STRING_DATATYPES:
-                raise ValueError("invalid datatype for 16 bit combined registers: " + str(datatype))
         value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)
-        range_error = check_value_in_range(datatype, register, length, value)
+        range_error = check_value_in_range(datatype, "", length, value)
         if range_error:
             raise ValueError(range_error)
         if datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
-            self.symbols[name] = ConstantDef(blockname, name, sourcefile, sourceline, datatype,
-                                             value=value, length=length or 1, register=register)
+            self.symbols[name] = ConstantDef(blockname, name, sourcefile, sourceline, datatype, value=value, length=length or 1)
         elif datatype in STRING_DATATYPES:
-            self.symbols[name] = ConstantDef(blockname, name, sourcefile, sourceline, datatype,
-                                             value=value, length=len(value))        # type: ignore
+            strlen = len(value)  # type: ignore
+            self.symbols[name] = ConstantDef(blockname, name, sourcefile, sourceline, datatype, value=value, length=strlen)
         else:
             raise ValueError("invalid data type for constant: " + str(datatype))
 

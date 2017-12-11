@@ -76,15 +76,16 @@ data types:
     int     16 bits     $8fee  (unsigned, @todo signed ints)
     bool    true/false  (aliases for the integer values 1 and 0, not a true datatype by itself)
     char    '@' (converted to a byte)
-    @todo long24 long32?  (and signed)
+    float   40 bits     1.2345     (stored in 5-byte cbm MFLPT format)
+    @todo 24 and 32 bits integers, unsigned and signed?
     string  0-terminated sequence of bytes  "hello."  (implicit 0-termination byte)
     pstring sequence of bytes where first byte is the length. (no 0-termination byte)
     For strings, both petscii and screencode variants can be written in source, they will be translated at compile/assembler time.
 
 
-    note: floating point numbers are not supported (yet) and will result in a parse error 'invalid number'.
-    (maybe in the future the 5-byte cbm MFLPT format will be supported)
-    largest c64 float: 1.70141183e+38   (negative: -1.70141183e+38)
+    Note: for many floating point operations, the compiler uses routines in the C64 BASIC ROM.
+    So they will only work if the BASIC ROM is banked in.
+    largest 5-byte MFLPT float: 1.70141183e+38   (negative: -1.70141183e+38)
 
 
 

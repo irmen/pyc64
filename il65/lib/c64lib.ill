@@ -117,10 +117,10 @@ subx	fac1_read_mem0x22	() -> (A?, X?, Y?)	$bba6	; load mflpt value from memory i
 subx	fac1_to_memXY		() -> (A?, X?, Y?)	$bbd4	; store fac1 to memory as mflpt
 subx	fac1_read_fac2		() -> (A?, X?, Y?)	$bbfc	; copy fac2 to fac1
 subx	fac2_read_fac1		() -> (A?, X?, Y?)	$bc0c	; copy fac1 to fac2
-subx	fac1_sign_to_A		() -> (A?, X?, Y?)	$bc2b	; $ff, $0, $1 for negative, zero, positive
+subx	fac1_sign_to_A		() -> (A?, X?, Y?)	$bc2b	; SIGN: $ff, $0, $1 for negative, zero, positive @todo sets N/Z rather than A?
 subx	fac1_sgn		() -> (A?, X?, Y?)	$bc39	; SGN()
 subx	fac1_abs		() -> (A?, X?, Y?)	$bc58	; ABS()
-subx	fac1_compare_to_memAY	() -> (A?, X?, Y?)	$bc5b	; compare to mflpt value in memory
+subx	fac1_compare_to_memAY	() -> (A, X?, Y?)	$bc5b	; compare to mflpt value in memory
 subx	fac1_to_signed32	() -> (A?, X?, Y?)	$bc9b
 subx	fac1_int		() -> (A?, X?, Y?)	$bccc	; INT()
 subx	fac1_read_string0	() -> (A?, X?, Y?)	$bcf3	; use b7b5 instead; this only works after calling CHRGET
@@ -128,7 +128,7 @@ subx	fac1_print_unsignedXA	() -> (A?, X?, Y?)	$bdcd
 subx	fac1_to_string		() -> (A?, X?, Y?)	$bddd	; string is stored at $0100 (address returned in AY)
 subx	fac1_sqr		() -> (A?, X?, Y?)	$bf71	; SQR()
 subx	fac1_fac2_to_the_power_of_memAY  () -> (A?, X?, Y?)	$bf78
-subx	fac1_negate		() -> (A?, X?, Y?)	$bfb4
+subx	fac1_negate		() -> (A?, X?, Y?)	$bfb4   ; switch sign on the number in fac1
 subx	fac1_exp		() -> (A?, X?, Y?)	$bfed	; EXP()
 ; KERNEL ROM FUNCTIONS:
 subx	fac1_rnd		() -> (A?, X?, Y?)	$e097	; RND()

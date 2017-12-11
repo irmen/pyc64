@@ -195,8 +195,8 @@ class ParseResult:
             return False, "incompatible value for assignment"
 
     class MemMappedValue(Value):
-        def __init__(self, address: int, vartype: DataType, length: int, name: str=None) -> None:
-            super().__init__(vartype, name)
+        def __init__(self, address: int, datatype: DataType, length: int, name: str=None) -> None:
+            super().__init__(datatype, name)
             self.address = address
             self.length = length
 
@@ -213,22 +213,34 @@ class ParseResult:
                        other.length == self.length and other.name == self.name
 
         def __str__(self):
-            if self.address < 0x100:
-                return "<MemMappedValue ${:02x} #={:d} name={}>".format(self.address, self.length, self.name)
-            else:
-                return "<MemMappedValue ${:04x} #={:d} name={}>".format(self.address, self.length, self.name)
+            return "<MemMappedValue ${:04x} type={:s} #={:d} name={}>".format(self.address, self.datatype, self.length, self.name)
 
         def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True, ""
-            elif self.datatype == DataType.BYTE:
-                if other.datatype == DataType.BYTE:
+            elif self.datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
+                if isinstance(other, (ParseResult.IntegerValue, ParseResult.FloatValue)):
+                    range_error = check_value_in_range(self.datatype, "", 1, other.value)
+                    if range_error:
+                        return False, range_error
                     return True, ""
-                return False, "(unsigned) byte required"
-            elif self.datatype == DataType.WORD:
-                if other.datatype in (DataType.WORD, DataType.BYTE) or other.datatype in STRING_DATATYPES:
-                    return True, ""
-                return False, "(unsigned) byte or word required"
+                elif isinstance(other, ParseResult.RegisterValue):
+                    if other.datatype == DataType.BYTE:
+                        if self.datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
+                            return True, ""
+                        return False, "can't assign register to this"
+                    elif other.datatype == DataType.WORD:
+                        if self.datatype in (DataType.WORD, DataType.FLOAT):
+                            return True, ""
+                        return False, "can't assign 16 bit combined registers to byte"
+                elif isinstance(other, ParseResult.StringValue):
+                    if self.datatype == DataType.WORD:
+                        return True, ""
+                    return False, "string address requires 16 bits (a word)"
+                if self.datatype == DataType.BYTE:
+                    return False, "(unsigned) byte required"
+                if self.datatype == DataType.WORD:
+                    return False, "(unsigned) word required"
             return False, "incompatible value for assignment"
 
     class _Stmt:
@@ -776,13 +788,6 @@ class Parser:
             raise self.PError("invalid symbol name")
         if varname in RESERVED_NAMES:
             raise self.PError("can't use a reserved name here")
-        if value in REGISTER_SYMBOLS:
-            try:
-                # this is a const definition referring to a register, essentially giving the register another name
-                self.cur_block.symbols.define_constant(self.cur_block.name, varname,
-                                                       self.sourcefile, self.cur_linenum, datatype, register=value)
-            except (ValueError, SymbolError) as x:
-                raise self.PError(str(x)) from x
         else:
             constvalue = self.parse_primitive_value(value)
             try:
@@ -862,7 +867,7 @@ class Parser:
                 raise self.PError("cannot use a register name as variable")
             datatype = DataType.BYTE
             vlen = 1
-        elif len(args) == 3:  # var vartype varname, OR var varname expression
+        elif len(args) == 3:  # var datatype varname, OR var varname expression
             if args[1][0] != '.':
                 # assume var varname expression
                 vname = args[1]
@@ -871,10 +876,10 @@ class Parser:
                 datatype, vlen = DataType.BYTE, 1
                 value = self.parse_primitive_value(args[2])
             else:
-                # assume var vartype varname
+                # assume var datatype varname
                 datatype, vlen = get_datatype(args[1])   # type: ignore
                 vname = args[2]
-        elif len(args) == 4:  # var vartype varname expression
+        elif len(args) == 4:  # var datatype varname expression
             vname = args[2]
             if not vname.isidentifier():
                 raise self.PError("invalid variable name, or var syntax")
@@ -1053,9 +1058,9 @@ class Parser:
                     symbolname = sym.name
                 else:
                     symbolname = "{:s}.{:s}".format(sym.blockname, sym.name)
-                if sym.register:
+                if isinstance(sym, VariableDef) and sym.register:
                     return ParseResult.RegisterValue(sym.register, sym.type, name=symbolname)
-                elif sym.type in (DataType.BYTE, DataType.WORD):
+                elif sym.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
                     if isinstance(sym, ConstantDef):
                         symbolvalue = sym.value or 0
                     else:
@@ -1066,6 +1071,10 @@ class Parser:
                         raise TypeError("integer symbol required")
                 elif sym.type in STRING_DATATYPES:
                     return ParseResult.StringValue(sym.value, name=symbolname)      # type: ignore
+                elif sym.type == DataType.MATRIX:
+                    raise self.PError("cannot manipulate matrix directly, use one of the matrix procedures")
+                elif sym.type == DataType.BYTEARRAY or sym.type == DataType.WORDARRAY:
+                    raise self.PError("cannot manipulate array directly, use one of the array procedures")
                 else:
                     raise self.PError("invalid symbol type (1)")
             else:
@@ -1088,6 +1097,9 @@ class Parser:
                 if num_or_name.endswith(".word"):
                     addr = self.parse_integer(num_or_name[:-5])
                     return ParseResult.MemMappedValue(addr, DataType.WORD, length=1)
+                elif num_or_name.endswith(".float"):
+                    addr = self.parse_integer(num_or_name[:-6])
+                    return ParseResult.MemMappedValue(addr, DataType.FLOAT, length=1)
                 else:
                     addr = self.parse_integer(num_or_name)
                     return ParseResult.MemMappedValue(addr, DataType.BYTE, length=1)
