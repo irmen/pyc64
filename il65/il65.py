@@ -562,12 +562,18 @@ class CodeGenerator:
 
     @contextlib.contextmanager
     def save_registers_for_subroutine_call(self, registers: Set[str], is_goto: bool):
+        # this clobbers a ZP scratch register and is therefore safe to use in interrupts
+        # see http://6502.org/tutorials/register_preservation.html
+        if registers:
+            self.p("\t\tsta  ${:02x}".format(Zeropage.SCRATCH_B2))
         if 'A' in registers:
             self.p("\t\tpha")
         if 'X' in registers:
             self.p("\t\ttxa\n\t\tpha")
         if 'Y' in registers:
             self.p("\t\ttya\n\t\tpha")
+        if registers:
+            self.p("\t\tlda  ${:02x}".format(Zeropage.SCRATCH_B2))
         yield
         if 'Y' in registers:
             self.p("\t\tpla\n\t\ttay")

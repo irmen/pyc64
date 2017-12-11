@@ -124,6 +124,8 @@ start
 	XY = "text-immediate"
 	AY = "text-immediate"
 	AX = "text-immediate"
+	;AX = ^"text-immediate"          ; @todo equivalent to simply assigning the string directly
+	;AX = ^ "text-immediate"         ; @todo equivalent to simply assigning the string directly
 	AX = ""
 
 	[$c000] = 255

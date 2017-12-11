@@ -1,0 +1,70 @@
+; floating point tests
+
+output prg, sys
+
+import "c64lib"
+
+
+~ main {
+
+start
+        ;AY = ^c64.mflpt_pi             @todo pointer value
+        AY = $aea8
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $b1a5
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $b9bc
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $b9d6
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $b9db
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $b9e0
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $b9e5
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $baf9
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $bdbd
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $bf11
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $bfbf
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $e2e0
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $e2e5
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        AY = $e2ea
+        call c64.fac1_read_memAY
+        call c64.fac1_print
+
+        return
+
+}

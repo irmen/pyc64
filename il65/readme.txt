@@ -83,8 +83,8 @@ data types:
     For strings, both petscii and screencode variants can be written in source, they will be translated at compile/assembler time.
 
 
-    Note: for many floating point operations, the compiler uses routines in the C64 BASIC ROM.
-    So they will only work if the BASIC ROM is banked in.
+    Note: for many floating point operations, the compiler uses routines in the C64 BASIC and KERNAL ROMs.
+    So they will only work if the BASIC ROM (and KERNAL ROM) are banked in.
     largest 5-byte MFLPT float: 1.70141183e+38   (negative: -1.70141183e+38)
 
 
