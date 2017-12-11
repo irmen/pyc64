@@ -4,9 +4,6 @@
 output raw
 clobberzp
 
-; @todo allow expressions everywhere a number or string is now present can parse them using ast.parse?
-;  allow simple functions such as abs, len, max, min, pow, round, sum,
-;  and the bunch of functions from the Math module such as sin, cos, trunc etc
 
 ~ ZP {
 	; ZeroPage block definition:
@@ -99,8 +96,8 @@ clobberzp
 	const  .stext           ctext5   	"constant-stext"
 	const  .pstext          ctext6   	"constant-pstext"
 	const                   regalias1       A
-	const   .byte           regalias2       X
-	const   .word           regalias3       AX
+	const   .byte           regalias2	X
+	const   .word           regalias3	AX
 
 
 	; variables where value is an expression
@@ -116,7 +113,7 @@ start
 	A = true
 	A = false
 	A = 255
-	
+
 	XY = 0
 	XY = '@'
 	XY = 1.2345
@@ -124,18 +121,22 @@ start
 	XY = 65535
 	XY = true
 	XY = false
-	;XY = "textXY"	; @todo should be unsugared into  auto-storing the string somewhere as a var and assign pointer to var
-	
+	XY = text
+	XY = "text-immediate"
+	AY = "text-immediate"
+	AX = "text-immediate"
+	AX = ""
+
 	[$c000] = 255
 	[$c000] = '@'
-	;[$c000] = 1.2345	; @todo trunc warning
-	;[$c000] = 456.66	; @todo overflow
+	[$c000] = 1.2345	; @todo trunc warning
+	[$c000] = 456.66	; @todo overflow
 	[$c000] = true
 	[$c000] = false
-	;[$c000.word] = 65535
-	;[$c000.word] = 65536    ; @todo overflow
-	;[$c000.word] = 456.66	; @todo trunc warning
-	;[$c000.word] = "text"	; @todo should be unsugared into  auto-storing the string somewhere as a var and assign pointer to var
+	[$c000.word] = 65535
+	[$c000.word] = 456.66	; @todo trunc warning
+	[$c000.word] = "text"
+	[$c000.word] = ""
 
 	SC = 0
 	SC = false
@@ -146,3 +147,12 @@ start
 	return
 }
 
+~ {
+        XY = "text-immediate"   ; reuses existing
+        AY = "text-immediate"   ; reuses existing
+        AX = "another"
+        AX = ""
+        [$c000.word] = "another"               ; reuse
+        [$c100.word] = "text-immediate"        ; reuse
+        [$c200.word] = ""        ; reuse
+}

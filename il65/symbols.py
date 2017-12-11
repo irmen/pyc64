@@ -169,11 +169,9 @@ class Zeropage:
         assert self.SCRATCH_B2 not in self.unused_bytes and self.SCRATCH_B2 not in self.unused_words
 
     def get_unused_byte(self):
-        # XXX raise NotImplementedError
         return self.unused_bytes.pop()
 
     def get_unused_word(self):
-        # XXX raise NotImplementedError
         return self.unused_words.pop()
 
     @property
@@ -231,27 +229,24 @@ class SymbolTable:
         value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)
         allocate = address is None
         if datatype == DataType.BYTE:
-            if allocate:
-                # @todo only allocate from zp if this is the zeropage block
+            if allocate and blockname == "ZP":
                 try:
                     address = self.zeropage.get_unused_byte()
                 except LookupError:
-                    raise SymbolError("too many global 8-bit variables in zp")  # @todo make var in other memory
+                    raise SymbolError("too many global 8-bit variables in ZP")
             self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.BYTE, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.WORD:
-            if allocate:
-                # @todo only allocate from zp if this is the zeropage block
+            if allocate and blockname == "ZP":
                 try:
                     address = self.zeropage.get_unused_word()
                 except LookupError:
-                    raise SymbolError("too many global 16-bit variables in zp")  # @todo make var in other memory
+                    raise SymbolError("too many global 16-bit variables in ZP")
             self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.WORD, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.FLOAT:
-            if allocate:
-                print("WARNING: FLOATS: cannot allocate outside of zp yet")  # @todo make var in other memory
-                address = 0x7f00   # XXX
+            if allocate and blockname == "ZP":
+                raise SymbolError("floats cannot be stored in the ZP")
             self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.FLOAT, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.BYTEARRAY:

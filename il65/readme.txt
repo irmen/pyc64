@@ -139,11 +139,10 @@ Allows us to create pre calculated sine tables and such. Something like:
 EXPRESSIONS
 -----------
 
-@todo expressions.
+@todo allow expressions everywhere a number or string is now present can parse them using ast.parse?
 @todo allow floating point calculations in the parser in expressions but always truncate them to integer if stored? (like 64tass does)
+@todo allow simple functions such as abs, len, max, min, pow, round, sum, and the bunch of functions from the Math module such as sin, cos, trunc etc
 
-
-    
     
 FLOW CONTROL
 ------------

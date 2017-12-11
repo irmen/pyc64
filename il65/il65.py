@@ -96,7 +96,7 @@ class CodeGenerator:
             return "${:04x}".format(number)
         raise OverflowError(number)
 
-    def initialize_variables(self) -> None:     # @todo per-block init routine
+    def initialize_variables(self) -> None:
         must_save_zp = self.parsed.clobberzp and self.parsed.restorezp
         if must_save_zp:
             self.p("; save zp")
@@ -107,40 +107,46 @@ class CodeGenerator:
             self.p("\t\tinx")
             self.p("\t\tbne -")
 
-        # first join all the vars from all the blocks that need to be initialized (i.e. are allocated in memory
-        # other than the block itself, such as ZP memory)
-        # the iteration over the variables has a specific sort order to optimize init sequence
-        vars_to_init = list(sorted(v for block in self.parsed.blocks for v in block.symbols.iter_variables()
-                            if v.allocate and v.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT)))
-        vars_to_init = []  # @todo vars not allocated in zp should be defined in the block itself and contain their initial value directly
-        prev_value = 0  # type: Union[str, int, float]
-        if vars_to_init:
-            self.p("; init block vars")
-            self.p("\t\tlda #0\n\t\tldx #0")
-            for variable in vars_to_init:
-                vname = "@todo_blocklabel." + variable.name  # XXX blocklabel
-                vvalue = variable.value
-                if variable.type == DataType.BYTE:
-                    if vvalue != prev_value:
-                        self.p("\t\tlda #${:02x}".format(vvalue))
-                        prev_value = vvalue
-                    self.p("\t\tsta {:s}".format(vname))
-                elif variable.type == DataType.WORD:
-                    if vvalue != prev_value:
-                        self.p("\t\tlda #<${:04x}".format(vvalue))
-                        self.p("\t\tldx #>${:04x}".format(vvalue))
-                        prev_value = vvalue
-                    self.p("\t\tsta {:s}".format(vname))
-                    self.p("\t\tstx {:s}+1".format(vname))
-                elif variable.type == DataType.FLOAT:
-                    self.p("\t\t; @todo should init float var {:s} = {}".format(vname, vvalue))    # XXX init float var
-            self.p("; end init block vars")
-        self.p("\t\tcld\t\t\t; clear decimal flag")
-        self.p("\t\tclc\t\t\t; clear carry flag")
+        # Only the vars from the ZeroPage need to be initialized here,
+        # the vars in all other blocks are just defined and pre-filled there.
+        # The iteration over the variables has a specific sort order to optimize init sequence
+        zpblocks = [b for b in self.parsed.blocks if b.name == "ZP"]
+        if zpblocks:
+            assert len(zpblocks) == 1
+            zpblock = zpblocks[0]
+            vars_to_init = list(sorted(v for v in zpblock.symbols.iter_variables()
+                                if v.allocate and v.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT)))
+            prev_value = 0  # type: Union[str, int, float]
+            if vars_to_init:
+                self.p("; init zp vars")
+                self.p("\t\tlda #0\n\t\tldx #0")
+                for variable in vars_to_init:
+                    vname = zpblock.label + "." + variable.name
+                    vvalue = variable.value
+                    if variable.type == DataType.BYTE:
+                        if vvalue != prev_value:
+                            self.p("\t\tlda #${:02x}".format(vvalue))
+                            prev_value = vvalue
+                        self.p("\t\tsta {:s}".format(vname))
+                    elif variable.type == DataType.WORD:
+                        if vvalue != prev_value:
+                            self.p("\t\tlda #<${:04x}".format(vvalue))
+                            self.p("\t\tldx #>${:04x}".format(vvalue))
+                            prev_value = vvalue
+                        self.p("\t\tsta {:s}".format(vname))
+                        self.p("\t\tstx {:s}+1".format(vname))
+                    elif variable.type == DataType.FLOAT:
+                        raise TypeError("floats cannot be stored in the zp")
+                self.p("; end init zp vars")
+            else:
+                self.p("\t\t; there are no zp vars to initialize")
+        else:
+            self.p("\t\t; there is no zp block to initialize")
         main_block_label = [b.label for b in self.parsed.blocks if b.name == "main"][0]
         if must_save_zp:
             self.p("\t\tjsr {:s}.start\t\t; call user code".format(main_block_label))
             self.p("; restore zp")
+            self.p("\t\tcld")
             self.p("\t\tphp\n\t\tpha\n\t\ttxa\n\t\tpha\n\t\tsei")
             self.p("\t\tldx #2")
             self.p("-\t\tlda _il65_zp_backup-2,x")
@@ -162,6 +168,20 @@ class CodeGenerator:
             self.p("{:s}\t.proc\n".format(zpblock.label))
             self.generate_block_vars(zpblock)
             self.p("\t.pend\n")
+        # make sure the main.start routine clears the decimal and carry flags as first steps
+        for block in self.parsed.blocks:
+            if block.name == "main":
+                statements = list(block.statements)
+                for index, stmt in enumerate(statements):
+                    if isinstance(stmt, ParseResult.Label) and stmt.name == "start":
+                        asmlines = [
+                            "\t\tcld\t\t\t; clear decimal flag",
+                            "\t\tclc\t\t\t; clear carry flag"
+                        ]
+                        statements.insert(index+1, ParseResult.InlineAsm(0, asmlines))
+                        break
+                block.statements = statements
+        # generate
         for block in sorted(self.parsed.blocks, key=lambda b: b.address):
             if block.name == "ZP":
                 continue    # zeropage block is already processed
@@ -214,10 +234,17 @@ class CodeGenerator:
                 # create a definition for a variable that takes up space and will be initialized at startup
                 if vardef.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
                     if vardef.address:
+                        assert block.name == "ZP", "only ZP-variables can be put on an address"
                         self.p("\t\t{:s} = {:s}".format(vardef.name, self.to_hex(vardef.address)))
                     else:
-                        # @todo non-zeropage variables not yet supported
-                        raise CodeError("byte or word vars must have address for now (assigned via symboltable var allocator)")
+                        if vardef.type == DataType.BYTE:
+                            self.p("{:s}\t\t.byte {:s}".format(vardef.name, self.to_hex(int(vardef.value))))
+                        elif vardef.type == DataType.WORD:
+                            self.p("{:s}\t\t.word {:s}".format(vardef.name, self.to_hex(int(vardef.value))))
+                        elif vardef.type == DataType.FLOAT:
+                            self.p("{:s}\t\t.byte 0,0,0,0,0".format(vardef.name))  # @todo store float value in 5 byte format
+                        else:
+                            raise TypeError("weird datatype")
                 elif vardef.type in (DataType.BYTEARRAY, DataType.WORDARRAY):
                     if vardef.address:
                         raise CodeError("array or wordarray vars must not have address; will be allocated by assembler")
@@ -376,14 +403,15 @@ class CodeGenerator:
                     else:
                         self.generate_assign_string_to_reg(lv, stmt.right)
                 elif isinstance(lv, ParseResult.MemMappedValue):
-                    if len(stmt.right.value) != 1:
-                        raise CodeError("can only assign single character strings to a memory mapped var", str(stmt))
-                    self.generate_assign_char_to_memory(lv, r_str)
+                    if len(stmt.right.value) == 1:
+                        self.generate_assign_char_to_memory(lv, r_str)
+                    else:
+                        self.generate_assign_string_to_memory(lv, stmt.right)
                 else:
                     raise CodeError("invalid assignment target (2)", str(stmt))
         elif isinstance(stmt.right, ParseResult.MemMappedValue):
             if stmt.right.datatype != DataType.BYTE:
-                raise CodeError("can only assign memory mapped byte values for now", str(stmt))  # @todo support others?
+                raise CodeError("can only assign memory mapped byte values for now", str(stmt))  # @todo support other mmapped types
             r_str = stmt.right.name if stmt.right.name else "${:x}".format(stmt.right.address)
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):
@@ -395,7 +423,7 @@ class CodeGenerator:
                 else:
                     raise CodeError("invalid assignment target (4)", str(stmt))
         else:
-            raise CodeError("invalid assignment value type", str(stmt))  # @todo support more types?
+            raise CodeError("invalid assignment value type", str(stmt))
 
     def generate_assign_mem_to_reg(self, l_register: str, r_str: str) -> None:
         # Register = memory (byte)
@@ -624,7 +652,6 @@ class CodeGenerator:
             self.reg_values[lv.register] = char_str
 
     def generate_assign_string_to_reg(self, lv: ParseResult.RegisterValue, rvalue: ParseResult.StringValue) -> None:
-        # Register = Char (string of length > 1)
         if lv.register not in ("AX", "AY", "XY"):
             raise CodeError("need register pair AX, AY or XY for string address assignment", lv.register)
         if rvalue.name:
@@ -633,7 +660,19 @@ class CodeGenerator:
             self.reg_values[lv.register[0]] = None
             self.reg_values[lv.register[1]] = None
         else:
-            raise CodeError("cannot assign immediate string, string variable required")   # @todo support this
+            raise CodeError("cannot assign immediate string, it should be a string variable")
+
+    def generate_assign_string_to_memory(self, lv: ParseResult.MemMappedValue, rvalue: ParseResult.StringValue) -> None:
+        if lv.datatype != DataType.WORD:
+            raise CodeError("need word memory type for string address assignment")
+        if rvalue.name:
+            self.p("\t\tlda #<{:s}".format(rvalue.name))
+            self.p("\t\tsta " + self.to_hex(lv.address))
+            self.p("\t\tlda #>{:s}".format(rvalue.name))
+            self.p("\t\tsta " + self.to_hex(lv.address+1))
+            self.reg_values["A"] = None
+        else:
+            raise CodeError("cannot assign immediate string, it should be a string variable")
 
     def footer(self) -> None:
         self.p("\n\n.end")

@@ -21,6 +21,9 @@ from symbols import SymbolTable, Zeropage, DataType, SymbolDefinition, Subroutin
 FLOAT_MAX_NEGATIVE = -1.70141183e+38
 FLOAT_MAX_POSITIVE = 1.70141183e+38
 
+RESERVED_NAMES = {"true", "false", "var", "memory", "const", "asm"}
+RESERVED_NAMES |= REGISTER_SYMBOLS
+
 
 class ParseError(Exception):
     def __init__(self, sourcefile: str, num: int, line: str, message: str) -> None:
@@ -57,8 +60,6 @@ class ParseResult:
 
         @property
         def label(self) -> str:
-            if self.name == "ZP":
-                return "il65_zeropage"
             if self.name:
                 return self.name
             if self in self._unnamed_block_labels:
@@ -225,7 +226,7 @@ class ParseResult:
                     return True, ""
                 return False, "(unsigned) byte required"
             elif self.datatype == DataType.WORD:
-                if other.datatype in (DataType.WORD, DataType.BYTE):
+                if other.datatype in (DataType.WORD, DataType.BYTE) or other.datatype in STRING_DATATYPES:
                     return True, ""
                 return False, "(unsigned) byte or word required"
             return False, "incompatible value for assignment"
@@ -276,6 +277,24 @@ class ParseResult:
                 if not assignable:
                     raise ParseError(cur_block.sourcefile, cur_block.linenum, "",
                                      "cannot assign {0} to {1}; {2}".format(self.right, lv, reason))
+
+        _immediate_string_vars = {}   # type: Dict[str, Tuple[str, str]]
+
+        def desugar_immediate_string(self, cur_block: 'ParseResult.Block') -> None:
+            if self.right.name or not isinstance(self.right, ParseResult.StringValue):
+                return
+            if self.right.value in self._immediate_string_vars:
+                blockname, stringvar_name = self._immediate_string_vars[self.right.value]
+                if blockname:
+                    self.right.name = blockname + "." + stringvar_name
+                else:
+                    self.right.name = stringvar_name
+            else:
+                stringvar_name = "il65_str_{:d}".format(id(self))
+                cur_block.symbols.define_variable(cur_block.name, stringvar_name, cur_block.sourcefile, 0, DataType.STRING,
+                                                  value=self.right.value)
+                self.right.name = stringvar_name
+                self._immediate_string_vars[self.right.value] = (cur_block.name, stringvar_name)
 
     class ReturnStmt(_Stmt):
         def __init__(self, a: Optional['ParseResult.Value']=None,
@@ -443,7 +462,7 @@ class Parser:
                 raise self.PError("A block named 'main' should be defined for the program's entry point 'start'")
         # parsing pass 2
         print("\nparsing (pass 2)", self.sourcefile)
-        # fix up labels that are unknown:
+        # fix up labels that are unknown, and desugar immediate string value assignments:
         for block in self.result.blocks:
             statements = list(block.statements)
             for index, stmt in enumerate(statements):
@@ -452,6 +471,8 @@ class Parser:
                 except LookupError as x:
                     self.cur_linenum = block.linenum
                     raise self.PError("Symbol reference error in this block") from x
+                if isinstance(stmt, ParseResult.AssignmentStmt):
+                    stmt.desugar_immediate_string(block)
             block.statements = statements
         # done parsing.
         return self.result
@@ -686,7 +707,7 @@ class Parser:
                 msize = 2
                 mtype = DataType.WORD
             elif memtype == ".float":
-                msize = 5   # XXX 5-byte cbm MFLPT format, hardcoded for now
+                msize = 5   # 5-byte cbm MFLPT format, this is the only float format supported for now
                 mtype = DataType.FLOAT
             elif memtype.startswith(".array(") and memtype.endswith(")"):
                 msize = self._size_from_arraydecl(memtype)
@@ -708,6 +729,8 @@ class Parser:
         varname = dotargs[1]
         if not varname.isidentifier():
             raise self.PError("invalid symbol name")
+        if varname in RESERVED_NAMES:
+            raise self.PError("can't use a reserved name here")
         memaddress = self.parse_integer(dotargs[2])
         if is_zeropage and memaddress > 0xff:
             raise self.PError("address must lie in zeropage $00-$ff")
@@ -751,6 +774,8 @@ class Parser:
             value = dotargs[2]
         if not varname.isidentifier():
             raise self.PError("invalid symbol name")
+        if varname in RESERVED_NAMES:
+            raise self.PError("can't use a reserved name here")
         if value in REGISTER_SYMBOLS:
             try:
                 # this is a const definition referring to a register, essentially giving the register another name
@@ -796,6 +821,8 @@ class Parser:
                 "pstext": DataType.STRING_PS
             }[match.group("type")]
             vname = match.group("name")
+            if vname in RESERVED_NAMES:
+                raise self.PError("can't use a reserved name here")
             strvalue = self.parse_string(match.group("value"))
             try:
                 self.cur_block.symbols.define_variable(self.cur_block.name, vname,
@@ -858,6 +885,8 @@ class Parser:
         if datatype == DataType.MATRIX:
             matrixsize = vlen   # type: ignore
             vlen = None
+        if vname in RESERVED_NAMES:
+            raise self.PError("can't use a reserved name here")
         try:
             self.cur_block.symbols.define_variable(self.cur_block.name, vname,
                                                    self.sourcefile, self.cur_linenum, datatype,
@@ -1028,13 +1057,13 @@ class Parser:
                     return ParseResult.RegisterValue(sym.register, sym.type, name=symbolname)
                 elif sym.type in (DataType.BYTE, DataType.WORD):
                     if isinstance(sym, ConstantDef):
-                        symbolvalue = sym.value
+                        symbolvalue = sym.value or 0
                     else:
-                        symbolvalue = sym.address
+                        symbolvalue = sym.address or 0
                     if type(symbolvalue) is int:
                         return ParseResult.MemMappedValue(int(symbolvalue), sym.type, sym.length, name=symbolname)
                     else:
-                        raise TypeError("integer required")
+                        raise TypeError("integer symbol required")
                 elif sym.type in STRING_DATATYPES:
                     return ParseResult.StringValue(sym.value, name=symbolname)      # type: ignore
                 else:
@@ -1056,8 +1085,12 @@ class Parser:
                 else:
                     raise self.PError("invalid symbol type used as lvalue of assignment (3)")
             else:
-                addr = self.parse_integer(num_or_name)
-                return ParseResult.MemMappedValue(addr, DataType.BYTE, length=1)   # XXX word type?
+                if num_or_name.endswith(".word"):
+                    addr = self.parse_integer(num_or_name[:-5])
+                    return ParseResult.MemMappedValue(addr, DataType.WORD, length=1)
+                else:
+                    addr = self.parse_integer(num_or_name)
+                    return ParseResult.MemMappedValue(addr, DataType.BYTE, length=1)
         else:
             raise self.PError("invalid value '" + text + "'")
 
