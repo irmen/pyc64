@@ -1,6 +1,6 @@
 output prg,sys  ; create a c-64 program with basic SYS call to launch it
 
-	.include "c64lib.ill"
+	import "c64lib.ill"
 
  ~ main
 {

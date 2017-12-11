@@ -102,6 +102,27 @@ Block names cannot occur more than once, EXCEPT 'ZP' where the contents of every
 Block address must be >= $0200 (because $00-$fff is the ZP and $100-$200 is the cpu stack)
 
 
+
+IMPORTING, INCLUDING and BINARY-INCLUDING files
+-----------------------------------------------
+
+import "filename[.ill]"
+        Can only be used outside of a block (usually at the top of your file).
+        Reads everything from the named IL65 file at this point and compile it as a normal part of the program.
+
+asminclude "filename.txt", scopelabel
+        Can only be used in a block.
+        The assembler will include the file as asm source text at this point, il65 will not process this at all.
+        The scopelabel will be used as a prefix to access the labels from the included source code,
+        otherwise you would risk symbol redefinitions or duplications.
+
+asmbinary "filename.bin" [, <offset>[, <length>]]
+        Can only be used in a block.
+        The assembler will include the file as binary bytes at this point, il65 will not process this at all.
+        The optional offset and length can be used to select a particular piece of the file.
+
+
+
 MACROS
 ------
 

@@ -704,7 +704,7 @@ def main() -> None:
         assembly_filename = os.path.join(args.output, os.path.split(assembly_filename)[1])
         program_filename = os.path.join(args.output, os.path.split(program_filename)[1])
 
-    p = Parser(args.sourcefile)
+    p = Parser(args.sourcefile, args.output)
     parsed = p.parse()
     if parsed:
         opt = Optimizer(parsed)

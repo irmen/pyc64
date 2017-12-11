@@ -9,7 +9,7 @@ import sys
 import re
 import os
 import ast
-import math
+import shutil
 import enum
 from typing import Set, List, Tuple, Optional, Union, Any, Dict
 from symbols import SymbolTable, Zeropage, DataType, SymbolDefinition, SubroutineDef, \
@@ -370,11 +370,13 @@ class ParseResult:
 
 
 class Parser:
-    def __init__(self, sourcefile: str, sourcecode: Optional[str]=None, zeropage: Zeropage=None, parsing_include: bool=False) -> None:
+    def __init__(self, sourcefile: str, outputdir: str,
+                 sourcecode: Optional[str]=None, zeropage: Zeropage=None, parsing_import: bool=False) -> None:
         self.result = ParseResult(sourcefile)
         self.zeropage = zeropage
         self.sourcefile = sourcefile
-        self.parsing_include = parsing_include     # are we parsing a .included file?
+        self.outputdir = outputdir
+        self.parsing_import = parsing_import     # are we parsing a import file?
         self.cur_linenum = -1
         self.cur_lineidx = -1
         self.cur_block = None  # type: ParseResult.Block
@@ -396,8 +398,8 @@ class Parser:
         try:
             return self._parse()
         except ParseError as x:
-            if self.parsing_include:
-                print("Error (in included file):", str(x))
+            if self.parsing_import:
+                print("Error (in imported file):", str(x))
             else:
                 print("Error:", str(x))
             if x.sourceline:
@@ -416,18 +418,18 @@ class Parser:
                 block = self.parse_block()
                 if block:
                     self.result.add_block(block)
-            elif next_line.lstrip().startswith(".include"):
-                parsed_include = self.parse_include()
-                if parsed_include:
-                    self.result.merge(parsed_include)
+            elif next_line.lstrip().startswith("import"):
+                parsed_import = self.parse_import()
+                if parsed_import:
+                    self.result.merge(parsed_import)
                 else:
-                    raise self.PError("Error while parsing included file")
+                    raise self.PError("Error while parsing imported file")
             else:
                 break
         _, line = self.next_line()
         if line:
             raise self.PError("invalid statement or characters, block expected")
-        if not self.parsing_include:
+        if not self.parsing_import:
             # check if we have a proper main block to contain the program's entry point
             for block in self.result.blocks:
                 if block.name == "main":
@@ -534,15 +536,20 @@ class Parser:
                     raise self.PError("cannot use non-default 'address' when output format includes basic SYS program")
                 return
 
-    def parse_include(self) -> ParseResult:
+    def parse_import(self) -> ParseResult:
         num, line = self.next_line()
         line = line.lstrip()
-        if not line.startswith(".include"):
-            raise self.PError("expected .include")
-        _, arg = line.split(maxsplit=1)
+        if not line.startswith("import"):
+            raise self.PError("expected import")
+        try:
+            _, arg = line.split(maxsplit=1)
+        except ValueError:
+            raise self.PError("invalid import statement")
         if not arg.startswith('"') or not arg.endswith('"'):
             raise self.PError("filename must be between quotes")
-        filename = arg[1:-1].strip()
+        filename = arg[1:-1]
+        if not filename:
+            raise self.PError("invalid filename")
         filename_at_source_location = os.path.join(os.path.split(self.sourcefile)[0], filename)
         filename_at_libs_location = os.path.join(os.path.split(sys.argv[0])[0], "lib", filename)
         candidates = [filename,
@@ -553,9 +560,10 @@ class Parser:
                       filename_at_libs_location+".ill"]
         for filename in candidates:
             if os.path.isfile(filename):
-                parser = Parser(filename, zeropage=self.zeropage, parsing_include=True)
+                parser = Parser(filename, self.outputdir, zeropage=self.zeropage, parsing_import=True)
+                print("importing", filename)
                 return parser.parse()
-        raise FileNotFoundError("Included file not found: " + filename)
+        raise self.PError("imported file not found")
 
     def parse_block(self) -> ParseResult.Block:
         # first line contains block header "~ [name] [addr]" followed by a '{'
@@ -615,13 +623,7 @@ class Parser:
                 if is_zp_block and any(b.name == "ZP" for b in self.result.blocks):
                     return None     # we already have the ZP block
                 return self.cur_block
-            if line.startswith("asm"):
-                if is_zp_block:
-                    raise self.PError("ZP block cannot contain code statements")
-                self.prev_line()
-                self.cur_block.statements.append(self.parse_asm())
-                continue
-            elif line.startswith("var"):
+            if line.startswith("var"):
                 self.parse_var_def(line)
             elif line.startswith("const"):
                 self.parse_const_def(line)
@@ -631,6 +633,16 @@ class Parser:
                 if is_zp_block:
                     raise self.PError("ZP block cannot contain subroutines")
                 self.parse_subx_def(line)
+            elif line.startswith(("asminclude", "asmbinary")):
+                if is_zp_block:
+                    raise self.PError("ZP block cannot contain assembler directives")
+                self.cur_block.statements.append(self.parse_asminclude(line))
+            elif line.startswith("asm"):
+                if is_zp_block:
+                    raise self.PError("ZP block cannot contain code statements")
+                self.prev_line()
+                self.cur_block.statements.append(self.parse_asm())
+                continue
             elif unstripped_line.startswith((" ", "\t")):
                 if is_zp_block:
                     raise self.PError("ZP block cannot contain code statements")
@@ -895,8 +907,9 @@ class Parser:
             assignable, reason = lv.assignable_from(r_value)
             if not assignable:
                 raise self.PError("cannot assign {0} to {1}; {2}".format(r_value, lv, reason))
-            if lv.datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX) and r_value.datatype == DataType.FLOAT:
-                trunc_float_if_needed(self.sourcefile, self.cur_linenum, lv.datatype, r_value.value)  # for the warning
+            if lv.datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX):
+                if isinstance(r_value, ParseResult.FloatValue):
+                    trunc_float_if_needed(self.sourcefile, self.cur_linenum, lv.datatype, r_value.value)  # for the warning
         return ParseResult.AssignmentStmt(l_values, r_value, self.cur_linenum)
 
     def parse_return(self, line: str) -> ParseResult.ReturnStmt:
@@ -930,6 +943,45 @@ class Parser:
             if line.strip() == "}":
                 return ParseResult.InlineAsm(asm_line_num, asmlines)
             asmlines.append(line)
+
+    def parse_asminclude(self, line: str) -> ParseResult.InlineAsm:
+        aline = line.split()
+        if len(aline) < 2:
+            raise self.PError("invalid asminclude or asmbinary statement")
+        filename = aline[1]
+        if not filename.startswith('"') or not filename.endswith('"'):
+            raise self.PError("filename must be between quotes")
+        filename = filename[1:-1]
+        if not filename:
+            raise self.PError("invalid filename")
+        filename_in_sourcedir = os.path.join(os.path.split(self.sourcefile)[0], filename)
+        filename_in_output_location = os.path.join(self.outputdir, filename)
+        if not os.path.isfile(filename_in_sourcedir):
+            raise self.PError("included file not found")
+        print("copying included file to output location:", filename)
+        shutil.copy(filename_in_sourcedir, filename_in_output_location)
+        if aline[0] == "asminclude":
+            if len(aline) == 3:
+                scopename = aline[2]
+                lines = ['{:s}\t.binclude "{:s}"'.format(scopename, filename)]
+            else:
+                raise self.PError("invalid asminclude statement")
+            return ParseResult.InlineAsm(self.cur_linenum, lines)
+        elif aline[0] == "asmbinary":
+            if len(aline) == 4:
+                offset = self.parse_integer(aline[2])
+                length = self.parse_integer(aline[3])
+                lines = ['\t.binary "{:s}", ${:04x}, ${:04x}'.format(filename, offset, length)]
+            elif len(aline) == 3:
+                offset = self.parse_integer(aline[2])
+                lines = ['\t.binary "{:s}", ${:04x}'.format(filename, offset)]
+            elif len(aline) == 2:
+                lines = ['\t.binary "{:s}"'.format(filename)]
+            else:
+                raise self.PError("invalid asmbinary statement")
+            return ParseResult.InlineAsm(self.cur_linenum, lines)
+        else:
+            raise self.PError("invalid statement")
 
     def parse_expression(self, text: str, cur_block: Optional[ParseResult.Block]=None) -> ParseResult.Value:
         # parse an expression into whatever it is (primitive value, register, memory, register, etc)
