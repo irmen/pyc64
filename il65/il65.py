@@ -375,7 +375,12 @@ class CodeGenerator:
                 call_target = self.to_hex(stmt.address)
             if stmt.subroutine:
                 if stmt.subroutine.clobbered_registers:
-                    with self.save_registers_for_subroutine_call(stmt.subroutine.clobbered_registers, stmt.is_goto):
+                    if stmt.preserve_regs:
+                        clobbered = stmt.subroutine.clobbered_registers
+                    else:
+                        clobbered = []
+                        self.reg_values['A'] = self.reg_values['X'] = self.reg_values['Y'] = None
+                    with self.save_registers_for_subroutine_call(clobbered, stmt.is_goto):
                         self.p("\t\tjsr " + call_target)
                     return
             if stmt.is_goto:

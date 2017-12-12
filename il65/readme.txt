@@ -88,6 +88,12 @@ data types:
     largest 5-byte MFLPT float: 1.70141183e+38   (negative: -1.70141183e+38)
 
 
+    Note: with the ^ prefix you can take the address of something. This is sometimes useful,
+    for instance when you want to manipulate the ADDRESS of a memory mapped variable rather than
+    the value it represents.  You can take the address of a string as well, but the compiler already
+    treats those as a value that you manipulate via its address, so the ^ is ignored here.
+
+
 
 BLOCKS
 ------
@@ -141,7 +147,6 @@ EXPRESSIONS
 -----------
 
 @todo allow expressions everywhere a number or string is now present can parse them using ast.parse?
-@todo allow floating point calculations in the parser in expressions but always truncate them to integer if stored? (like 64tass does)
 @todo allow simple functions such as abs, len, max, min, pow, round, sum, and the bunch of functions from the Math module such as sin, cos, trunc etc
 
     
@@ -307,6 +312,14 @@ proc_results = sequence of <register> names that specify in which register(s) th
 example:  "subx   CLOSE    (logical: A) -> (A?, X?, Y?)       $FFC3"
 
 
+ISOLATION (register preservation when calling subroutines):  @todo isolation
+
+ isolate [regs] { .... }       that adds register preservation around the containing code default = all 3 regs, or specify which.
+ fcall          ->      fastcall, doesn't do register preservations
+ call           ->      as before, alsways does it, even when in isolate block
+
+
+
 @todo user defined subroutines
 
 
@@ -314,8 +327,11 @@ CALLING SUBROUTINES
 -------------------
 
 call subroutine and continue afterwards ('gosub'):
-        call <subroutine> / <label> / <address>
+        [f]call <subroutine> / <label> / <address>
         @todo call [<registerpair>] / [<address>]   (indirect)
+
+        call preserves all registers when doing the procedure call and restores them afterwards.
+        fcall ('fast call') doesn't do this, so generates code that is a lot faster, but can clobber register values.
 
 jump to routine ('goto'):
         go <subroutine> / <label> / <address>

@@ -123,9 +123,8 @@ start
 	XY = text
 	XY = "text-immediate"
 	AY = "text-immediate"
-	AX = "text-immediate"
-	;AX = ^"text-immediate"          ; @todo equivalent to simply assigning the string directly
-	;AX = ^ "text-immediate"         ; @todo equivalent to simply assigning the string directly
+	AX = ^"text-immediate"          ; equivalent to simply assigning the string directly
+	AX = ^ "text-immediate"         ; equivalent to simply assigning the string directly
 	AX = ""
 
 	[$c000] = 255
@@ -167,11 +166,6 @@ start
         membyte1 = 22
         memword1 = 2233
         memfloat = 3.4567
-
-        ;cbyte1 = 1 ;error
-        ;cword2 = 2 ;error
-        ;ctext3 = 1 ;error
-        ;ctext3 = "s" ;error
 
 	return
 }

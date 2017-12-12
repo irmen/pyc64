@@ -69,11 +69,14 @@ class ParseResult:
             return label
 
     class Value:
-        def __init__(self, datatype: DataType, name: str=None) -> None:
+        def __init__(self, datatype: DataType, name: str=None, constant: bool=False) -> None:
             self.datatype = datatype
             self.name = name
+            self.constant = constant
 
         def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
+            if self.constant:
+                return False, "cannot assign to a constant"
             return False, "incompatible value for assignment"
 
     class PlaceholderSymbol(Value):
@@ -87,9 +90,9 @@ class ParseResult:
         def __init__(self, value: int, name: str=None) -> None:
             if type(value) is int:
                 if 0 <= value < 0x100:
-                    super().__init__(DataType.BYTE, name)
+                    super().__init__(DataType.BYTE, name, True)
                 elif value < 0x10000:
-                    super().__init__(DataType.WORD, name)
+                    super().__init__(DataType.WORD, name, True)
                 else:
                     raise OverflowError("value too big: ${:x}".format(value))
             else:
@@ -113,7 +116,7 @@ class ParseResult:
     class FloatValue(Value):
         def __init__(self, value: float, name: str=None) -> None:
             if type(value) is float:
-                super().__init__(DataType.FLOAT, name)
+                super().__init__(DataType.FLOAT, name, True)
                 self.value = value
             else:
                 raise TypeError("invalid data type")
@@ -133,8 +136,8 @@ class ParseResult:
             return "<FloatValue {} name={}>".format(self.value, self.name)
 
     class StringValue(Value):
-        def __init__(self, value: str, name: str=None) -> None:
-            super().__init__(DataType.STRING, name)
+        def __init__(self, value: str, name: str=None, constant: bool=False) -> None:
+            super().__init__(DataType.STRING, name, constant)
             self.value = value
 
         def __hash__(self):
@@ -149,13 +152,13 @@ class ParseResult:
                 return other.datatype == self.datatype and other.value == self.value and other.name == self.name
 
         def __str__(self):
-            return "<StringValue {!r:s} name={}>".format(self.value, self.name)
+            return "<StringValue {!r:s} name={} constant={}>".format(self.value, self.name, self.constant)
 
     class RegisterValue(Value):
         def __init__(self, register: str, datatype: DataType, name: str=None) -> None:
             assert datatype in (DataType.BYTE, DataType.WORD)
             assert register in REGISTER_SYMBOLS
-            super().__init__(datatype, name)
+            super().__init__(datatype, name, False)
             self.register = register
 
         def __hash__(self):
@@ -173,6 +176,8 @@ class ParseResult:
             return "<RegisterValue {:s} type {:s} name={}>".format(self.register, self.datatype, self.name)
 
         def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
+            if self.constant:
+                return False, "cannot assign to a constant"
             if isinstance(other, ParseResult.RegisterValue) and len(self.register) != len(other.register):
                 return False, "register size mismatch"
             if isinstance(other, ParseResult.StringValue) and self.register in REGISTER_BYTES:
@@ -195,8 +200,8 @@ class ParseResult:
             return False, "incompatible value for assignment"
 
     class MemMappedValue(Value):
-        def __init__(self, address: int, datatype: DataType, length: int, name: str=None) -> None:
-            super().__init__(datatype, name)
+        def __init__(self, address: int, datatype: DataType, length: int, name: str=None, constant: bool=False) -> None:
+            super().__init__(datatype, name, constant)
             self.address = address
             self.length = length
 
@@ -213,9 +218,12 @@ class ParseResult:
                        other.length == self.length and other.name == self.name
 
         def __str__(self):
-            return "<MemMappedValue ${:04x} type={:s} #={:d} name={}>".format(self.address, self.datatype, self.length, self.name)
+            return "<MemMappedValue ${:04x} type={:s} #={:d} name={} constant={}>"\
+                .format(self.address, self.datatype, self.length, self.name, self.constant)
 
         def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
+            if self.constant:
+                return False, "cannot assign to a constant"
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True, ""
             elif self.datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
@@ -338,11 +346,13 @@ class ParseResult:
                 self.what = value
 
     class CallStmt(_Stmt):
-        def __init__(self, line_number: int, address: Optional[int]=None, unresolved: str=None, is_goto: bool=False) -> None:
+        def __init__(self, line_number: int, address: Optional[int]=None, unresolved: str=None,
+                     is_goto: bool=False, preserve_regs: bool=True) -> None:
             self.address = address
             self.subroutine = None      # type: SubroutineDef
             self.unresolved = unresolved
             self.is_goto = is_goto
+            self.preserve_regs = preserve_regs
             self.call_module = ""
             self.call_label = ""
             self.line_number = line_number
@@ -913,6 +923,8 @@ class Parser:
             return ParseResult.IncrDecrStmt(what, 1 if incr else -1)
         elif line.startswith("call"):
             return self.parse_call_or_go(line, "call")
+        elif line.startswith("fcall"):
+            return self.parse_call_or_go(line, "fcall")
         elif line.startswith("go"):
             return self.parse_call_or_go(line, "go")
         else:
@@ -926,6 +938,8 @@ class Parser:
             return ParseResult.CallStmt(self.cur_linenum, unresolved=args[1], is_goto=True)
         elif what == "call":
             return ParseResult.CallStmt(self.cur_linenum, unresolved=args[1], is_goto=False)
+        elif what == "fcall":
+            return ParseResult.CallStmt(self.cur_linenum, unresolved=args[1], is_goto=False, preserve_regs=False)
         else:
             raise ValueError("invalid what")
 
@@ -1023,7 +1037,18 @@ class Parser:
         text = text.strip()
         if not text:
             raise self.PError("value expected")
-        if text[0] in "-.0123456789$%":
+        if text[0] == '^':
+            # take the pointer (memory address) from the thing that follows this
+            expression = self.parse_expression(text[1:], cur_block)
+            if isinstance(expression, ParseResult.StringValue):
+                return expression
+            elif isinstance(expression, ParseResult.MemMappedValue):
+                return ParseResult.IntegerValue(expression.address, expression.name)
+            elif isinstance(expression, ParseResult.PlaceholderSymbol):
+                raise self.PError("cannot take the address from an unresolved symbol")
+            else:
+                raise self.PError("cannot take the address from this type")
+        elif text[0] in "-.0123456789$%":
             number = self.parse_number(text)
             try:
                 if type(number) is int:
@@ -1054,6 +1079,7 @@ class Parser:
                 # symbols is not (yet) known, store a placeholder to resolve later in parse pass 2
                 return ParseResult.PlaceholderSymbol(None, text)
             elif isinstance(sym, (VariableDef, ConstantDef)):
+                constant = isinstance(sym, ConstantDef)
                 if cur_block is symblock:
                     symbolname = sym.name
                 else:
@@ -1066,11 +1092,11 @@ class Parser:
                     else:
                         symbolvalue = sym.address or 0
                     if type(symbolvalue) is int:
-                        return ParseResult.MemMappedValue(int(symbolvalue), sym.type, sym.length, name=symbolname)
+                        return ParseResult.MemMappedValue(int(symbolvalue), sym.type, sym.length, name=symbolname, constant=constant)
                     else:
                         raise TypeError("integer symbol required")
                 elif sym.type in STRING_DATATYPES:
-                    return ParseResult.StringValue(sym.value, name=symbolname)      # type: ignore
+                    return ParseResult.StringValue(sym.value, name=symbolname, constant=constant)      # type: ignore
                 elif sym.type == DataType.MATRIX:
                     raise self.PError("cannot manipulate matrix directly, use one of the matrix procedures")
                 elif sym.type == DataType.BYTEARRAY or sym.type == DataType.WORDARRAY:
