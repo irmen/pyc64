@@ -15,8 +15,8 @@ import subprocess
 import contextlib
 import argparse
 from functools import partial
-from typing import TextIO, Dict, Set, Union
-from parse import ProgramFormat, Parser, ParseResult, Optimizer
+from typing import TextIO, Dict, Set, Union, Optional
+from parse import ProgramFormat, Parser, ParseResult, Optimizer, FLOAT_MAX_NEGATIVE, FLOAT_MAX_POSITIVE
 from symbols import Zeropage, DataType, VariableDef, REGISTER_WORDS
 
 
@@ -70,15 +70,15 @@ class CodeGenerator:
         else:
             self.p("; output format:", self.parsed.format.value)
         self.p("; assembler syntax is for 64tasm")
-        self.p(".cpu '6502'\n.enc 'none'\n")
+        self.p(".cpu  '6502'\n.enc  'none'\n")
         if self.parsed.format == ProgramFormat.PRG:
             if self.parsed.with_sys:
                 self.p("; ---- basic program with sys call ----")
                 self.p("* = " + self.to_hex(self.parsed.start_address))
                 year = datetime.datetime.now().year
-                self.p("\t\t.word (+), {:d}".format(year))
-                self.p("\t\t.null $9e, format(' %d ', _il65_sysaddr), $3a, $8f, ' il65 by idj'")
-                self.p("+\t\t.word 0")
+                self.p("\t\t.word  (+), {:d}".format(year))
+                self.p("\t\t.null  $9e, format(' %d ', _il65_sysaddr), $3a, $8f, ' il65 by idj'")
+                self.p("+\t\t.word  0")
                 self.p("_il65_sysaddr\t\t; assembly code starts here\n")
             else:
                 self.p("; ---- program without sys call ----")
@@ -100,28 +100,46 @@ class CodeGenerator:
     @staticmethod
     def to_mflpt5(number: float) -> bytearray:
         # algorithm here https://sourceforge.net/p/acme-crossass/code-0/62/tree/trunk/ACME_Lib/cbm/mflpt.a
-        # @todo check if this float to mflpt5 converter actually is correct
+        number = float(number)
+        if number < FLOAT_MAX_NEGATIVE or number > FLOAT_MAX_POSITIVE:
+            raise OverflowError("floating point number out of 5-byte mflpt range", number)
         if number == 0.0:
             return bytearray([0, 0, 0, 0, 0])
-        w, sign = (float.hex(number), 0x00) if number > 0 else (float.hex(number)[1:], 0x80)  # float.hex uses 64bit IEE754
-        mantissa, exp = int(w[4:17], 16), int(w[18:])
-        exp += 128   # bias
-        if exp < 1 or exp > 255:
+        if number < 0.0:
+            sign = 0x80000000
+            number = -number
+        else:
+            sign = 0x00000000
+        mant, exp = math.frexp(number)
+        exp += 128
+        if exp < 1:
+            # underflow, use zero instead
+            return bytearray([0, 0, 0, 0, 0])
+        if exp > 255:
             raise OverflowError("floating point number out of 5-byte mflpt range", number)
-        mantissa >>= 20   # convert from 52 to 32 bits
-        mant_bytes = mantissa.to_bytes(4, "big")
-        return bytearray([exp, sign | mant_bytes[0], mant_bytes[1], mant_bytes[2], mant_bytes[3]])
+        mant = sign | int(mant * 0x100000000) & 0x7fffffff
+        return bytearray([exp]) + int.to_bytes(mant, 4, "big")
+
+    @staticmethod
+    def mflpt5_to_float(mflpt: bytearray) -> float:
+        if mflpt == bytearray([0, 0, 0, 0, 0]):
+            return 0.0
+        exp = mflpt[0] - 128
+        sign = mflpt[1] & 0x80
+        number = 0x80000000 | int.from_bytes(mflpt[1:], "big")
+        number = float(number) * 2**exp / 0x100000000
+        return -number if sign else number
 
     def initialize_variables(self) -> None:
         must_save_zp = self.parsed.clobberzp and self.parsed.restorezp
         if must_save_zp:
             self.p("; save zp")
             self.p("\t\tsei")
-            self.p("\t\tldx #2")
-            self.p("-\t\tlda $00,x")
-            self.p("\t\tsta _il65_zp_backup-2,x")
+            self.p("\t\tldx  #2")
+            self.p("-\t\tlda  $00,x")
+            self.p("\t\tsta  _il65_zp_backup-2,x")
             self.p("\t\tinx")
-            self.p("\t\tbne -")
+            self.p("\t\tbne  -")
 
         # Only the vars from the ZeroPage need to be initialized here,
         # the vars in all other blocks are just defined and pre-filled there.
@@ -135,22 +153,22 @@ class CodeGenerator:
             prev_value = 0  # type: Union[str, int, float]
             if vars_to_init:
                 self.p("; init zp vars")
-                self.p("\t\tlda #0\n\t\tldx #0")
+                self.p("\t\tlda  #0\n\t\tldx  #0")
                 for variable in vars_to_init:
                     vname = zpblock.label + "." + variable.name
                     vvalue = variable.value
                     if variable.type == DataType.BYTE:
                         if vvalue != prev_value:
-                            self.p("\t\tlda #${:02x}".format(vvalue))
+                            self.p("\t\tlda  #${:02x}".format(vvalue))
                             prev_value = vvalue
-                        self.p("\t\tsta {:s}".format(vname))
+                        self.p("\t\tsta  {:s}".format(vname))
                     elif variable.type == DataType.WORD:
                         if vvalue != prev_value:
-                            self.p("\t\tlda #<${:04x}".format(vvalue))
-                            self.p("\t\tldx #>${:04x}".format(vvalue))
+                            self.p("\t\tlda  #<${:04x}".format(vvalue))
+                            self.p("\t\tldx  #>${:04x}".format(vvalue))
                             prev_value = vvalue
-                        self.p("\t\tsta {:s}".format(vname))
-                        self.p("\t\tstx {:s}+1".format(vname))
+                        self.p("\t\tsta  {:s}".format(vname))
+                        self.p("\t\tstx  {:s}+1".format(vname))
                     elif variable.type == DataType.FLOAT:
                         raise TypeError("floats cannot be stored in the zp")
                 self.p("; end init zp vars")
@@ -160,20 +178,20 @@ class CodeGenerator:
             self.p("\t\t; there is no zp block to initialize")
         main_block_label = [b.label for b in self.parsed.blocks if b.name == "main"][0]
         if must_save_zp:
-            self.p("\t\tjsr {:s}.start\t\t; call user code".format(main_block_label))
+            self.p("\t\tjsr  {:s}.start\t\t; call user code".format(main_block_label))
             self.p("; restore zp")
             self.p("\t\tcld")
             self.p("\t\tphp\n\t\tpha\n\t\ttxa\n\t\tpha\n\t\tsei")
-            self.p("\t\tldx #2")
-            self.p("-\t\tlda _il65_zp_backup-2,x")
-            self.p("\t\tsta $00,x")
+            self.p("\t\tldx  #2")
+            self.p("-\t\tlda  _il65_zp_backup-2,x")
+            self.p("\t\tsta  $00,x")
             self.p("\t\tinx")
-            self.p("\t\tbne -")
+            self.p("\t\tbne  -")
             self.p("\t\tcli\n\t\tpla\n\t\ttax\n\t\tpla\n\t\tplp")
             self.p("\t\trts")
-            self.p("_il65_zp_backup\t\t.fill 254, 0")
+            self.p("_il65_zp_backup\t\t.fill  254, 0")
         else:
-            self.p("\t\tjmp {:s}.start\t\t; call user code".format(main_block_label))
+            self.p("\t\tjmp  {:s}.start\t\t; call user code".format(main_block_label))
 
     def blocks(self) -> None:
         # if there's a Zeropage block, it always goes first
@@ -230,13 +248,13 @@ class CodeGenerator:
                     self.p("\t\t{:s} = {:s}".format(vardef.name, self.to_hex(vardef.address)))
                 elif vardef.type == DataType.BYTEARRAY:
                     self.p("* = {:s}".format(self.to_hex(vardef.address)))
-                    self.p("{:s}\t\t.fill {:d}".format(vardef.name, vardef.length))
+                    self.p("{:s}\t\t.fill  {:d}".format(vardef.name, vardef.length))
                 elif vardef.type == DataType.WORDARRAY:
                     self.p("* = {:s}".format(self.to_hex(vardef.address)))
-                    self.p("{:s}\t\t.fill {:d}\t\t; {:d} words".format(vardef.name, vardef.length * 2, vardef.length))
+                    self.p("{:s}\t\t.fill  {:d}\t\t; {:d} words".format(vardef.name, vardef.length * 2, vardef.length))
                 elif vardef.type == DataType.MATRIX:
                     self.p("* = {:s}".format(self.to_hex(vardef.address)))
-                    self.p("{:s}\t\t.fill {:d}\t\t; matrix {:d}*{:d} bytes".format(vardef.name,
+                    self.p("{:s}\t\t.fill  {:d}\t\t; matrix {:d}*{:d} bytes".format(vardef.name,
                                                                                    vardef.matrixsize[0] * vardef.matrixsize[1],
                                                                                    vardef.matrixsize[0], vardef.matrixsize[1]))
                 else:
@@ -254,11 +272,11 @@ class CodeGenerator:
                         self.p("\t\t{:s} = {:s}".format(vardef.name, self.to_hex(vardef.address)))
                     else:
                         if vardef.type == DataType.BYTE:
-                            self.p("{:s}\t\t.byte {:s}".format(vardef.name, self.to_hex(int(vardef.value))))
+                            self.p("{:s}\t\t.byte  {:s}".format(vardef.name, self.to_hex(int(vardef.value))))
                         elif vardef.type == DataType.WORD:
-                            self.p("{:s}\t\t.word {:s}".format(vardef.name, self.to_hex(int(vardef.value))))
+                            self.p("{:s}\t\t.word  {:s}".format(vardef.name, self.to_hex(int(vardef.value))))
                         elif vardef.type == DataType.FLOAT:
-                            self.p("{:s}\t\t.byte ${:02x}, ${:02x}, ${:02x}, ${:02x}, ${:02x}"
+                            self.p("{:s}\t\t.byte  ${:02x}, ${:02x}, ${:02x}, ${:02x}, ${:02x}"
                                    .format(vardef.name, *self.to_mflpt5(float(vardef.value))))
                         else:
                             raise TypeError("weird datatype")
@@ -266,37 +284,37 @@ class CodeGenerator:
                     if vardef.address:
                         raise CodeError("array or wordarray vars must not have address; will be allocated by assembler")
                     if vardef.type == DataType.BYTEARRAY:
-                        self.p("{:s}\t\t.fill {:d}, ${:02x}".format(vardef.name, vardef.length, vardef.value or 0))
+                        self.p("{:s}\t\t.fill  {:d}, ${:02x}".format(vardef.name, vardef.length, vardef.value or 0))
                     elif vardef.type == DataType.WORDARRAY:
                         f_hi, f_lo = divmod(vardef.value or 0, 256)  # type: ignore
-                        self.p("{:s}\t\t.fill {:d}, [${:02x}, ${:02x}]\t; {:d} words of ${:04x}"
+                        self.p("{:s}\t\t.fill  {:d}, [${:02x}, ${:02x}]\t; {:d} words of ${:04x}"
                                .format(vardef.name, vardef.length * 2, f_lo, f_hi, vardef.length, vardef.value or 0))
                     else:
                         raise TypeError("invalid datatype", vardef.type)
                 elif vardef.type == DataType.MATRIX:
                     if vardef.address:
                         raise CodeError("matrix vars must not have address; will be allocated by assembler")
-                    self.p("{:s}\t\t.fill {:d}, ${:02x}\t\t; matrix {:d}*{:d} bytes"
+                    self.p("{:s}\t\t.fill  {:d}, ${:02x}\t\t; matrix {:d}*{:d} bytes"
                            .format(vardef.name,
                                    vardef.matrixsize[0] * vardef.matrixsize[1],
                                    vardef.value or 0,
                                    vardef.matrixsize[0], vardef.matrixsize[1]))
                 elif vardef.type == DataType.STRING:
                     # 0-terminated string
-                    self.p("{:s}\n\t\t.null {:s}".format(vardef.name, self.output_string(str(vardef.value))))
+                    self.p("{:s}\n\t\t.null  {:s}".format(vardef.name, self.output_string(str(vardef.value))))
                 elif vardef.type == DataType.STRING_P:
                     # pascal string
-                    self.p("{:s}\n\t\t.ptext {:s}".format(vardef.name, self.output_string(str(vardef.value))))
+                    self.p("{:s}\n\t\t.ptext  {:s}".format(vardef.name, self.output_string(str(vardef.value))))
                 elif vardef.type == DataType.STRING_S:
                     # 0-terminated string in screencode encoding
-                    self.p(".enc 'screen'")
-                    self.p("{:s}\n\t\t.null {:s}".format(vardef.name, self.output_string(str(vardef.value), True)))
-                    self.p(".enc 'none'")
+                    self.p(".enc  'screen'")
+                    self.p("{:s}\n\t\t.null  {:s}".format(vardef.name, self.output_string(str(vardef.value), True)))
+                    self.p(".enc  'none'")
                 elif vardef.type == DataType.STRING_PS:
                     # 0-terminated pascal string in screencode encoding
-                    self.p(".enc 'screen'")
-                    self.p("{:s}\n\t\t.ptext {:s}".format(vardef.name, self.output_string(str(vardef.value), True)))
-                    self.p(".enc 'none'")
+                    self.p(".enc  'screen'")
+                    self.p("{:s}\n\t\t.ptext  {:s}".format(vardef.name, self.output_string(str(vardef.value), True)))
+                    self.p(".enc  'none'")
                 else:
                     raise CodeError("unknown variable type " + str(vardef.type))
 
@@ -304,17 +322,17 @@ class CodeGenerator:
         if isinstance(stmt, ParseResult.ReturnStmt):
             if stmt.a:
                 if isinstance(stmt.a, ParseResult.IntegerValue):
-                    self.p("\t\tlda #{:d}".format(stmt.a.value))
+                    self.p("\t\tlda  #{:d}".format(stmt.a.value))
                 else:
                     raise CodeError("can only return immediate values for now")  # XXX
             if stmt.x:
                 if isinstance(stmt.x, ParseResult.IntegerValue):
-                    self.p("\t\tldx #{:d}".format(stmt.x.value))
+                    self.p("\t\tldx  #{:d}".format(stmt.x.value))
                 else:
                     raise CodeError("can only return immediate values for now")  # XXX
             if stmt.y:
                 if isinstance(stmt.y, ParseResult.IntegerValue):
-                    self.p("\t\tldy #{:d}".format(stmt.y.value))
+                    self.p("\t\tldy  #{:d}".format(stmt.y.value))
                 else:
                     raise CodeError("can only return immediate values for now")  # XXX
             self.p("\t\trts")
@@ -331,32 +349,32 @@ class CodeGenerator:
                 if isinstance(stmt.what, ParseResult.RegisterValue):
                     if stmt.howmuch == 1:
                         if stmt.what.register == 'A':
-                            self.p("\t\tadc #1")
+                            self.p("\t\tadc  #1")
                         else:
                             self.p("\t\tin{:s}".format(stmt.what.register.lower()))
                     else:
                         if stmt.what.register == 'A':
-                            self.p("\t\tsbc #1")
+                            self.p("\t\tsbc  #1")
                         else:
                             self.p("\t\tde{:s}".format(stmt.what.register.lower()))
                 elif isinstance(stmt.what, ParseResult.MemMappedValue):
                     r_str = stmt.what.name or self.to_hex(stmt.what.address)
                     if stmt.what.datatype == DataType.BYTE:
                         if stmt.howmuch == 1:
-                            self.p("\t\tinc " + r_str)
+                            self.p("\t\tinc  " + r_str)
                         else:
-                            self.p("\t\tdec " + r_str)
+                            self.p("\t\tdec  " + r_str)
                     elif stmt.what.datatype == DataType.WORD:
                         # @todo verify this asm code
                         if stmt.howmuch == 1:
-                            self.p("\t\tinc " + r_str)
+                            self.p("\t\tinc  " + r_str)
                             self.p("\t\tbne  +")
-                            self.p("\t\tinc {:s}+1".format(r_str))
+                            self.p("\t\tinc  {:s}+1".format(r_str))
                             self.p("+")
                         else:
-                            self.p("\t\tdec " + r_str)
+                            self.p("\t\tdec  " + r_str)
                             self.p("\t\tbne  +")
-                            self.p("\t\tdec {:s}+1".format(r_str))
+                            self.p("\t\tdec  {:s}+1".format(r_str))
                             self.p("+")
                     else:
                         raise CodeError("cannot in/decrement memory of type " + str(stmt.what.datatype))
@@ -378,15 +396,15 @@ class CodeGenerator:
                     if stmt.preserve_regs:
                         clobbered = stmt.subroutine.clobbered_registers
                     else:
-                        clobbered = []
+                        clobbered = set()
                         self.reg_values['A'] = self.reg_values['X'] = self.reg_values['Y'] = None
                     with self.save_registers_for_subroutine_call(clobbered, stmt.is_goto):
-                        self.p("\t\tjsr " + call_target)
+                        self.p("\t\tjsr  " + call_target)
                     return
             if stmt.is_goto:
-                self.p("\t\tjmp " + call_target)
+                self.p("\t\tjmp  " + call_target)
             else:
-                self.p("\t\tjsr " + call_target)
+                self.p("\t\tjsr  " + call_target)
         elif isinstance(stmt, ParseResult.InlineAsm):
             self.p("\t\t; inline asm, src l. {:d}".format(stmt.linenum))
             for line in stmt.asmlines:
@@ -403,9 +421,9 @@ class CodeGenerator:
             # @todo optimize below if there are multiple lvalues that require a pha/pla, do it just once and reuse the value
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):
-                    self.generate_assign_immediate_integer_to_reg(lv.register, r_str, stmt.right.value)
+                    self.generate_assign_integer_to_reg(lv.register, r_str, stmt.right.value)
                 elif isinstance(lv, ParseResult.MemMappedValue):
-                    self.generate_assign_immediate_integer_to_mem(lv, r_str, stmt.right.value)
+                    self.generate_assign_integer_to_mem(lv, r_str, stmt.right.value)
                 else:
                     raise CodeError("invalid assignment target (1)", str(stmt))
         elif isinstance(stmt.right, ParseResult.RegisterValue):
@@ -462,15 +480,15 @@ class CodeGenerator:
         else:
             self.p("\t\t\t\t\t; {:s} = {}".format(target, floatvalue))
         for num in range(5):
-            self.p("\t\tlda #${:02x}".format(mflpt[num]))
-            self.p("\t\tsta {:s}+{:d}".format(target, num))
+            self.p("\t\tlda  #${:02x}".format(mflpt[num]))
+            self.p("\t\tsta  {:s}+{:d}".format(target, num))
         if emit_pha:
             self.p("\t\tpla")
 
     def generate_assign_mem_to_reg(self, l_register: str, r_str: str) -> None:
         # Register = memory (byte)
         if l_register in ('A', 'X', 'Y'):
-            self.p("\t\tld{:s} {:s}".format(l_register.lower(), r_str))
+            self.p("\t\tld{:s}  {:s}".format(l_register.lower(), r_str))
             self.reg_values[l_register] = None
         else:
             raise CodeError("invalid register for memory byte assignment", l_register, r_str)
@@ -479,18 +497,18 @@ class CodeGenerator:
         # Memory = Register
         lv_string = lv.name or self.to_hex(lv.address)
         if lv.datatype == DataType.BYTE:
-            self.p("\t\tst{:s} {}".format(r_register.lower(), lv_string))
+            self.p("\t\tst{:s}  {}".format(r_register.lower(), lv_string))
         elif lv.datatype == DataType.WORD:
-            self.p("\t\tst{:s} {}".format(r_register.lower(), lv_string))  # lsb
+            self.p("\t\tst{:s}  {}".format(r_register.lower(), lv_string))  # lsb
             # now set the msb to zero
             if self.reg_values['X'] == 0:
-                self.p("\t\tstx {}+1".format(lv_string))
+                self.p("\t\tstx  {}+1".format(lv_string))
             elif self.reg_values['Y'] == 0:
-                self.p("\t\tsty {}+1".format(lv_string))
+                self.p("\t\tsty  {}+1".format(lv_string))
             elif self.reg_values['A'] == 0:
-                self.p("\t\tsta {}+1".format(lv_string))
+                self.p("\t\tsta  {}+1".format(lv_string))
             else:
-                self.p("\t\tstx ${0:02x}\n\t\tldx #0\n\t\tstx {1}+1\n\t\tldx ${0:02x}"
+                self.p("\t\tstx  ${0:02x}\n\t\tldx  #0\n\t\tstx  {1}+1\n\t\tldx  ${0:02x}"
                        .format(Zeropage.SCRATCH_B1, lv_string))
         else:
             raise CodeError("invalid lvalue type", lv.datatype)
@@ -508,7 +526,7 @@ class CodeGenerator:
                     self.reg_values['Y'] = self.reg_values['A']
                 else:
                     # x -> y, 6502 doesn't have txy
-                    self.p("\t\tstx ${0:02x}\n\t\tldy ${0:02x}".format(Zeropage.SCRATCH_B1))
+                    self.p("\t\tstx  ${0:02x}\n\t\tldy  ${0:02x}".format(Zeropage.SCRATCH_B1))
                     self.reg_values['Y'] = self.reg_values['X']
             elif lv.register == 'X':
                 if r_register == 'A':
@@ -517,24 +535,24 @@ class CodeGenerator:
                     self.reg_values['X'] = self.reg_values['A']
                 else:
                     # y -> x, 6502 doesn't have tyx
-                    self.p("\t\tsty ${0:02x}\n\t\tldx ${0:02x}".format(Zeropage.SCRATCH_B1))
+                    self.p("\t\tsty  ${0:02x}\n\t\tldx  ${0:02x}".format(Zeropage.SCRATCH_B1))
                     self.reg_values['X'] = self.reg_values['Y']
             elif lv.register in REGISTER_WORDS:
                 if len(r_register) == 1:
                     raise CodeError("need register pair to assign to other register pair")
                 if lv.register == "AX" and r_register == "AY":
                     # y -> x, 6502 doesn't have tyx
-                    self.p("\t\tsty ${0:02x}\n\t\tldx ${0:02x}".format(Zeropage.SCRATCH_B1))
+                    self.p("\t\tsty  ${0:02x}\n\t\tldx  ${0:02x}".format(Zeropage.SCRATCH_B1))
                     self.reg_values['X'] = self.reg_values['Y']
                 elif lv.register == "AX" and r_register == "XY":
                     self.p("\t\ttxa")
                     # y -> x, 6502 doesn't have tyx
-                    self.p("\t\tsty ${0:02x}\n\t\tldx ${0:02x}".format(Zeropage.SCRATCH_B1))
+                    self.p("\t\tsty  ${0:02x}\n\t\tldx  ${0:02x}".format(Zeropage.SCRATCH_B1))
                     self.reg_values['A'] = self.reg_values['X']
                     self.reg_values['X'] = self.reg_values['Y']
                 elif lv.register == "AY" and r_register == "AX":
                     # x -> y, 6502 doesn't have txy
-                    self.p("\t\tstx ${0:02x}\n\t\tldy ${0:02x}".format(Zeropage.SCRATCH_B1))
+                    self.p("\t\tstx  ${0:02x}\n\t\tldy  ${0:02x}".format(Zeropage.SCRATCH_B1))
                     self.reg_values['Y'] = self.reg_values['X']
                 elif lv.register == "AY" and r_register == "XY":
                     self.p("\t\ttxa")
@@ -542,7 +560,7 @@ class CodeGenerator:
                 elif lv.register == "XY" and r_register == "AX":
                     self.p("\t\ttax")
                     # x -> y, 6502 doesn't have txy
-                    self.p("\t\tstx ${0:02x}\n\t\tldy ${0:02x}".format(Zeropage.SCRATCH_B1))
+                    self.p("\t\tstx  ${0:02x}\n\t\tldy  ${0:02x}".format(Zeropage.SCRATCH_B1))
                     self.reg_values['X'] = self.reg_values['A']
                     self.reg_values['Y'] = self.reg_values['X']
                 elif lv.register == "XY" and r_register == "AY":
@@ -589,16 +607,16 @@ class CodeGenerator:
         if is_goto:
             self.p("\t\trts")
 
-    def generate_assign_immediate_integer_to_mem(self, lv: ParseResult.MemMappedValue, const_str: str, const_value: int) -> None:
-        with self.save_a_reg_for_assignment(const_value):
+    def generate_assign_integer_to_mem(self, lv: ParseResult.MemMappedValue, r_str: str, r_value: int) -> None:
+        with self.save_a_reg_for_assignment(r_value):
             if not lv.name:
                 # assign a single byte value to a memory location
-                if not DataType.BYTE.assignable_from_value(const_value):
+                if not DataType.BYTE.assignable_from_value(r_value):
                     raise OverflowError("const value doesn't fit in a byte")
-                if self.reg_values['A'] != const_value:
-                    self.p("\t\tlda #" + const_str)
-                    self.reg_values['A'] = const_value
-                self.p("\t\tsta " + self.to_hex(lv.address))
+                if self.reg_values['A'] != r_value:
+                    self.p("\t\tlda #" + r_str)
+                    self.reg_values['A'] = r_value
+                self.p("\t\tsta  " + self.to_hex(lv.address))
                 return
             # assign constant value to a memory location by symbol name
             symblock, sym = self.parsed.lookup_symbol(lv.name, self.cur_block)
@@ -607,22 +625,22 @@ class CodeGenerator:
                 if symblock is not self.cur_block:
                     assign_target = symblock.label + "." + sym.name
                 if sym.type == DataType.BYTE:
-                    if not DataType.BYTE.assignable_from_value(const_value):
+                    if not DataType.BYTE.assignable_from_value(r_value):
                         raise OverflowError("const value doesn't fit in a byte")
-                    if self.reg_values['A'] != const_value:
-                        self.p("\t\tlda #" + const_str)
-                        self.reg_values['A'] = const_value
-                    self.p("\t\tsta " + assign_target)
+                    if self.reg_values['A'] != r_value:
+                        self.p("\t\tlda  #" + r_str)
+                        self.reg_values['A'] = r_value
+                    self.p("\t\tsta  " + assign_target)
                 elif sym.type == DataType.WORD:
-                    p1 = "\t\tlda #<" + const_str
-                    p2 = "\t\tlda #>" + const_str
+                    p1 = "\t\tlda  #<" + r_str
+                    p2 = "\t\tlda  #>" + r_str
                     self.p(p1)
-                    self.p("\t\tsta " + assign_target)
+                    self.p("\t\tsta  " + assign_target)
                     self.p(p2)
-                    self.reg_values['A'] = const_value
-                    self.p("\t\tsta {}+1".format(assign_target))
+                    self.reg_values['A'] = r_value
+                    self.p("\t\tsta  {}+1".format(assign_target))
                 elif sym.type == DataType.FLOAT:
-                    floatvalue = float(const_value)
+                    floatvalue = float(r_value)
                     self.generate_store_immediate_float(lv, floatvalue, self.to_mflpt5(floatvalue), False)
                 else:
                     raise TypeError("invalid lvalue type " + str(sym))
@@ -632,18 +650,18 @@ class CodeGenerator:
     def generate_assign_mem_to_mem(self, lv: ParseResult.MemMappedValue, r_str: str) -> None:
         # Address/Memory = Memory (byte)
         with self.save_a_reg_for_assignment(None):
-            self.p("\t\tlda " + r_str)
+            self.p("\t\tlda  " + r_str)
             self.reg_values['A'] = None
-            self.p("\t\tsta " + (lv.name or self.to_hex(lv.address)))
+            self.p("\t\tsta  " + (lv.name or self.to_hex(lv.address)))
 
     def generate_assign_char_to_memory(self, lv: ParseResult.MemMappedValue, char_str: str) -> None:
         # Memory = Character
         with self.save_a_reg_for_assignment(char_str):
             if self.reg_values['A'] != char_str:
-                self.p("\t\tlda #" + char_str)
+                self.p("\t\tlda  #" + char_str)
                 self.reg_values['A'] = char_str
             if not lv.name:
-                self.p("\t\tsta " + self.to_hex(lv.address))
+                self.p("\t\tsta  " + self.to_hex(lv.address))
                 return
             # assign char value to a memory location by symbol name
             symblock, sym = self.parsed.lookup_symbol(lv.name, self.cur_block)
@@ -652,18 +670,19 @@ class CodeGenerator:
                 if symblock is not self.cur_block:
                     assign_target = symblock.label + "." + sym.name
                 if sym.type == DataType.BYTE:
-                    self.p("\t\tsta " + assign_target)
+                    self.p("\t\tsta  " + assign_target)
                 elif sym.type == DataType.WORD:
-                    self.p("\t\tsta " + assign_target)
-                    self.p("\t\tlda #0")
+                    self.p("\t\tsta  " + assign_target)
+                    self.p("\t\tlda  #0")
                     self.reg_values['A'] = 0
-                    self.p("\t\tsta {}+1".format(assign_target))
+                    self.p("\t\tsta  {}+1".format(assign_target))
                 else:
                     raise TypeError("invalid lvalue type " + str(sym))
             else:
                 raise TypeError("invalid lvalue type " + str(sym))
 
-    def generate_assign_immediate_integer_to_reg(self, l_register: str, r_str: str, r_value: int) -> None:
+    def generate_assign_integer_to_reg(self, l_register: str, r_str: str, r_value: Optional[int]) -> None:
+        # @todo deal with value = None / 0 (incorrect assignment code generated)
         if l_register in ('A', 'X', 'Y'):
             if self.reg_values[l_register] != r_value:
                 # optimize to txa/tax/tya/tay if possible
@@ -676,7 +695,7 @@ class CodeGenerator:
                 elif l_register == 'Y' and self.reg_values['A'] == r_value:
                     self.p("\t\ttay")
                 else:
-                    self.p("\t\tld{:s} #{:s}".format(l_register.lower(), r_str))
+                    self.p("\t\tld{:s}  #{:s}".format(l_register.lower(), r_str))
                 self.reg_values[l_register] = r_value
         elif l_register == "SC":
             # set/clear S carry bit
@@ -686,8 +705,8 @@ class CodeGenerator:
                 self.p("\t\tclc")
         elif l_register in REGISTER_WORDS:
             high, low = divmod(r_value, 256)
-            self.generate_assign_immediate_integer_to_reg(l_register[0], "<" + r_str, low)
-            self.generate_assign_immediate_integer_to_reg(l_register[1], ">" + r_str, high)
+            self.generate_assign_integer_to_reg(l_register[0], "<" + r_str, low)
+            self.generate_assign_integer_to_reg(l_register[1], ">" + r_str, high)
         else:
             raise CodeError("invalid register in immediate integer assignment", l_register, r_value)
 
@@ -697,15 +716,15 @@ class CodeGenerator:
             raise CodeError("invalid register for char assignment", lv.register)
         if (lv.register == 'A' and self.reg_values['A'] != char_str) or \
                 (lv.register in ('X', 'Y') and self.reg_values[lv.register] != char_str):
-            self.p("\t\tld{:s} #{:s}".format(lv.register.lower(), char_str))
+            self.p("\t\tld{:s}  #{:s}".format(lv.register.lower(), char_str))
             self.reg_values[lv.register] = char_str
 
     def generate_assign_string_to_reg(self, lv: ParseResult.RegisterValue, rvalue: ParseResult.StringValue) -> None:
         if lv.register not in ("AX", "AY", "XY"):
             raise CodeError("need register pair AX, AY or XY for string address assignment", lv.register)
         if rvalue.name:
-            self.p("\t\tld{:s} #<{:s}".format(lv.register[0].lower(), rvalue.name))
-            self.p("\t\tld{:s} #>{:s}".format(lv.register[1].lower(), rvalue.name))
+            self.p("\t\tld{:s}  #<{:s}".format(lv.register[0].lower(), rvalue.name))
+            self.p("\t\tld{:s}  #>{:s}".format(lv.register[1].lower(), rvalue.name))
             self.reg_values[lv.register[0]] = None
             self.reg_values[lv.register[1]] = None
         else:
@@ -715,10 +734,10 @@ class CodeGenerator:
         if lv.datatype != DataType.WORD:
             raise CodeError("need word memory type for string address assignment")
         if rvalue.name:
-            self.p("\t\tlda #<{:s}".format(rvalue.name))
-            self.p("\t\tsta " + self.to_hex(lv.address))
-            self.p("\t\tlda #>{:s}".format(rvalue.name))
-            self.p("\t\tsta " + self.to_hex(lv.address+1))
+            self.p("\t\tlda  #<{:s}".format(rvalue.name))
+            self.p("\t\tsta  " + self.to_hex(lv.address))
+            self.p("\t\tlda  #>{:s}".format(rvalue.name))
+            self.p("\t\tsta  " + self.to_hex(lv.address+1))
             self.reg_values["A"] = None
         else:
             raise CodeError("cannot assign immediate string, it should be a string variable")

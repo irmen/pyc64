@@ -85,7 +85,7 @@ data types:
 
     Note: for many floating point operations, the compiler uses routines in the C64 BASIC and KERNAL ROMs.
     So they will only work if the BASIC ROM (and KERNAL ROM) are banked in.
-    largest 5-byte MFLPT float: 1.70141183e+38   (negative: -1.70141183e+38)
+    largest 5-byte MFLPT float: 1.7014118345e+38   (negative: -1.7014118345e+38)
 
 
     Note: with the ^ prefix you can take the address of something. This is sometimes useful,
@@ -137,9 +137,7 @@ MACROS
 during the compilation, and produces output value that is then replaced on that point in the input source.
 Allows us to create pre calculated sine tables and such. Something like:
 
-        var .array sinetable {
-                [sin(x) * 10 for x in range(100)]
-        }
+        var .array sinetable ``[sin(x) * 10 for x in range(100)]``
 
 
 

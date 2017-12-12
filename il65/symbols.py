@@ -30,7 +30,6 @@ class DataType(enum.Enum):
     STRING_P = 8
     STRING_S = 9
     STRING_PS = 10
-    # @todo the integers are all unsigned, also support signed byte, word, bytearray, wordarray.
 
     def assignable_from_value(self, value: Union[int, float]) -> bool:
         if self == DataType.BYTE:

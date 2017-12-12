@@ -18,8 +18,8 @@ from symbols import SymbolTable, Zeropage, DataType, SymbolDefinition, Subroutin
 
 
 # 5-byte cbm MFLPT format limitations:
-FLOAT_MAX_NEGATIVE = -1.70141183e+38
-FLOAT_MAX_POSITIVE = 1.70141183e+38
+FLOAT_MAX_POSITIVE = 1.7014118345e+38
+FLOAT_MAX_NEGATIVE = -1.7014118345e+38
 
 RESERVED_NAMES = {"true", "false", "var", "memory", "const", "asm"}
 RESERVED_NAMES |= REGISTER_SYMBOLS
@@ -87,14 +87,20 @@ class ParseResult:
             return "<Placeholder unresolved {:s}>".format(self.name)
 
     class IntegerValue(Value):
-        def __init__(self, value: int, name: str=None) -> None:
+        def __init__(self, value: Optional[int], *, datatype: DataType=None, name: str=None) -> None:
             if type(value) is int:
-                if 0 <= value < 0x100:
-                    super().__init__(DataType.BYTE, name, True)
-                elif value < 0x10000:
-                    super().__init__(DataType.WORD, name, True)
+                if datatype is None:
+                    if 0 <= value < 0x100:
+                        datatype = DataType.BYTE
+                    elif value < 0x10000:
+                        datatype = DataType.WORD
+                    else:
+                        raise OverflowError("value too big: ${:x}".format(value))
                 else:
-                    raise OverflowError("value too big: ${:x}".format(value))
+                    faultreason = check_value_in_range(datatype, "", 1, value)
+                    if faultreason:
+                        raise OverflowError(faultreason)
+                super().__init__(datatype, name, True)
             else:
                 raise TypeError("invalid data type")
             self.value = value
@@ -111,7 +117,7 @@ class ParseResult:
                 return other.datatype == self.datatype and other.value == self.value and other.name == self.name
 
         def __str__(self):
-            return "<IntegerValue {:d} name={}>".format(self.value, self.name)
+            return "<IntegerValue {} name={}>".format(self.value, self.name)
 
     class FloatValue(Value):
         def __init__(self, value: float, name: str=None) -> None:
@@ -1043,7 +1049,7 @@ class Parser:
             if isinstance(expression, ParseResult.StringValue):
                 return expression
             elif isinstance(expression, ParseResult.MemMappedValue):
-                return ParseResult.IntegerValue(expression.address, expression.name)
+                return ParseResult.IntegerValue(expression.address, datatype=DataType.WORD, name=expression.name)
             elif isinstance(expression, ParseResult.PlaceholderSymbol):
                 raise self.PError("cannot take the address from an unresolved symbol")
             else:
