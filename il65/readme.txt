@@ -200,6 +200,18 @@ il65_if_999     ... (true part)
 il65_if_999_end ; code continues after this
 
 
+IF  X  <COMPARISON>  Y:
+-----------------------
+
+==> DESUGARING ==>
+   compare X, Y
+   if_XX go ....
+   XX based on <COMPARISON>.
+
+
+
+
+
 WHILE:
 ------
 while[_XX] <expression> {
