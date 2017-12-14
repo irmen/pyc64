@@ -21,10 +21,22 @@ import "c64lib"
 		var .float flt_half_pi		 1.5707963267948966
 		var .float flt_double_pi	 6.283185307179586
 		var .float flt_point25		 .25
+		memory .word  some_address     $ccdd
+		memory .byte  some_addressb    $ccee
 
 
 start
-        AY = ^flt_pi                    ; @todo generates invalid assembly output!
+        AY = ^flt_pi
+        [some_address] = ^flt_pi
+        [some_address] = ^flt_pi
+        [some_address] = ^flt_pi
+        [some_address] = 4123.2342342222
+        [some_address] = 4123.2342342222
+        [some_address] = 4123.2342342222
+        [some_address.word] = ^flt_pi
+        [some_address.word] = ^flt_pi
+        [some_address.word] = ^flt_pi
+        [$c000.word] = ^flt_pi
         asm {
                 lda     #<flt_pi
                 ldy     #>flt_pi

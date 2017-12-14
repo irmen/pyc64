@@ -80,6 +80,8 @@ class LabelDef(SymbolDefinition):
 
 
 class VariableDef(SymbolDefinition):
+    # if address is None, it's a dynamically allocated variable.
+    # if address is not None, it's a memory mapped variable (=memory address referenced by a name).
     def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int,
                  datatype: DataType, allocate: bool, *,
                  value: Union[int, float, str], length: int, address: Optional[int]=None,
@@ -91,6 +93,10 @@ class VariableDef(SymbolDefinition):
         self.value = value
         self.register = register
         self.matrixsize = matrixsize
+
+    @property
+    def is_memmap(self):
+        return self.address is not None
 
     def __repr__(self):
         return "<Variable {:s}.{:s}, {:s}, addr {:s}, len {:s}, value {:s}>"\
@@ -224,7 +230,8 @@ class SymbolTable:
         range_error = check_value_in_range(datatype, register, length, value)
         if range_error:
             raise ValueError(range_error)
-        value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)
+        if type(value) in (int, float):
+            _, value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)   # type: ignore
         allocate = address is None
         if datatype == DataType.BYTE:
             if allocate and blockname == "ZP":
@@ -277,7 +284,8 @@ class SymbolTable:
         # this defines a new constant and also checks if the value is allowed for the data type.
         assert value is not None
         self.check_identifier_valid(name)
-        value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)
+        if type(value) in (int, float):
+            _, value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)   # type: ignore
         range_error = check_value_in_range(datatype, "", length, value)
         if range_error:
             raise ValueError(range_error)
@@ -291,17 +299,19 @@ class SymbolTable:
 
 
 def trunc_float_if_needed(sourcefile: str, linenum: int, datatype: DataType,
-                          value: Union[int, float, str]) -> Union[int, float, str]:
+                          value: Union[int, float]) -> Tuple[bool, Union[int, float]]:
+    if type(value) not in (int, float):
+        raise TypeError("can only truncate numbers")
     if datatype == DataType.FLOAT or type(value) is int or type(value) is str:
-        return value
+        return False, value
     frac = math.modf(value)     # type: ignore
     if frac == 0:
-        return value
+        return False, value
     if datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX):
         print("warning: {:s}:{:d}: Float value truncated.".format(sourcefile, linenum))
-        return int(value)
+        return True, int(value)
     elif datatype == DataType.FLOAT:
-        return value
+        return False, value
     else:
         raise TypeError("invalid datatype passed")
 
@@ -312,14 +322,20 @@ def check_value_in_range(datatype: DataType, register: str, length: int, value: 
             if value < 0 or value > 0xff:  # type: ignore
                 return "value out of range, must be (unsigned) byte for a single register"
         elif register in REGISTER_WORDS:
+            if value is None and datatype in (DataType.BYTE, DataType.WORD):
+                return None
             if value < 0 or value > 0xffff:  # type: ignore
                 return "value out of range, must be (unsigned) word for 2 combined registers"
         else:
             return "strange register..."
     elif datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX):
+        if value is None and datatype == DataType.BYTE:
+            return None
         if value < 0 or value > 0xff:       # type: ignore
             return "value out of range, must be (unsigned) byte"
     elif datatype in (DataType.WORD, DataType.WORDARRAY):
+        if value is None and datatype in (DataType.BYTE, DataType.WORD):
+            return None
         if value < 0 or value > 0xffff:     # type: ignore
             return "value out of range, must be (unsigned) word"
     elif datatype in STRING_DATATYPES:

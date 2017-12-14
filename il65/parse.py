@@ -101,9 +101,14 @@ class ParseResult:
                     if faultreason:
                         raise OverflowError(faultreason)
                 super().__init__(datatype, name, True)
+                self.value = value
+            elif value is None:
+                if not name:
+                    raise ValueError("when integer value is not given, the name symbol should be speicified")
+                super().__init__(datatype, name, True)
+                self.value = None
             else:
                 raise TypeError("invalid data type")
-            self.value = value
 
         def __hash__(self):
             return hash((self.datatype, self.value, self.name))
@@ -206,7 +211,7 @@ class ParseResult:
             return False, "incompatible value for assignment"
 
     class MemMappedValue(Value):
-        def __init__(self, address: int, datatype: DataType, length: int, name: str=None, constant: bool=False) -> None:
+        def __init__(self, address: Optional[int], datatype: DataType, length: int, name: str=None, constant: bool=False) -> None:
             super().__init__(datatype, name, constant)
             self.address = address
             self.length = length
@@ -224,15 +229,28 @@ class ParseResult:
                        other.length == self.length and other.name == self.name
 
         def __str__(self):
-            return "<MemMappedValue ${:04x} type={:s} #={:d} name={} constant={}>"\
-                .format(self.address, self.datatype, self.length, self.name, self.constant)
+            addr = "" if self.address is None else "${:04x}".format(self.address)
+            return "<MemMappedValue {:s} type={:s} #={:d} name={} constant={}>"\
+                .format(addr, self.datatype, self.length, self.name, self.constant)
 
         def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
             if self.constant:
                 return False, "cannot assign to a constant"
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True, ""
-            elif self.datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
+            if self.datatype == DataType.BYTE:
+                if isinstance(other, (ParseResult.IntegerValue, ParseResult.RegisterValue)):
+                    if other.datatype == DataType.BYTE:
+                        return True, ""
+                    return False, "can't assign non-byte to byte"
+                elif isinstance(other, ParseResult.FloatValue):
+                    range_error = check_value_in_range(self.datatype, "", 1, other.value)
+                    if range_error:
+                        return False, range_error
+                    return True, ""
+                else:
+                    return False, "(unsigned) byte required"
+            elif self.datatype in (DataType.WORD, DataType.FLOAT):
                 if isinstance(other, (ParseResult.IntegerValue, ParseResult.FloatValue)):
                     range_error = check_value_in_range(self.datatype, "", 1, other.value)
                     if range_error:
@@ -963,7 +981,9 @@ class Parser:
                 raise self.PError("cannot assign {0} to {1}; {2}".format(r_value, lv, reason))
             if lv.datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX):
                 if isinstance(r_value, ParseResult.FloatValue):
-                    trunc_float_if_needed(self.sourcefile, self.cur_linenum, lv.datatype, r_value.value)  # for the warning
+                    truncated, value = trunc_float_if_needed(self.sourcefile, self.cur_linenum, lv.datatype, r_value.value)
+                    if truncated:
+                        r_value = ParseResult.IntegerValue(int(value), datatype=lv.datatype, name=r_value.name)
         return ParseResult.AssignmentStmt(l_values, r_value, self.cur_linenum)
 
     def parse_return(self, line: str) -> ParseResult.ReturnStmt:
@@ -1094,13 +1114,10 @@ class Parser:
                     return ParseResult.RegisterValue(sym.register, sym.type, name=symbolname)
                 elif sym.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
                     if isinstance(sym, ConstantDef):
-                        symbolvalue = sym.value or 0
+                        symbolvalue = sym.value
                     else:
-                        symbolvalue = sym.address or 0
-                    if type(symbolvalue) is int:
-                        return ParseResult.MemMappedValue(int(symbolvalue), sym.type, sym.length, name=symbolname, constant=constant)
-                    else:
-                        raise TypeError("integer symbol required")
+                        symbolvalue = sym.address
+                    return ParseResult.MemMappedValue(symbolvalue, sym.type, sym.length, name=symbolname, constant=constant)  # type:ignore
                 elif sym.type in STRING_DATATYPES:
                     return ParseResult.StringValue(sym.value, name=symbolname, constant=constant)      # type: ignore
                 elif sym.type == DataType.MATRIX:
@@ -1113,27 +1130,42 @@ class Parser:
                 raise self.PError("invalid symbol type (2)")
         elif text.startswith('[') and text.endswith(']'):
             num_or_name = text[1:-1].strip()
+            word_type = float_type = False
+            if num_or_name.endswith(".word"):
+                word_type = True
+                num_or_name = num_or_name[:-5]
+            elif num_or_name.endswith(".float"):
+                float_type = True
+                num_or_name = num_or_name[:-6]
             if num_or_name.isidentifier():
                 try:
                     sym = cur_block.symbols[num_or_name]    # type: ignore
                 except KeyError:
                     raise self.PError("unknown symbol (2): " + num_or_name)
                 if isinstance(sym, ConstantDef):
+                    if sym.type == DataType.BYTE and (word_type or float_type):
+                        raise self.PError("byte value required")
+                    elif sym.type == DataType.WORD and float_type:
+                        raise self.PError("word value required")
                     if type(sym.value) is int:
-                        return ParseResult.MemMappedValue(int(sym.value), sym.type, length=sym.length, name=sym.name)
+                        return ParseResult.MemMappedValue(int(sym.value), sym.type, sym.length, sym.name)
                     else:
                         raise TypeError("integer required")
+                elif isinstance(sym, VariableDef):
+                    if sym.type == DataType.BYTE and (word_type or float_type):
+                        raise self.PError("byte value required")
+                    elif sym.type == DataType.WORD and float_type:
+                        raise self.PError("word value required")
+                    return ParseResult.MemMappedValue(sym.address, sym.type, sym.length, sym.name)
                 else:
                     raise self.PError("invalid symbol type used as lvalue of assignment (3)")
             else:
-                if num_or_name.endswith(".word"):
-                    addr = self.parse_integer(num_or_name[:-5])
+                addr = self.parse_integer(num_or_name)
+                if word_type:
                     return ParseResult.MemMappedValue(addr, DataType.WORD, length=1)
-                elif num_or_name.endswith(".float"):
-                    addr = self.parse_integer(num_or_name[:-6])
+                elif float_type:
                     return ParseResult.MemMappedValue(addr, DataType.FLOAT, length=1)
                 else:
-                    addr = self.parse_integer(num_or_name)
                     return ParseResult.MemMappedValue(addr, DataType.BYTE, length=1)
         else:
             raise self.PError("invalid value '" + text + "'")
@@ -1246,25 +1278,7 @@ class Optimizer:
         for block in self.parsed.blocks:
             self.combine_assignments_into_multi(block)
             self.optimize_multiassigns(block)
-            self.discard_assignments_without_effect(block)
         return self.parsed
-
-    def discard_assignments_without_effect(self, block: ParseResult.Block) -> None:
-        # consecutive assignment statements with same lvalue should be removed and only keep the last one
-        statements = list(block.statements)
-        previous_assignment_idx = -1
-        for i, stmt in enumerate(statements):
-            if isinstance(stmt, ParseResult.AssignmentStmt):
-                if previous_assignment_idx >= 0:
-                    pa = statements[previous_assignment_idx]
-                    if isinstance(pa, ParseResult.AssignmentStmt):
-                        if pa.leftvalues == stmt.leftvalues:
-                            print("{:s}:{:d} assignment without effect removed".format(block.sourcefile, pa.linenum))
-                            statements[previous_assignment_idx] = None
-                previous_assignment_idx = i
-            else:
-                previous_assignment_idx = -1
-        block.statements = [s for s in statements if s]
 
     def optimize_multiassigns(self, block: ParseResult.Block) -> None:
         # optimize multi-assign statements.
