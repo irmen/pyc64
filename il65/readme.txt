@@ -314,7 +314,7 @@ ISOLATION (register preservation when calling subroutines):  @todo isolation
 
  isolate [regs] { .... }       that adds register preservation around the containing code default = all 3 regs, or specify which.
  fcall          ->      fastcall, doesn't do register preservations
- call           ->      as before, alsways does it, even when in isolate block
+ call           ->      as before, alsways does it, even when already in isolate block
 
 
 

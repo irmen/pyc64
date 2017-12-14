@@ -440,7 +440,7 @@ class ScreenAndMemory:
             self.memory[0x0400 + self.cursor] ^= 0x80
 
     # ASCII-to-PETSCII translation table
-    # (non-ascii symbols supported:  £ ↑ ⬆ ← ⬅ ♠ ♥ ♦ ♣ π ● ○ )
+    # Unicode symbols supported that map to a PETSCII character:  £ ↑ ← ♠ ♥ ♦ ♣ π ● ○ and various others
     ascii_to_petscii_trans = str.maketrans({
         '\f': 147,  # form feed becomes ClearScreen
         '\n': 13,   # line feed becomes a RETURN
@@ -503,19 +503,45 @@ class ScreenAndMemory:
         '^': 94,        # up arrow
         '~': 126,       # pi math symbol
         'π': 126,       # pi symbol
-        '|': 221,       # vertical bar
-        '↑': 94,        # up arrow
-        '⬆': 94,        # up arrow
-        '←': 95,        # left arrow
-        '⬅': 95,        # left arrow
-        '_': 164,       # lower bar/underscore
         '`': 39,        # single quote
+        '✓': 250,       # check mark
+
+        '|': 221,       # vertical bar
+        '│': 221,       # vertical bar
+        '─': 96,        # horizontal bar
+        '┼': 123,       # vertical and horizontal bar
+
+        '↑': 94,        # up arrow
+        '←': 95,        # left arrow
+
+        '▔': 163,       # upper bar
+        '_': 164,       # lower bar (underscore)
+        '▁': 164,       # lower bar
+        '▎': 165,       # left bar
+
         '♠': 97,        # spades
         '●': 113,       # circle
         '♥': 115,       # hearts
         '○': 119,       # open circle
         '♣': 120,       # clubs
         '♦': 122,       # diamonds
+
+        '├': 171,       # vertical and right
+        '┤': 179,       # vertical and left
+        '┴': 177,       # horiz and up
+        '┬': 178,       # horiz and down
+        '└': 173,       # up right
+        '┐': 174,       # down left
+        '┌': 175,       # down right
+        '┘': 189,       # up left
+        '▗': 172,       # block lr
+        '▖': 187,       # block ll
+        '▝': 188,       # block ur
+        '▘': 190,       # block ul
+        '▚': 191,       # block ul and lr
+        '▌': 161,       # left half
+        '▄': 162,       # lower half
+        '▒': 230,       # raster
     })
 
     def writestr(self, txt):

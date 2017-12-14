@@ -37,6 +37,8 @@ start
         [some_address.word] = ^flt_pi
         [some_address.word] = ^flt_pi
         [$c000.word] = ^flt_pi
+        flt_half = 4.4234234
+
         asm {
                 lda     #<flt_pi
                 ldy     #>flt_pi

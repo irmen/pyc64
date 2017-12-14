@@ -392,8 +392,10 @@ class CodeGenerator:
                         clobbered = stmt.subroutine.clobbered_registers
                     else:
                         clobbered = set()
-                    with self.save_registers_for_subroutine_call(clobbered, stmt.is_goto):
+                    with self.preserving_registers(clobbered):
                         self.p("\t\tjsr  " + call_target)
+                    if stmt.is_goto:
+                        self.p("\t\trts")
                     return
             if stmt.is_goto:
                 self.p("\t\tjmp  " + call_target)
@@ -492,7 +494,7 @@ class CodeGenerator:
             self.p("\t\tst{:s}  {}".format(r_register.lower(), lv_string))
         elif lv.datatype == DataType.WORD:
             self.p("\t\tst{:s}  {}".format(r_register.lower(), lv_string))  # lsb
-            with self.save_a_reg_for_assignment(0):
+            with self.preserving_registers({'A'}):
                 self.p("\t\tlda  #0")
                 self.p("\t\tsta  {:s}+1".format(lv_string))  # msb
         else:
@@ -543,38 +545,31 @@ class CodeGenerator:
                 raise CodeError("invalid register " + lv.register)
 
     @contextlib.contextmanager
-    def save_a_reg_for_assignment(self, value_being_set: Union[int, str]):
-        # only use this for assignment statement generation
-        if value_being_set is None:
-            self.p("\t\tpha")
-            yield
-            self.p("\t\tpla")
-        else:
-            yield
-
-    @contextlib.contextmanager
-    def save_registers_for_subroutine_call(self, registers: Set[str], is_goto: bool):
+    def preserving_registers(self, registers: Set[str]):
         # this clobbers a ZP scratch register and is therefore safe to use in interrupts
         # see http://6502.org/tutorials/register_preservation.html
-        if registers:
-            self.p("\t\tsta  ${:02x}".format(Zeropage.SCRATCH_B2))
-        if 'A' in registers:
+        if registers == {'A'}:
             self.p("\t\tpha")
-        if 'X' in registers:
-            self.p("\t\ttxa\n\t\tpha")
-        if 'Y' in registers:
-            self.p("\t\ttya\n\t\tpha")
-        if registers:
-            self.p("\t\tlda  ${:02x}".format(Zeropage.SCRATCH_B2))
-        yield
-        if 'Y' in registers:
-            self.p("\t\tpla\n\t\ttay")
-        if 'X' in registers:
-            self.p("\t\tpla\n\t\ttax")
-        if 'A' in registers:
+            yield
             self.p("\t\tpla")
-        if is_goto:
-            self.p("\t\trts")
+        elif registers:
+            self.p("\t\tsta  ${:02x}".format(Zeropage.SCRATCH_B2))
+            if 'A' in registers:
+                self.p("\t\tpha")
+            if 'X' in registers:
+                self.p("\t\ttxa\n\t\tpha")
+            if 'Y' in registers:
+                self.p("\t\ttya\n\t\tpha")
+            self.p("\t\tlda  ${:02x}".format(Zeropage.SCRATCH_B2))
+            yield
+            if 'Y' in registers:
+                self.p("\t\tpla\n\t\ttay")
+            if 'X' in registers:
+                self.p("\t\tpla\n\t\ttax")
+            if 'A' in registers:
+                self.p("\t\tpla")
+        else:
+            yield
 
     def generate_assign_integer_to_mem(self, lv: ParseResult.MemMappedValue, rvalue: ParseResult.IntegerValue) -> None:
         if lv.name:
@@ -582,42 +577,42 @@ class CodeGenerator:
             if not isinstance(sym, VariableDef):
                 raise TypeError("invalid lvalue type " + str(sym))
             assign_target = symblock.label + "." + sym.name if symblock is not self.cur_block else lv.name
-            datatype = sym.type
+            lvdatatype = sym.type
         else:
             assign_target = self.to_hex(lv.address)
-            datatype = lv.datatype
+            lvdatatype = lv.datatype
         r_str = rvalue.name if rvalue.name else "${:x}".format(rvalue.value)
-        if datatype == DataType.BYTE:
+        if lvdatatype == DataType.BYTE:
             if rvalue.value is not None and not lv.assignable_from(rvalue) or rvalue.datatype != DataType.BYTE:
                 raise OverflowError("value doesn't fit in a byte")
-            with self.save_a_reg_for_assignment(rvalue.value):
+            with self.preserving_registers({'A'}):
                 self.p("\t\tlda  #" + r_str)
                 self.p("\t\tsta  " + assign_target)
-        elif datatype == DataType.WORD:
+        elif lvdatatype == DataType.WORD:
             if rvalue.value is not None and not lv.assignable_from(rvalue):
                 raise OverflowError("value doesn't fit in a word")
-            with self.save_a_reg_for_assignment(rvalue.value):
+            with self.preserving_registers({'A'}):
                 self.p("\t\tlda  #<" + r_str)
                 self.p("\t\tsta  " + assign_target)
                 self.p("\t\tlda  #>" + r_str)
                 self.p("\t\tsta  {}+1".format(assign_target))
-        elif datatype == DataType.FLOAT:
+        elif lvdatatype == DataType.FLOAT:
             if rvalue.value is not None and not DataType.FLOAT.assignable_from_value(rvalue.value):
                 raise ValueError("value cannot be assigned to a float")
-            floatvalue = float(rvalue.value)  # XXX
+            floatvalue = float(rvalue.value)
             self.generate_store_immediate_float(lv, floatvalue, self.to_mflpt5(floatvalue), False)
         else:
-            raise TypeError("invalid lvalue type " + str(datatype))
+            raise TypeError("invalid lvalue type " + str(lvdatatype))
 
     def generate_assign_mem_to_mem(self, lv: ParseResult.MemMappedValue, r_str: str) -> None:
         # Address/Memory = Memory (byte)
-        with self.save_a_reg_for_assignment(None):
+        with self.preserving_registers(None):
             self.p("\t\tlda  " + r_str)
             self.p("\t\tsta  " + (lv.name or self.to_hex(lv.address)))
 
     def generate_assign_char_to_memory(self, lv: ParseResult.MemMappedValue, char_str: str) -> None:
         # Memory = Character
-        with self.save_a_reg_for_assignment(char_str):
+        with self.preserving_registers({'A'}):
             self.p("\t\tlda  #" + char_str)
             if not lv.name:
                 self.p("\t\tsta  " + self.to_hex(lv.address))
