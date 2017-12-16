@@ -26,17 +26,17 @@ import "c64lib"
 
 
 start
-        AY = ^flt_pi
-        [some_address] = ^flt_pi
-        [some_address] = ^flt_pi
-        [some_address] = ^flt_pi
+        AY = #flt_pi
+        [some_address] = # flt_pi
+        [some_address] = # flt_pi
+        [some_address] = # flt_pi
         [some_address] = 4123.2342342222
         [some_address] = 4123.2342342222
         [some_address] = 4123.2342342222
-        [some_address.word] = ^flt_pi
-        [some_address.word] = ^flt_pi
-        [some_address.word] = ^flt_pi
-        [$c000.word] = ^flt_pi
+        [some_address.word] = #flt_pi
+        [some_address.word] = #flt_pi
+        [some_address.word] = #flt_pi
+        [$c000.word] = # flt_pi
         flt_half = 4.4234234
 
         asm {
@@ -45,7 +45,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_pi
+        AY = #c64.mflpt_pi
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -55,7 +55,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_minus32768
+        AY = #c64.mflpt_minus32768
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -65,7 +65,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_1
+        AY = #c64.mflpt_1
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -75,7 +75,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY =  ^  c64.mflpt_half_sqr2
+        AY =  #  c64.mflpt_half_sqr2
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -85,7 +85,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_sqr2
+        AY = #c64.mflpt_sqr2
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -95,7 +95,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_minus_half
+        AY = #c64.mflpt_minus_half
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -105,7 +105,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_log_2
+        AY = #c64.mflpt_log_2
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -115,7 +115,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_10
+        AY = #c64.mflpt_10
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -125,7 +125,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_1e9
+        AY = #c64.mflpt_1e9
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -135,7 +135,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_half
+        AY = #c64.mflpt_half
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -145,7 +145,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_one_over_log_2
+        AY = #c64.mflpt_one_over_log_2
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -155,7 +155,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_half_pi
+        AY = #c64.mflpt_half_pi
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -165,7 +165,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_double_pi
+        AY = #c64.mflpt_double_pi
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 
@@ -175,7 +175,7 @@ start
         }
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
-        AY = ^c64.mflpt_point25
+        AY = #c64.mflpt_point25
         fcall  c64.fac1_read_memAY
         fcall  c64.fac1_print
 

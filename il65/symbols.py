@@ -5,16 +5,24 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: GNU GPL 3.0, see LICENSE
 """
 
+import inspect
 import math
 import enum
 from functools import total_ordering
-from typing import Optional, Set, Union, Tuple, Dict, Iterable, Sequence
+from typing import Optional, Set, Union, Tuple, Dict, Iterable, Sequence, Any
 
 
 REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
 REGISTER_SYMBOLS_RETURNVALUES = REGISTER_SYMBOLS - {"SC"}
 REGISTER_BYTES = {"A", "X", "Y", "SC"}
 REGISTER_WORDS = {"AX", "AY", "XY"}
+
+# 5-byte cbm MFLPT format limitations:
+FLOAT_MAX_POSITIVE = 1.7014118345e+38
+FLOAT_MAX_NEGATIVE = -1.7014118345e+38
+
+RESERVED_NAMES = {"true", "false", "var", "memory", "const", "asm"}
+RESERVED_NAMES |= REGISTER_SYMBOLS
 
 
 @total_ordering
@@ -188,9 +196,12 @@ class Zeropage:
 
 
 class SymbolTable:
+    math_module_symbols = {name: definition for name, definition in vars(math).items() if not name.startswith("_")}
+
     def __init__(self, zeropage: Zeropage) -> None:
         self.zeropage = zeropage
-        self.symbols = {}       # type: Dict[str, SymbolDefinition]
+        self.symbols = dict(SymbolTable.math_module_symbols)
+        self.eval_dict = None
 
     def __iter__(self):
         yield from self.symbols.values()
@@ -204,9 +215,37 @@ class SymbolTable:
     def get(self, symbolname: str, default: SymbolDefinition=None) -> Optional[SymbolDefinition]:
         return self.symbols.get(symbolname, default)
 
+    def get_address(self, name: str) -> int:
+        symbol = self.get(name)
+        if isinstance(symbol, ConstantDef):
+            raise SymbolError("cannot take the address of a constant")
+        if not symbol or not isinstance(symbol, VariableDef):
+            raise SymbolError("no var or const defined by that name")
+        print(symbol, vars(symbol))
+        if symbol.address is None:
+            raise SymbolError("can only take address of memory mapped variables")
+        return symbol.address
+
+    def as_eval_dict(self) -> Dict[str, Any]:
+        # return a dictionary suitable to be passed as locals or globals to eval()
+        if self.eval_dict is None:
+            d = {}
+            for variable in self.iter_variables():
+                d[variable.name] = variable.value
+            for constant in self.iter_constants():
+                d[constant.name] = constant.value
+            for name, func in self.symbols.items():
+                if inspect.isbuiltin(func):
+                    d[name] = func
+            self.eval_dict = d
+        return self.eval_dict
+
     def iter_variables(self) -> Iterable[VariableDef]:
         # returns specific sort order to optimize init sequence
         yield from sorted((v for v in self.symbols.values() if isinstance(v, VariableDef)))
+
+    def iter_constants(self) -> Iterable[ConstantDef]:
+        yield from sorted((v for v in self.symbols.values() if isinstance(v, ConstantDef)))
 
     def iter_subroutines(self) -> Iterable[SubroutineDef]:
         yield from sorted((v for v in self.symbols.values() if isinstance(v, SubroutineDef)))
@@ -219,7 +258,9 @@ class SymbolTable:
             raise SymbolError("invalid identifier")
         identifier = self.symbols.get(name, None)
         if identifier:
-            raise SymbolError("identifier was already defined at " + identifier.sourceref)
+            if isinstance(identifier, SymbolDefinition):
+                raise SymbolError("identifier was already defined at " + identifier.sourceref)
+            raise SymbolError("identifier already defined as " + str(type(identifier)))
 
     def define_variable(self, blockname: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
                         address: int=None, length: int=0, value: Union[int, float, str]=0,
@@ -269,6 +310,7 @@ class SymbolTable:
                                              value=value, length=length, address=address, matrixsize=matrixsize)
         else:
             raise ValueError("unknown type " + str(datatype))
+        self.eval_dict = None
 
     def define_sub(self, blockname: str, name: str, sourcefile: str, sourceline: int,
                    parameters: Sequence[Tuple[str, str]], returnvalues: Set[str], address: Optional[int]) -> None:
@@ -296,6 +338,7 @@ class SymbolTable:
             self.symbols[name] = ConstantDef(blockname, name, sourcefile, sourceline, datatype, value=value, length=strlen)
         else:
             raise ValueError("invalid data type for constant: " + str(datatype))
+        self.eval_dict = None
 
 
 def trunc_float_if_needed(sourcefile: str, linenum: int, datatype: DataType,

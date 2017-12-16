@@ -3,7 +3,6 @@
 output raw
 clobberzp
 
-
 ~ ZP {
 	; ZeroPage block definition:
 	; base address is set to $04 (because $00 and $01 are used by the hardware, and $02/$03 are scratch)
@@ -24,6 +23,12 @@ clobberzp
 
 
 ~ main {
+	; variables where value is an expression
+	var                     expr_byte1      -1-2-3-4-$22+0x80+ZP.zpvar1
+	var                     expr_byte1b      -1-2-3-4-$22+0x80+ZP.const
+	var     .byte           expr_byte2      +1+2+3+4+$55+#ZP.zpvar22
+	var     .byte           fout            1+(8/3)+sin(33)+max(1,2,3)+#derp22*0
+	;etc etc
 
 	; variables
 	var			uninitbyte1
@@ -40,6 +45,8 @@ clobberzp
 	var  .word              initword1b      true
 	var  .word              initword2       false
 	var  .word              initword3       9876.554321
+	var  .word              initword4       initword3/3
+	var  .word              initword5       (20 + 22)
 	var  .float             uninitfloat
 	var  .float             initfloat1      0
 	var  .float             initfloat1b     true
@@ -55,7 +62,6 @@ clobberzp
 	var  .wordarray( 10 )   uninit_wordarray
 	var  .wordarray(10)     init_wordarray  $1234
 	var  .wordarray(10)     init_wordarrayb  true
-	var  .wordarray(10)     init_wordarrayc  '@'
 
 	var  .text              text    "hello-null"
 	var  .ptext             ptext   'hello-pascal'
@@ -71,6 +77,7 @@ clobberzp
 	; memory-mapped variables
 	memory                          membyte1        $c000
 	memory  .byte                   membyte2        $c0
+	memory  .byte                   membyte3        initbyte2+12
 	memory  .word                   memword1        $c000
 	memory  .float                  memfloat        $c000
 	memory  .array(10 )             membytes        $c000
@@ -85,21 +92,15 @@ clobberzp
 	const  .byte            cbyte4          true
 	const  .word            cbyte6          false
 	const  .word            cword2          $1234
-	const  .word            cword3          '@'
 	const  .word            cword5          9876.5432
 	const                   cfloat1         1.2345
 	const  .float           cfloat2         2.3456
+	const  .float           cfloat2b        cfloat2*3.44
 	const  .float           cfloat3         true
 	const  .text            ctext3   	"constant-text"
 	const  .ptext           ctext4   	"constant-ptext"
 	const  .stext           ctext5   	"constant-stext"
 	const  .pstext          ctext6   	"constant-pstext"
-
-
-	; variables where value is an expression
-	;var     .byte           expr_byte       1+2+3+0x04
-	;var     .word           expr_word       2*3*4*0x100
-	;etc etc
 
 
 start
@@ -123,8 +124,8 @@ start
 	XY = text
 	XY = "text-immediate"
 	AY = "text-immediate"
-	AX = ^"text-immediate"          ; equivalent to simply assigning the string directly
-	AX = ^ "text-immediate"         ; equivalent to simply assigning the string directly
+	AX = #"text-immediate"          ; equivalent to simply assigning the string directly
+	AX = # "text-immediate"         ; equivalent to simply assigning the string directly
 	AX = ""
 
 	[$c000] = 255

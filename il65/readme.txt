@@ -88,10 +88,10 @@ data types:
     largest 5-byte MFLPT float: 1.7014118345e+38   (negative: -1.7014118345e+38)
 
 
-    Note: with the ^ prefix you can take the address of something. This is sometimes useful,
+    Note: with the # prefix you can take the address of something. This is sometimes useful,
     for instance when you want to manipulate the ADDRESS of a memory mapped variable rather than
     the value it represents.  You can take the address of a string as well, but the compiler already
-    treats those as a value that you manipulate via its address, so the ^ is ignored here.
+    treats those as a value that you manipulate via its address, so the # is ignored here.
 
 
 
@@ -144,8 +144,13 @@ Allows us to create pre calculated sine tables and such. Something like:
 EXPRESSIONS
 -----------
 
-@todo allow expressions everywhere a number or string is now present can parse them using ast.parse?
-@todo allow simple functions such as abs, len, max, min, pow, round, sum, and the bunch of functions from the Math module such as sin, cos, trunc etc
+In most places where a number or other value is expected, you can use just the number, or a full expression.
+The expression is parsed and evaluated by Python itself.
+Ofcourse the special il65 syntax for hexadecimal numbers ($xxxx), binary numbers (%bbbbbb),
+and the address-of (#xxxx) is supported. Other than that it must be valid Python syntax.
+Expressions can contain function calls to the math library (sin, cos, etc) and you can also use
+all builtin functions (max, avg, min, sum etc). They can also reference idendifiers defined elsewhere in your code.
+
 
     
 FLOW CONTROL

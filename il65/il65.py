@@ -16,8 +16,8 @@ import contextlib
 import argparse
 from functools import partial
 from typing import TextIO, Set, Union
-from parse import ProgramFormat, Parser, ParseResult, Optimizer, FLOAT_MAX_NEGATIVE, FLOAT_MAX_POSITIVE
-from symbols import Zeropage, DataType, VariableDef, REGISTER_WORDS
+from parse import ProgramFormat, Parser, ParseResult, Optimizer
+from symbols import Zeropage, DataType, VariableDef, REGISTER_WORDS, FLOAT_MAX_NEGATIVE, FLOAT_MAX_POSITIVE
 
 
 class CodeError(Exception):
@@ -413,7 +413,6 @@ class CodeGenerator:
     def generate_assignment(self, stmt: ParseResult.AssignmentStmt) -> None:
         self.p("\t\t\t\t\t; src l. {:d}".format(stmt.linenum))
         if isinstance(stmt.right, ParseResult.IntegerValue):
-            # @todo optimize below if there are multiple lvalues that require a pha/pla, do it just once and reuse the value
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):
                     self.generate_assign_integer_to_reg(lv.register, stmt.right)
@@ -450,11 +449,11 @@ class CodeGenerator:
             r_str = stmt.right.name if stmt.right.name else "${:x}".format(stmt.right.address)
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):
-                    self.generate_assign_mem_to_reg(lv.register, r_str)
+                    self.generate_assign_membyte_to_reg(lv.register, r_str)
                 elif isinstance(lv, ParseResult.MemMappedValue):
                     if lv.datatype != DataType.BYTE:
                         raise CodeError("can only assign a memory mapped byte value into another byte")
-                    self.generate_assign_mem_to_mem(lv, r_str)
+                    self.generate_assign_membyte_to_mem(lv, r_str)
                 else:
                     raise CodeError("invalid assignment target (4)", str(stmt))
         elif isinstance(stmt.right, ParseResult.FloatValue):
@@ -480,7 +479,7 @@ class CodeGenerator:
         if emit_pha:
             self.p("\t\tpla")
 
-    def generate_assign_mem_to_reg(self, l_register: str, r_str: str) -> None:
+    def generate_assign_membyte_to_reg(self, l_register: str, r_str: str) -> None:
         # Register = memory (byte)
         if l_register in ('A', 'X', 'Y'):
             self.p("\t\tld{:s}  {:s}".format(l_register.lower(), r_str))
@@ -604,7 +603,7 @@ class CodeGenerator:
         else:
             raise TypeError("invalid lvalue type " + str(lvdatatype))
 
-    def generate_assign_mem_to_mem(self, lv: ParseResult.MemMappedValue, r_str: str) -> None:
+    def generate_assign_membyte_to_mem(self, lv: ParseResult.MemMappedValue, r_str: str) -> None:
         # Address/Memory = Memory (byte)
         with self.preserving_registers(None):
             self.p("\t\tlda  " + r_str)
