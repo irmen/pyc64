@@ -144,12 +144,13 @@ Allows us to create pre calculated sine tables and such. Something like:
 EXPRESSIONS
 -----------
 
-In most places where a number or other value is expected, you can use just the number, or a full expression.
-The expression is parsed and evaluated by Python itself.
+In most places where a number or other value is expected, you can use just the number, or a full constant expression.
+The expression is parsed and evaluated by Python itself at compile time, and the (constant) resulting value is used in its place.
 Ofcourse the special il65 syntax for hexadecimal numbers ($xxxx), binary numbers (%bbbbbb),
 and the address-of (#xxxx) is supported. Other than that it must be valid Python syntax.
 Expressions can contain function calls to the math library (sin, cos, etc) and you can also use
-all builtin functions (max, avg, min, sum etc). They can also reference idendifiers defined elsewhere in your code.
+all builtin functions (max, avg, min, sum etc). They can also reference idendifiers defined elsewhere in your code,
+if this makes sense.
 
 
     

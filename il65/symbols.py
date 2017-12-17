@@ -113,8 +113,8 @@ class VariableDef(SymbolDefinition):
     def __lt__(self, other: 'SymbolDefinition') -> bool:
         if not isinstance(other, VariableDef):
             return NotImplemented
-        v1 = (str(self.value) or "", self.blockname, self.name or "", self.address or 0, self.seq_nr)
-        v2 = (str(other.value) or "", other.blockname, other.name or "", other.address or 0, self.seq_nr)
+        v1 = (self.blockname, self.name or "", self.address or 0, self.seq_nr)
+        v2 = (other.blockname, other.name or "", other.address or 0, self.seq_nr)
         return v1 < v2
 
 
@@ -164,6 +164,14 @@ class SubroutineDef(SymbolDefinition):
                 raise SymbolError("invalid return value spec: " + register)
 
 
+class BlockScope:
+    def __init__(self, name: str, sourcefile: str, sourceline: int, symbols: 'SymbolTable') -> None:
+        self.name = name
+        self.symbols = symbols
+        self.sourcefile = sourcefile
+        self.sourceline = sourceline
+
+
 class Zeropage:
     SCRATCH_B1 = 0x02
     SCRATCH_B2 = 0x03
@@ -197,6 +205,7 @@ class Zeropage:
 
 class SymbolTable:
     math_module_symbols = {name: definition for name, definition in vars(math).items() if not name.startswith("_")}
+    global_blocks = {}   # type: Dict[str, BlockScope]
 
     def __init__(self, zeropage: Zeropage) -> None:
         self.zeropage = zeropage
@@ -213,15 +222,33 @@ class SymbolTable:
         return symbolname in self.symbols
 
     def get(self, symbolname: str, default: SymbolDefinition=None) -> Optional[SymbolDefinition]:
+        assert '.' not in symbolname
         return self.symbols.get(symbolname, default)
 
+    def get_dotted(self, name: str) -> SymbolDefinition:
+        num_dots = name.count('.')
+        if num_dots == 0:
+            return self.get(name)
+        elif num_dots == 1:
+            scopename, name = name.split('.')
+            block = self.get_block(scopename)
+            return block.symbols.get(name)
+        else:
+            raise SymbolError("only one scoping level allowed")    # maybe nested scoping in the future?
+
+    def get_block(self, name: str) -> BlockScope:
+        assert '.' not in name
+        scope = self.global_blocks.get(name, None)
+        if scope:
+            return scope
+        raise SymbolError("no block named '{:s}'".format(name))
+
     def get_address(self, name: str) -> int:
-        symbol = self.get(name)
+        symbol = self.get_dotted(name)
         if isinstance(symbol, ConstantDef):
             raise SymbolError("cannot take the address of a constant")
         if not symbol or not isinstance(symbol, VariableDef):
             raise SymbolError("no var or const defined by that name")
-        print(symbol, vars(symbol))
         if symbol.address is None:
             raise SymbolError("can only take address of memory mapped variables")
         return symbol.address
@@ -241,7 +268,6 @@ class SymbolTable:
         return self.eval_dict
 
     def iter_variables(self) -> Iterable[VariableDef]:
-        # returns specific sort order to optimize init sequence
         yield from sorted((v for v in self.symbols.values() if isinstance(v, VariableDef)))
 
     def iter_constants(self) -> Iterable[ConstantDef]:
@@ -339,6 +365,15 @@ class SymbolTable:
         else:
             raise ValueError("invalid data type for constant: " + str(datatype))
         self.eval_dict = None
+
+    def define_block(self, name: str, sourcefile: str, sourceline: int, symbols: 'SymbolTable') -> BlockScope:
+        if name in self.global_blocks:
+            orig = self.global_blocks[name]
+            raise SymbolError("duplicate block name '{0:s}', original definition at {1:s} line {2:d}"
+                              .format(name, orig.sourcefile, orig.sourceline))
+        scope = BlockScope(name, sourcefile, sourceline, symbols)
+        self.global_blocks[name] = scope
+        return scope
 
 
 def trunc_float_if_needed(sourcefile: str, linenum: int, datatype: DataType,

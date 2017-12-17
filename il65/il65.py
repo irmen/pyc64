@@ -142,13 +142,14 @@ class CodeGenerator:
 
         # Only the vars from the ZeroPage need to be initialized here,
         # the vars in all other blocks are just defined and pre-filled there.
-        # The iteration over the variables has a specific sort order to optimize init sequence
         zpblocks = [b for b in self.parsed.blocks if b.name == "ZP"]
         if zpblocks:
             assert len(zpblocks) == 1
             zpblock = zpblocks[0]
-            vars_to_init = list(sorted(v for v in zpblock.symbols.iter_variables()
-                                if v.allocate and v.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT)))
+            vars_to_init = [v for v in zpblock.symbols.iter_variables()
+                            if v.allocate and v.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT)]
+            # @todo optimize sort order (sort on value first, then type, then blockname, then address/name)
+            # (str(self.value) or "", self.blockname, self.name or "", self.address or 0, self.seq_nr)
             prev_value = 0  # type: Union[str, int, float]
             if vars_to_init:
                 self.p("; init zp vars")

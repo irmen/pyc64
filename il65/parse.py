@@ -401,6 +401,7 @@ class ParseResult:
 
     def lookup_symbol(self, name: str, localblock: Block) -> Tuple[Optional[Block], Optional[SymbolDefinition]]:
         # search for a symbol. Returns (containing_block, symbol) if found, else (None, None).
+        # XXX remove? move to symboltable? use symboltable global block lookup?
         name1, sep, name2 = name.partition(".")
         if sep:
             for b in self.blocks:
@@ -645,6 +646,7 @@ class Parser:
                     self.cur_block = orig  # zero page block occurrences are merged
                 else:
                     self.cur_block.name = arg
+                    self.cur_block.symbols.define_block(arg, self.sourcefile, num, self.cur_block.symbols)
             elif arg == "{":
                 break
             elif arg.endswith("{"):

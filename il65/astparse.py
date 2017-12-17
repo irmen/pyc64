@@ -1,5 +1,6 @@
 import ast
-from symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SymbolTable, SymbolError
+from symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SymbolTable, SymbolError, \
+    VariableDef, ConstantDef, DataType, STRING_DATATYPES
 from typing import Union, Optional
 
 
@@ -125,7 +126,7 @@ def parse_expression(src: SourceLine, context: Optional[SymbolTable]) -> ast.Exp
     text = src.preprocess()
     node = ast.parse(text, src.filename, mode="eval")
     if isinstance(node, ast.Expression):
-        node = BinaryOpTransformer(src, context).visit(node)
+        node = ExpressionTransformer(src, context).visit(node)
         return node
     # print("ast error, node: ", ast.dump(node))
     raise src.to_error("expression expected, not " + type(node.body).__name__)
@@ -137,11 +138,33 @@ class EvaluatingTransformer(ast.NodeTransformer):
         self.src = src
         self.context = context
 
-    def error(self, message: str, column: int=0) -> None:
-        raise ParseError(message, self.src.text, self.src.filename, self.src.line, column or self.src.column)
+    def error(self, message: str, column: int=0) -> ParseError:
+        return ParseError(message, self.src.text, self.src.filename, self.src.line, column or self.src.column)
 
 
-class BinaryOpTransformer(EvaluatingTransformer):
+class ExpressionTransformer(EvaluatingTransformer):
+    def _dotted_name_from_attr(self, node: ast.Attribute) -> str:
+        if isinstance(node.value, ast.Name):
+            return node.value.id + '.' + node.attr
+        if isinstance(node.value, ast.Attribute):
+            return self._dotted_name_from_attr(node.value) + '.' + node.attr
+        raise self.error("dotted name error")
+
+    def visit_Attribute(self, node: ast.Attribute):
+        dotted_name = self._dotted_name_from_attr(node)
+        symbol = self.context.get_dotted(dotted_name)
+        if isinstance(symbol, ConstantDef):
+            if symbol.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
+                return ast.copy_location(ast.Num(symbol.value), node)
+            elif symbol.type in STRING_DATATYPES:
+                return ast.copy_location(ast.Str(symbol.value), node)
+            else:
+                raise self.error("primitive type (byte, word, float, str) required")
+        elif isinstance(symbol, VariableDef):
+            return ast.copy_location(ast.Name(dotted_name, ast.Load()), node)
+        else:
+            raise self.error("expected var or const")
+
     def visit_UnaryOp(self, node):
         if isinstance(node.operand, ast.Num):
             if isinstance(node.op, ast.USub):
@@ -150,9 +173,9 @@ class BinaryOpTransformer(EvaluatingTransformer):
             if isinstance(node.op, ast.UAdd):
                 node = self.generic_visit(node)
                 return ast.copy_location(ast.Num(node.operand.n), node)
-            self.error("expected unary + or -")
+            raise self.error("expected unary + or -")
         else:
-            self.error("expected numeric operand for unary operator")
+            raise self.error("expected numeric operand for unary operator")
 
     def visit_BinOp(self, node):
         node = self.generic_visit(node)
@@ -162,13 +185,13 @@ class BinaryOpTransformer(EvaluatingTransformer):
                     try:
                         address = self.context.get_address(node.right.id)
                     except SymbolError as x:
-                        self.error(str(x))
+                        raise self.error(str(x))
                     else:
                         return ast.copy_location(ast.Num(address), node)
                 else:
-                    self.error("can only take address of a named variable")
+                    raise self.error("can only take address of a named variable")
             else:
-                self.error("invalid MatMult/Pointer node in AST")
+                raise self.error("invalid MatMult/Pointer node in AST")
 
         expression = ast.copy_location(ast.Expression(node), node)
         code = compile(expression, self.src.filename, mode="eval")
@@ -184,7 +207,7 @@ class BinaryOpTransformer(EvaluatingTransformer):
             return ast.copy_location(ast.Num(result), node)
         if type(result) is str:
             return ast.copy_location(ast.Str(result), node)
-        self.error("cannot evaluate expression")
+        raise self.error("cannot evaluate expression")
 
 
 if __name__ == "__main__":
