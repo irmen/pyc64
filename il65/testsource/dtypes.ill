@@ -194,7 +194,7 @@ start
 	return
 }
 
-~ {
+~ footer {
         XY = "text-immediate"   ; reuses existing
         AY = "text-immediate"   ; reuses existing
         AX = "another"

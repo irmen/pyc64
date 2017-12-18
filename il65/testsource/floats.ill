@@ -38,145 +38,103 @@ start
         [some_address.word] = #flt_pi
         [$c000.word] = # flt_pi
 
-        asm {
-                lda     #<flt_pi
-                ldy     #>flt_pi
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_pi
+        c64.fac1_read_memAY!()     ; @todo args.
+        c64.fac1_print!()
         AY = #c64.mflpt_pi
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print ! ()
 
-        asm {
-                lda     #<flt_minus32768
-                ldy     #>flt_minus32768
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_minus32768
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_minus32768
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_1
-                ldy     #>flt_1
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_1
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_1
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_half_sqr2
-                ldy     #>flt_half_sqr2
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_half_sqr2
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY =  #  c64.mflpt_half_sqr2
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_sqr2
-                ldy     #>flt_sqr2
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_sqr2
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_sqr2
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_minus_half
-                ldy     #>flt_minus_half
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_minus_half
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_minus_half
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_log_2
-                ldy     #>flt_log_2
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_log_2
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_log_2
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_10
-                ldy     #>flt_10
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_10
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_10
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_1e9
-                ldy     #>flt_1e9
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_1e9
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_1e9
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_half
-                ldy     #>flt_half
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_half
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_half
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_one_over_log_2
-                ldy     #>flt_one_over_log_2
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_one_over_log_2
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_one_over_log_2
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_half_pi
-                ldy     #>flt_half_pi
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY= #flt_half_pi
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_half_pi
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_double_pi
-                ldy     #>flt_double_pi
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = #flt_double_pi
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_double_pi
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
-        asm {
-                lda     #<flt_point25
-                ldy     #>flt_point25
-        }
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        AY = # flt_point25
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
         AY = #c64.mflpt_point25
-        fcall  c64.fac1_read_memAY
-        fcall  c64.fac1_print
+        c64.fac1_read_memAY!()
+        c64.fac1_print!()
 
         return
 

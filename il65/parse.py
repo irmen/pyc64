@@ -12,7 +12,8 @@ import os
 import shutil
 import enum
 from typing import Set, List, Tuple, Optional, Any, Dict
-from astparse import ParseError, parse_expr_as_int, parse_expr_as_number, parse_expr_as_primitive, parse_expr_as_string
+from astparse import ParseError, parse_expr_as_int, parse_expr_as_number, parse_expr_as_primitive,\
+    parse_expr_as_string
 from symbols import SymbolTable, DataType, SymbolDefinition, SubroutineDef, \
     zeropage, check_value_in_range, coerce_value, char_to_bytevalue, \
     VariableDef, ConstantDef, SymbolError, STRING_DATATYPES, \
@@ -25,6 +26,14 @@ class ProgramFormat(enum.Enum):
 
 
 class ParseResult:
+    def __init__(self, sourcefile: str) -> None:
+        self.format = ProgramFormat.RAW
+        self.with_sys = False
+        self.sourcefile = sourcefile
+        self.clobberzp = False
+        self.restorezp = False
+        self.start_address = 0
+        self.blocks = []          # type: List['ParseResult.Block']
 
     class Block:
         _unnamed_block_labels = {}  # type: Dict[ParseResult.Block, str]
@@ -354,7 +363,7 @@ class ParseResult:
 
     class CallStmt(_Stmt):
         def __init__(self, line_number: int, address: Optional[int]=None, unresolved: str=None,
-                     is_goto: bool=False, preserve_regs: bool=True) -> None:
+                     params: Dict[str, Any]=None, is_goto: bool=False, preserve_regs: bool=True) -> None:
             self.address = address
             self.subroutine = None      # type: SubroutineDef
             self.unresolved = unresolved
@@ -363,6 +372,7 @@ class ParseResult:
             self.call_module = ""
             self.call_label = ""
             self.line_number = line_number
+            self.params = params or {}
 
         def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block') -> None:
             if self.unresolved:
@@ -382,15 +392,6 @@ class ParseResult:
         def __init__(self, linenum: int, asmlines: List[str]) -> None:
             self.linenum = linenum
             self.asmlines = asmlines
-
-    def __init__(self, sourcefile: str) -> None:
-        self.format = ProgramFormat.RAW
-        self.with_sys = False
-        self.sourcefile = sourcefile
-        self.clobberzp = False
-        self.restorezp = False
-        self.start_address = 0
-        self.blocks = []          # type: List['ParseResult.Block']
 
     def add_block(self, block: 'ParseResult.Block', position: Optional[int]=None) -> None:
         if position is not None:
@@ -837,10 +838,15 @@ class Parser:
         return varname, datatype, length, matrix_dimensions, valuetext
 
     def parse_statement(self, line: str) -> ParseResult._Stmt:
-        lhs, sep, rhs = line.partition("=")
-        if sep:
-            return self.parse_assignment(line)
-        elif line.startswith("return"):
+        # check if we have a subroutine call using () syntax
+        match = re.match(r"^(?P<subname>[\w\.]+)\s*(?P<fcall>[!]?)\s*\((?P<params>.*)\)\s*$", line)
+        if match:
+            subname = match.group("subname")
+            fcall = "f" if match.group("fcall") else ""
+            param_str = match.group("params")
+            # desugar this into "[f]call subname parameters"
+            line = "{:s}call {:s} {:s}".format(fcall, subname, param_str)
+        if line.startswith("return"):
             return self.parse_return(line)
         elif line.endswith(("++", "--")):
             incr = line.endswith("++")
@@ -855,18 +861,29 @@ class Parser:
         elif line.startswith("go"):
             return self.parse_call_or_go(line, "go")
         else:
+            # perhaps it is an assignment statment
+            lhs, sep, rhs = line.partition("=")
+            if sep:
+                return self.parse_assignment(line)
             raise self.PError("invalid statement")
 
     def parse_call_or_go(self, line: str, what: str) -> ParseResult.CallStmt:
-        args = line.split()
-        if len(args) != 2:
+        args = line.split(maxsplit=2)
+        if len(args) == 2:
+            subname, params, = args[1], ""
+            parameters = None
+        elif len(args) == 3:
+            subname, params = args[1], args[2]
+            parameters = {match.group("pname"): match.group("value")
+                          for match in re.finditer(r"(?:(?:(?P<pname>[\w]+)\s*=\s*)(?P<value>.+?))(?:,|$)", params)}
+        else:
             raise self.PError("invalid call/go arguments")
         if what == "go":
-            return ParseResult.CallStmt(self.cur_linenum, unresolved=args[1], is_goto=True)
+            return ParseResult.CallStmt(self.cur_linenum, unresolved=subname, is_goto=True)
         elif what == "call":
-            return ParseResult.CallStmt(self.cur_linenum, unresolved=args[1], is_goto=False)
+            return ParseResult.CallStmt(self.cur_linenum, unresolved=subname, params=parameters)
         elif what == "fcall":
-            return ParseResult.CallStmt(self.cur_linenum, unresolved=args[1], is_goto=False, preserve_regs=False)
+            return ParseResult.CallStmt(self.cur_linenum, unresolved=subname, params=parameters, preserve_regs=False)
         else:
             raise ValueError("invalid what")
 
@@ -1123,7 +1140,7 @@ class Optimizer:
         self.parsed = parseresult
 
     def optimize(self) -> ParseResult:
-        print("optimizing", self.parsed.sourcefile)
+        print("\noptimizing parse tree...")
         for block in self.parsed.blocks:
             self.combine_assignments_into_multi(block)
             self.optimize_multiassigns(block)

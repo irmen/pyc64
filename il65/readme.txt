@@ -315,8 +315,8 @@ these call (or emit inline) optimized pieces of assembly code, so they run as fa
 
 
 
-SUBROUTINES AND SUBROUTINE CALLING
-----------------------------------
+SUBROUTINES DEFINITIONS
+-----------------------
 
 External subroutines for instance defined in ROM, can be defined using the 'subx' statement.
 
@@ -341,8 +341,8 @@ ISOLATION (register preservation when calling subroutines):  @todo isolation
 @todo user defined subroutines
 
 
-CALLING SUBROUTINES
--------------------
+SUBROUTINE CALLS
+----------------
 
 call subroutine and continue afterwards ('gosub'):
         [f]call <subroutine> / <label> / <address>
@@ -351,19 +351,17 @@ call subroutine and continue afterwards ('gosub'):
         call preserves all registers when doing the procedure call and restores them afterwards.
         fcall ('fast call') doesn't do this, so generates code that is a lot faster, but can clobber register values.
 
+The following syntax to call a subroutine is also available:
+        subroutine ( [parameters...] )
+        subroutine! ( [parameters...] )
+        These are understood as:  "call subroutine parameters" and "fcall subroutine parameters" respectively.
+
 jump to routine ('goto'):
         go <subroutine> / <label> / <address>
         @todo go [<registerpair>] / [<address>]   (indirect)
 
-
-@todo calling syntax such as:   subroutine ([params...])    -->  parse as:   call subroutine [params...]
-
-
-@todo utilize the subx definiton and support actually calling these external subs via regular calling syntax
-@todo support calling user defined subroutines via regular calling syntax and parameter/result calling convention
-
 @todo support args (start with A,X,Y reg args, later named params that go via stack/memory)
-
+@todo support return values (so that you can assign these to other variables, and allows the line to be a full expression)
 
 
 BITMAP DEFINITIONS:

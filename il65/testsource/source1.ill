@@ -72,8 +72,8 @@ _loop   A ++
 	return 155,2,%00000101	; will end up in A, X, Y
 }
 
-~{
-somelabel1
+~ block2 {
+somelabel1222
 	return
 
 	var zp1
@@ -87,7 +87,7 @@ somelabel1
 	const .word screen2 = $d021
 }
 
-~{
+~ block3 {
 somelabel1
 	asm {
 		nop
@@ -95,6 +95,8 @@ somelabel1
 		nop
 	}
 
+        go somelabel1
+        go block2.somelabel1222
 	A=X=Y=A=X=Y=A=X=Y=99
 	[$d020]=[$d021]=[$d020]=[$d021]=55
 
@@ -122,7 +124,7 @@ somelabel1
 	return
 }
 
-~ {
+~ block4 {
 	A=1
 	A=2
 	A=3
