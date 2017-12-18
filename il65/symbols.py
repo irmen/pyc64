@@ -164,14 +164,6 @@ class SubroutineDef(SymbolDefinition):
                 raise SymbolError("invalid return value spec: " + register)
 
 
-class BlockScope:
-    def __init__(self, name: str, sourcefile: str, sourceline: int, symbols: 'SymbolTable') -> None:
-        self.name = name
-        self.symbols = symbols
-        self.sourcefile = sourcefile
-        self.sourceline = sourceline
-
-
 class Zeropage:
     SCRATCH_B1 = 0x02
     SCRATCH_B2 = 0x03
@@ -207,15 +199,18 @@ class Zeropage:
         return len(self.unused_words)
 
 
+# the single, global Zeropage object
 zeropage = Zeropage()
 
 
 class SymbolTable:
     math_module_symbols = {name: definition for name, definition in vars(math).items() if not name.startswith("_")}
-    global_blocks = {}   # type: Dict[str, BlockScope]
 
-    def __init__(self) -> None:
+    def __init__(self, name: str, parent: Optional['SymbolTable'], owning_block: Any) -> None:
+        self.name = name
         self.symbols = dict(SymbolTable.math_module_symbols)
+        self.parent = parent
+        self.owning_block = owning_block
         self.eval_dict = None
 
     def __iter__(self):
@@ -227,30 +222,27 @@ class SymbolTable:
     def __contains__(self, symbolname: str) -> bool:
         return symbolname in self.symbols
 
-    def get(self, symbolname: str, default: SymbolDefinition=None) -> Optional[SymbolDefinition]:
-        assert '.' not in symbolname
-        return self.symbols.get(symbolname, default)
-
-    def get_dotted(self, name: str) -> SymbolDefinition:
-        num_dots = name.count('.')
-        if num_dots == 0:
-            return self.get(name)
-        elif num_dots == 1:
-            scopename, name = name.split('.')
-            block = self.get_block(scopename)
-            return block.symbols.get(name)
-        else:
-            raise SymbolError("only one scoping level allowed")    # maybe nested scoping in the future?
-
-    def get_block(self, name: str) -> BlockScope:
-        assert '.' not in name
-        scope = self.global_blocks.get(name, None)
-        if scope:
-            return scope
-        raise SymbolError("no block named '{:s}'".format(name))
+    def lookup(self, dottedname: str) -> Tuple['SymbolTable', SymbolDefinition]:
+        nameparts = dottedname.split('.')
+        if len(nameparts) == 1:
+            try:
+                return self, self.symbols[nameparts[0]]
+            except LookupError:
+                raise SymbolError("undefined symbol '{:s}'".format(nameparts[0]))
+        # start from toplevel namespace:
+        scope = self
+        while scope.parent:
+            scope = scope.parent
+        for namepart in nameparts[:-1]:
+            try:
+                scope = scope.symbols[namepart]
+                assert scope.name == namepart
+            except LookupError:
+                raise SymbolError("undefined block '{:s}'".format(namepart))
+        return scope.lookup(nameparts[-1])
 
     def get_address(self, name: str) -> int:
-        symbol = self.get_dotted(name)
+        scope, symbol = self.lookup(name)
         if isinstance(symbol, ConstantDef):
             raise SymbolError("cannot take the address of a constant")
         if not symbol or not isinstance(symbol, VariableDef):
@@ -270,7 +262,7 @@ class SymbolTable:
             for name, func in self.symbols.items():
                 if inspect.isbuiltin(func):
                     d[name] = func
-            self.eval_dict = d
+            self.eval_dict = d      # type: ignore
         return self.eval_dict
 
     def iter_variables(self) -> Iterable[VariableDef]:
@@ -294,7 +286,7 @@ class SymbolTable:
                 raise SymbolError("identifier was already defined at " + identifier.sourceref)
             raise SymbolError("identifier already defined as " + str(type(identifier)))
 
-    def define_variable(self, blockname: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
+    def define_variable(self, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
                         address: int=None, length: int=0, value: Union[int, float, str]=0,
                         matrixsize: Tuple[int, int]=None, register: str=None) -> None:
         # this defines a new variable and also checks if the prefill value is allowed for the variable type.
@@ -307,53 +299,57 @@ class SymbolTable:
             _, value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)   # type: ignore
         allocate = address is None
         if datatype == DataType.BYTE:
-            if allocate and blockname == "ZP":
+            if allocate and self.name == "ZP":
                 try:
                     address = zeropage.get_unused_byte()
                 except LookupError:
                     raise SymbolError("too many global 8-bit variables in ZP")
-            self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.BYTE, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.BYTE, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.WORD:
-            if allocate and blockname == "ZP":
+            if allocate and self.name == "ZP":
                 try:
                     address = zeropage.get_unused_word()
                 except LookupError:
                     raise SymbolError("too many global 16-bit variables in ZP")
-            self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.WORD, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.WORD, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.FLOAT:
-            if allocate and blockname == "ZP":
+            if allocate and self.name == "ZP":
                 raise SymbolError("floats cannot be stored in the ZP")
-            self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.FLOAT, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.FLOAT, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.BYTEARRAY:
-            self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.BYTEARRAY, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.BYTEARRAY, allocate,
                                              value=value, length=length, address=address)
         elif datatype == DataType.WORDARRAY:
-            self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.WORDARRAY, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.WORDARRAY, allocate,
                                              value=value, length=length, address=address)
         elif datatype in (DataType.STRING, DataType.STRING_P, DataType.STRING_S, DataType.STRING_PS):
-            self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, datatype, True,
+            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, datatype, True,
                                              value=value, length=len(value))     # type: ignore
         elif datatype == DataType.MATRIX:
             length = matrixsize[0] * matrixsize[1]
-            self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.MATRIX, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.MATRIX, allocate,
                                              value=value, length=length, address=address, matrixsize=matrixsize)
         else:
             raise ValueError("unknown type " + str(datatype))
         self.eval_dict = None
 
-    def define_sub(self, blockname: str, name: str, sourcefile: str, sourceline: int,
+    def define_sub(self, name: str, sourcefile: str, sourceline: int,
                    parameters: Sequence[Tuple[str, str]], returnvalues: Set[str], address: Optional[int]) -> None:
         self.check_identifier_valid(name)
-        self.symbols[name] = SubroutineDef(blockname, name, sourcefile, sourceline, parameters, returnvalues, address)
+        self.symbols[name] = SubroutineDef(self.name, name, sourcefile, sourceline, parameters, returnvalues, address)
 
-    def define_label(self, blockname: str, name: str, sourcefile: str, sourceline: int) -> None:
+    def define_label(self, name: str, sourcefile: str, sourceline: int) -> None:
         self.check_identifier_valid(name)
-        self.symbols[name] = LabelDef(blockname, name, sourcefile, sourceline, False)
+        self.symbols[name] = LabelDef(self.name, name, sourcefile, sourceline, False)
 
-    def define_constant(self, blockname: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
+    def define_scope(self, scope: 'SymbolTable') -> None:
+        self.check_identifier_valid(scope.name)
+        self.symbols[scope.name] = scope
+
+    def define_constant(self, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
                         length: int=0, value: Union[int, float, str]=0) -> None:
         # this defines a new constant and also checks if the value is allowed for the data type.
         assert value is not None
@@ -364,22 +360,13 @@ class SymbolTable:
         if range_error:
             raise ValueError(range_error)
         if datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
-            self.symbols[name] = ConstantDef(blockname, name, sourcefile, sourceline, datatype, value=value, length=length or 1)
+            self.symbols[name] = ConstantDef(self.name, name, sourcefile, sourceline, datatype, value=value, length=length or 1)
         elif datatype in STRING_DATATYPES:
             strlen = len(value)  # type: ignore
-            self.symbols[name] = ConstantDef(blockname, name, sourcefile, sourceline, datatype, value=value, length=strlen)
+            self.symbols[name] = ConstantDef(self.name, name, sourcefile, sourceline, datatype, value=value, length=strlen)
         else:
             raise ValueError("invalid data type for constant: " + str(datatype))
         self.eval_dict = None
-
-    def define_block(self, name: str, sourcefile: str, sourceline: int, symbols: 'SymbolTable') -> BlockScope:
-        if name in self.global_blocks:
-            orig = self.global_blocks[name]
-            raise SymbolError("duplicate block name '{0:s}', original definition at {1:s} line {2:d}"
-                              .format(name, orig.sourcefile, orig.sourceline))
-        scope = BlockScope(name, sourcefile, sourceline, symbols)
-        self.global_blocks[name] = scope
-        return scope
 
 
 def trunc_float_if_needed(sourcefile: str, linenum: int, datatype: DataType,

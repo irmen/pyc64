@@ -573,7 +573,7 @@ class CodeGenerator:
 
     def generate_assign_integer_to_mem(self, lv: ParseResult.MemMappedValue, rvalue: ParseResult.IntegerValue) -> None:
         if lv.name:
-            symblock, sym = self.parsed.lookup_symbol(lv.name, self.cur_block)
+            symblock, sym = self.cur_block.lookup(lv.name)
             if not isinstance(sym, VariableDef):
                 raise TypeError("invalid lvalue type " + str(sym))
             assign_target = symblock.label + "." + sym.name if symblock is not self.cur_block else lv.name
@@ -618,7 +618,7 @@ class CodeGenerator:
                 self.p("\t\tsta  " + self.to_hex(lv.address))
                 return
             # assign char value to a memory location by symbol name
-            symblock, sym = self.parsed.lookup_symbol(lv.name, self.cur_block)
+            symblock, sym = self.cur_block.lookup(lv.name)
             if isinstance(sym, VariableDef):
                 assign_target = lv.name
                 if symblock is not self.cur_block:

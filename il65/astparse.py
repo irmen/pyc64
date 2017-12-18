@@ -152,7 +152,7 @@ class ExpressionTransformer(EvaluatingTransformer):
 
     def visit_Attribute(self, node: ast.Attribute):
         dotted_name = self._dotted_name_from_attr(node)
-        symbol = self.context.get_dotted(dotted_name)
+        scope, symbol = self.context.lookup(dotted_name)
         if isinstance(symbol, ConstantDef):
             if symbol.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
                 return ast.copy_location(ast.Num(symbol.value), node)
@@ -212,7 +212,9 @@ class ExpressionTransformer(EvaluatingTransformer):
 
 if __name__ == "__main__":
     src = SourceLine("2+#derp", "<source>", 1, 0)
-    e = parse_expression(src, SymbolTable())
+    symbols = SymbolTable("<root>", None, None)
+    symbols.define_variable("derp", "<source>", 1, DataType.BYTE, address=2345)
+    e = parse_expression(src, symbols)
     print("EXPRESSION:", e)
     import astunparse
     print(astunparse.unparse(e))

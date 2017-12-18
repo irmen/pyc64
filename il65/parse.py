@@ -28,13 +28,13 @@ class ParseResult:
     class Block:
         _unnamed_block_labels = {}  # type: Dict[ParseResult.Block, str]
 
-        def __init__(self, sourcefile: str, linenum: int) -> None:
+        def __init__(self, name: str, sourcefile: str, linenum: int, parent_scope: SymbolTable) -> None:
             self.sourcefile = sourcefile
             self.linenum = linenum
             self.address = 0
-            self.name = ""
+            self.name = name
             self.statements = []    # type: List[ParseResult._Stmt]
-            self.symbols = SymbolTable()        # labels, vars, subroutine defs
+            self.symbols = SymbolTable(name, parent_scope, self)
 
         @property
         def label_names(self) -> Set[str]:
@@ -49,6 +49,13 @@ class ParseResult:
             label = "il65_block_{:d}".format(len(self._unnamed_block_labels))
             self._unnamed_block_labels[self] = label
             return label
+
+        def lookup(self, dottedname: str) -> Tuple[Optional['ParseResult.Block'], Optional[SymbolDefinition]]:
+            try:
+                scope, result = self.symbols.lookup(dottedname)
+                return scope.owning_block, result
+            except (SymbolError, LookupError):
+                return None, None
 
     class Value:
         def __init__(self, datatype: DataType, name: str=None, constant: bool=False) -> None:
@@ -316,8 +323,7 @@ class ParseResult:
                     self.right.name = stringvar_name
             else:
                 stringvar_name = "il65_str_{:d}".format(id(self))
-                cur_block.symbols.define_variable(cur_block.name, stringvar_name, cur_block.sourcefile, 0, DataType.STRING,
-                                                  value=self.right.value)
+                cur_block.symbols.define_variable(stringvar_name, cur_block.sourcefile, 0, DataType.STRING, value=self.right.value)
                 self.right.name = stringvar_name
                 self._immediate_string_vars[self.right.value] = (cur_block.name, stringvar_name)
 
@@ -364,7 +370,7 @@ class ParseResult:
         def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
                                       stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
             if self.unresolved:
-                symblock, identifier = parser.result.lookup_symbol(self.unresolved, cur_block)
+                symblock, identifier = cur_block.lookup(self.unresolved)
                 if not identifier:
                     raise ParseError("unknown symbol '{:s}'".format(self.unresolved), "", cur_block.sourcefile, self.line_number)
                 if isinstance(identifier, SubroutineDef):
@@ -399,20 +405,6 @@ class ParseResult:
     def merge(self, parsed: 'ParseResult') -> None:
         self.blocks.extend(parsed.blocks)
 
-    def lookup_symbol(self, name: str, localblock: Block) -> Tuple[Optional[Block], Optional[SymbolDefinition]]:
-        # search for a symbol. Returns (containing_block, symbol) if found, else (None, None).
-        # XXX remove? move to symboltable? use symboltable global block lookup?
-        name1, sep, name2 = name.partition(".")
-        if sep:
-            for b in self.blocks:
-                if b.name == name1:
-                    if name2 in b.symbols:
-                        return b, b.symbols[name2]
-                    return None, None
-        elif name1 in localblock.symbols:
-            return localblock, localblock.symbols[name1]
-        return None, None
-
 
 class Parser:
     def __init__(self, sourcefile: str, outputdir: str, sourcecode: Optional[str]=None, parsing_import: bool=False) -> None:
@@ -423,6 +415,7 @@ class Parser:
         self.cur_linenum = -1
         self.cur_lineidx = -1
         self.cur_block = None  # type: ParseResult.Block
+        self.root_scope = SymbolTable("<root>", None, None)
         if sourcecode:
             sourcelines = sourcecode.splitlines()
         else:
@@ -620,13 +613,13 @@ class Parser:
 
     def parse_block(self) -> ParseResult.Block:
         # first line contains block header "~ [name] [addr]" followed by a '{'
-        num, line = self.next_line()
+        linenum, line = self.next_line()
         line = line.lstrip()
         if not line.startswith("~"):
             raise self.PError("expected '~' (block)")
-        self.cur_block = ParseResult.Block(self.sourcefile, num)
         block_args = line[1:].split()
         arg = ""
+        self.cur_block = ParseResult.Block("", self.sourcefile, linenum, self.root_scope)
         is_zp_block = False
         while block_args:
             arg = block_args.pop(0)
@@ -642,8 +635,8 @@ class Parser:
                                           .format(arg, orig.sourcefile, orig.linenum))
                     self.cur_block = orig  # zero page block occurrences are merged
                 else:
-                    self.cur_block.name = arg
-                    self.cur_block.symbols.define_block(arg, self.sourcefile, num, self.cur_block.symbols)
+                    self.cur_block = ParseResult.Block(arg, self.sourcefile, linenum, self.root_scope)
+                    self.root_scope.define_scope(self.cur_block.symbols)
             elif arg == "{":
                 break
             elif arg.endswith("{"):
@@ -717,7 +710,7 @@ class Parser:
                 raise self.PError("label already defined")
             if labelname in self.cur_block.symbols:
                 raise self.PError("symbol already defined")
-            self.cur_block.symbols.define_label(self.cur_block.name, labelname, self.sourcefile, self.cur_linenum)
+            self.cur_block.symbols.define_label(labelname, self.sourcefile, self.cur_linenum)
             self.cur_block.statements.append(ParseResult.Label(labelname, self.cur_linenum))
             if len(label_line) > 1:
                 rest = label_line[1]
@@ -768,8 +761,7 @@ class Parser:
         if is_zeropage and memaddress > 0xff:
             raise self.PError("address must lie in zeropage $00-$ff")
         try:
-            self.cur_block.symbols.define_variable(self.cur_block.name, varname,
-                                                   self.sourcefile, self.cur_linenum, mtype,
+            self.cur_block.symbols.define_variable(varname, self.sourcefile, self.cur_linenum, mtype,
                                                    length=msize, address=memaddress, matrixsize=matrixsize)
         except SymbolError as x:
             raise self.PError(str(x)) from x
@@ -818,8 +810,7 @@ class Parser:
                 else:
                     raise self.PError("byte value expected")
             try:
-                self.cur_block.symbols.define_constant(self.cur_block.name, varname,
-                                                       self.sourcefile, self.cur_linenum, datatype, value=constvalue)
+                self.cur_block.symbols.define_constant(varname, self.sourcefile, self.cur_linenum, datatype, value=constvalue)
             except (ValueError, SymbolError) as x:
                 raise self.PError(str(x)) from x
 
@@ -843,8 +834,7 @@ class Parser:
         except ParseError:
             raise self.PError("invalid subroutine address")
         try:
-            self.cur_block.symbols.define_sub(self.cur_block.name, name,
-                                              self.sourcefile, self.cur_linenum, parameters, results, address)
+            self.cur_block.symbols.define_sub(name, self.sourcefile, self.cur_linenum, parameters, results, address)
         except SymbolError as x:
             raise self.PError(str(x)) from x
 
@@ -863,8 +853,7 @@ class Parser:
                 raise self.PError("can't use a reserved name here")
             strvalue = parse_string(match.group("value"), self.cur_block.symbols, self.sourcefile, self.cur_linenum)
             try:
-                self.cur_block.symbols.define_variable(self.cur_block.name, vname,
-                                                       self.sourcefile, self.cur_linenum, datatype, value=strvalue)
+                self.cur_block.symbols.define_variable(vname, self.sourcefile, self.cur_linenum, datatype, value=strvalue)
             except SymbolError as x:
                 raise self.PError(str(x)) from x
             return
@@ -934,8 +923,7 @@ class Parser:
         elif isinstance(value, str):
             raise self.PError("use .text type to define string variables")
         try:
-            self.cur_block.symbols.define_variable(self.cur_block.name, vname,
-                                                   self.sourcefile, self.cur_linenum, datatype,
+            self.cur_block.symbols.define_variable(vname, self.sourcefile, self.cur_linenum, datatype,
                                                    address=vaddr, length=vlen, value=value, matrixsize=matrixsize)
         except (ValueError, SymbolError) as x:
             raise self.PError(str(x)) from x
@@ -1108,7 +1096,7 @@ class Parser:
         elif text == "false":
             return ParseResult.IntegerValue(0)
         elif self.is_identifier(text):
-            symblock, sym = self.result.lookup_symbol(text, cur_block)
+            symblock, sym = cur_block.lookup(text)
             if sym is None:
                 # symbols is not (yet) known, store a placeholder to resolve later in parse pass 2
                 return ParseResult.PlaceholderSymbol(None, text)
