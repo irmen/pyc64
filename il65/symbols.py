@@ -17,7 +17,7 @@ PrimitiveType = Union[int, float, str]
 
 
 REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
-REGISTER_SYMBOLS_RETURNVALUES = REGISTER_SYMBOLS - {"SC"}
+REGISTER_SYMBOLS_RETURNVALUES = REGISTER_SYMBOLS | {"SZ"}
 REGISTER_BYTES = {"A", "X", "Y", "SC"}
 REGISTER_WORDS = {"AX", "AY", "XY"}
 
@@ -163,8 +163,11 @@ class SubroutineDef(SymbolDefinition):
         for register in returnvalues:
             if register in REGISTER_SYMBOLS_RETURNVALUES:
                 self.return_registers.add(register)
-            elif len(register) == 2 and register[1] == '?' and register[0] in "AXY":
-                self.clobbered_registers.add(register[0])
+            elif register[-1] == "?":
+                for r in register[:-1]:
+                    if r not in REGISTER_SYMBOLS_RETURNVALUES:
+                        raise SymbolError("invalid return value spec: " + r)
+                    self.clobbered_registers.add(r)
             else:
                 raise SymbolError("invalid return value spec: " + register)
 

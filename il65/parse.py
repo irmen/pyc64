@@ -756,8 +756,14 @@ class Parser:
         name, parameterlist, resultlist, address_str = \
             match.group("name"), match.group("parameters"), match.group("results"), match.group("address")
         parameters = [(match.group("name"), match.group("target"))
-                      for match in re.finditer(r"(?:(?P<name>[\w]+)\s*:\s*(?P<target>[\w]+))(?:,|$)", parameterlist)]
-        results = {match.group("name") for match in re.finditer(r"\s*(?P<name>\w\?+)\s*(?:,|$)", resultlist)}
+                      for match in re.finditer(r"(?:(?:(?P<name>[\w]+)\s*:\s*)?(?P<target>[\w]+))(?:,|$)", parameterlist)]
+        for _, regs in parameters:
+            if regs not in REGISTER_SYMBOLS:
+                raise self.PError("invalid register(s) in parameter or return values")
+        all_paramnames = [p[0] for p in parameters if p[0]]
+        if len(all_paramnames) != len(set(all_paramnames)):
+            raise self.PError("duplicates in parameter names")
+        results = {match.group("name") for match in re.finditer(r"\s*(?P<name>(?:\w+)\??)\s*(?:,|$)", resultlist)}
         try:
             address = parse_expr_as_int(address_str, None, self.sourcefile, self.cur_linenum)
         except ParseError:
@@ -1171,3 +1177,12 @@ def value_sortkey(value: ParseResult.Value) -> int:
             return 20000 + value.address
     else:
         return 99999999
+
+
+if __name__ == "__main__":
+    p = Parser("parse.py", outputdir="output")
+    p.cur_block = ParseResult.Block("test", "testfile", 1, None)
+    p.parse_subx_def("subx  SUBNAME   (A, test2:XY, X) -> (A?, X) = $c000")
+    sub = list(p.cur_block.symbols.iter_subroutines())[0]
+    import pprint
+    pprint.pprint(vars(sub))
