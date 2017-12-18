@@ -8,18 +8,18 @@ output prg,sys  ; create a c-64 program with basic SYS call to launch it
 
 ~main $0a00
 {
-	memory screen $d021
-	memory border $d020
-	memory cursor 646
-	const cyan 3
-	const .word redw $2002
+	memory screen = $d021
+	memory border = $d020
+	memory cursor = 646
+	const cyan = 3
+	const .word redw = $2002
 	var 			uninitbyte1
 	var .byte		uninitbyte2
 	var .word		uninitword1
-	var .byte		initbyte33     33
-	var .word		initword9876   $9876
-	var .array(10)		bytes2   $44
-	var .wordarray(10)	words2   $bbcc
+	var .byte		initbyte33     = 33
+	var .word		initword9876   = $9876
+	var .array(10)		bytes2   = $44
+	var .wordarray(10)	words2   = $bbcc
 
 
 start   ;foo
@@ -80,11 +80,11 @@ somelabel1
 	var zp2
 	var .word zpw1
 	var .word zpw2
-	var .array(100)  some_array1    $aa  ; initialized with $aa bytes
-	const white 1
-	const red 2
-	const .word border2 $d020
-	const .word screen2 $d021
+	var .array(100)  some_array1    = $aa  ; initialized with $aa bytes
+	const white  = 1
+	const red = 2
+	const .word border2 = $d020
+	const .word screen2 = $d021
 }
 
 ~{

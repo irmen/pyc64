@@ -12,7 +12,7 @@ import os
 import shutil
 import enum
 from typing import Set, List, Tuple, Optional, Union, Any, Dict
-from astparse import ParseError, parse_int, parse_number, parse_primitive, parse_string
+from astparse import ParseError, parse_expr_as_int, parse_expr_as_number, parse_expr_as_primitive, parse_expr_as_string
 from symbols import SymbolTable, DataType, SymbolDefinition, SubroutineDef, \
     zeropage, check_value_in_range, trunc_float_if_needed, \
     VariableDef, ConstantDef, SymbolError, STRING_DATATYPES, \
@@ -266,8 +266,7 @@ class ParseResult:
             return False, "incompatible value for assignment"
 
     class _Stmt:
-        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block') -> None:
             pass
 
     class Label(_Stmt):
@@ -284,19 +283,18 @@ class ParseResult:
         def __str__(self):
             return "<Assign {:s} to {:s}>".format(str(self.right), ",".join(str(lv) for lv in self.leftvalues))
 
-        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block') -> None:
             if isinstance(self.right, ParseResult.PlaceholderSymbol):
                 value = parser.parse_expression(self.right.name, cur_block)
                 if isinstance(value, ParseResult.PlaceholderSymbol):
-                    raise ParseError("cannot resolve symbol: " + self.right.name, "", cur_block.sourcefile, cur_block.linenum)
+                    raise ParseError("cannot resolve rvalue symbol: " + self.right.name, "", cur_block.sourcefile, cur_block.linenum)
                 self.right = value
             lv_resolved = []
             for lv in self.leftvalues:
                 if isinstance(lv, ParseResult.PlaceholderSymbol):
                     value = parser.parse_expression(lv.name, cur_block)
                     if isinstance(value, ParseResult.PlaceholderSymbol):
-                        raise ParseError("cannot resolve symbol: " + lv.name, "", cur_block.sourcefile, cur_block.linenum)
+                        raise ParseError("cannot resolve lvalue symbol: " + lv.name, "", cur_block.sourcefile, cur_block.linenum)
                     lv_resolved.append(value)
                 else:
                     lv_resolved.append(lv)
@@ -336,20 +334,18 @@ class ParseResult:
             self.x = x
             self.y = y
 
-        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block') -> None:
             if isinstance(self.a, ParseResult.PlaceholderSymbol) or \
                isinstance(self.x, ParseResult.PlaceholderSymbol) or \
                isinstance(self.y, ParseResult.PlaceholderSymbol):
-                raise ParseError("unresolved placeholders in returnstatement", "", cur_block.sourcefile, cur_block.linenum)
+                raise ParseError("unresolved placeholders in return statement", "", cur_block.sourcefile, cur_block.linenum)
 
     class IncrDecrStmt(_Stmt):
         def __init__(self, what: 'ParseResult.Value', howmuch: int) -> None:
             self.what = what
             self.howmuch = howmuch
 
-        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block') -> None:
             if isinstance(self.what, ParseResult.PlaceholderSymbol):
                 value = parser.parse_expression(self.what.name, cur_block)
                 if isinstance(value, ParseResult.PlaceholderSymbol):
@@ -368,8 +364,7 @@ class ParseResult:
             self.call_label = ""
             self.line_number = line_number
 
-        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block',
-                                      stmt_index: int, statements: List['ParseResult._Stmt']) -> None:
+        def resolve_symbol_references(self, parser: 'Parser', cur_block: 'ParseResult.Block') -> None:
             if self.unresolved:
                 symblock, identifier = cur_block.lookup(self.unresolved)
                 if not identifier:
@@ -461,11 +456,7 @@ class Parser:
                 if block:
                     self.result.add_block(block)
             elif next_line.lstrip().startswith("import"):
-                parsed_import = self.parse_import()
-                if parsed_import:
-                    self.result.merge(parsed_import)
-                else:
-                    raise self.PError("Error while parsing imported file")
+                self.parse_import()
             else:
                 break
         _, line = self.next_line()
@@ -489,11 +480,7 @@ class Parser:
         for block in self.result.blocks:
             statements = list(block.statements)
             for index, stmt in enumerate(statements):
-                try:
-                    stmt.resolve_symbol_references(self, block, index, statements)
-                except LookupError as x:
-                    self.cur_linenum = block.linenum
-                    raise self.PError("Symbol reference error in this block") from x
+                stmt.resolve_symbol_references(self, block)
                 if isinstance(stmt, ParseResult.AssignmentStmt):
                     stmt.desugar_immediate_string(block)
             block.statements = statements
@@ -565,7 +552,7 @@ class Parser:
                     raise self.PError("multiple occurrences of 'address'")
                 _, _, arg = line.partition(" ")
                 try:
-                    self.result.start_address = parse_int(arg, None, self.sourcefile, self.cur_linenum)
+                    self.result.start_address = parse_expr_as_int(arg, None, self.sourcefile, self.cur_linenum)
                 except ParseError:
                     raise self.PError("invalid address")
                 if self.result.format == ProgramFormat.PRG and self.result.with_sys and self.result.start_address != 0x0801:
@@ -583,7 +570,7 @@ class Parser:
                     raise self.PError("cannot use non-default 'address' when output format includes basic SYS program")
                 return
 
-    def parse_import(self) -> ParseResult:
+    def parse_import(self) -> None:
         num, line = self.next_line()
         line = line.lstrip()
         if not line.startswith("import"):
@@ -609,7 +596,13 @@ class Parser:
             if os.path.isfile(filename):
                 parser = Parser(filename, self.outputdir, parsing_import=True)
                 print("importing", filename)
-                return parser.parse()
+                result = parser.parse()
+                if result:
+                    self.root_scope.merge_roots(parser.root_scope)
+                    self.result.merge(result)
+                    return
+                else:
+                    raise self.PError("Error while parsing imported file")
         raise self.PError("imported file not found")
 
     def parse_block(self) -> ParseResult.Block:
@@ -647,7 +640,7 @@ class Parser:
                 continue
             else:
                 try:
-                    block_address = parse_int(arg, None, self.sourcefile, self.cur_linenum)
+                    block_address = parse_expr_as_int(arg, None, self.sourcefile, self.cur_linenum)
                 except ParseError:
                     raise self.PError("Invalid block address")
                 if block_address == 0 or (block_address < 0x0200 and not is_zp_block):
@@ -720,109 +713,34 @@ class Parser:
             raise self.PError("invalid label name")
 
     def parse_memory_def(self, line: str, is_zeropage: bool=False) -> None:
-        dotargs = self.psplit(line)
-        if dotargs[0] != "memory" or len(dotargs) not in (3, 4):
-            raise self.PError("invalid memory definition")
-        msize = 1
-        mtype = DataType.BYTE
-        memtype = dotargs[1]
-        matrixsize = None
-        if memtype.startswith("."):
-            if memtype == ".byte":
-                pass
-            elif memtype == ".word":
-                msize = 2
-                mtype = DataType.WORD
-            elif memtype == ".float":
-                msize = 5   # 5-byte cbm MFLPT format, this is the only float format supported for now
-                mtype = DataType.FLOAT
-            elif memtype.startswith(".array(") and memtype.endswith(")"):
-                msize = self._size_from_arraydecl(memtype)
-                mtype = DataType.BYTEARRAY
-            elif memtype.startswith(".wordarray(") and memtype.endswith(")"):
-                msize = self._size_from_arraydecl(memtype)
-                mtype = DataType.WORDARRAY
-            elif memtype.startswith(".matrix(") and memtype.endswith(")"):
-                if len(dotargs) != 4:
-                    raise self.PError("missing matrix memory address")
-                matrixsize = self._size_from_matrixdecl(memtype)
-                msize = matrixsize[0] * matrixsize[1]
-                mtype = DataType.MATRIX
-            else:
-                raise self.PError("invalid memory type")
-            dotargs.pop(1)
-        if len(dotargs) < 3:
-            raise self.PError("invalid memory definition")
-        varname = dotargs[1]
-        if not varname.isidentifier():
-            raise self.PError("invalid symbol name")
-        if varname in RESERVED_NAMES:
-            raise self.PError("can't use a reserved name here")
-        memaddress = parse_int(dotargs[2], self.cur_block.symbols, self.sourcefile, self.cur_linenum)
+        varname, datatype, length, dimensions, valuetext = self.parse_def_common(line, "memory")
+        memaddress = parse_expr_as_int(valuetext, self.cur_block.symbols, self.sourcefile, self.cur_linenum)
         if is_zeropage and memaddress > 0xff:
             raise self.PError("address must lie in zeropage $00-$ff")
         try:
-            self.cur_block.symbols.define_variable(varname, self.sourcefile, self.cur_linenum, mtype,
-                                                   length=msize, address=memaddress, matrixsize=matrixsize)
+            self.cur_block.symbols.define_variable(varname, self.sourcefile, self.cur_linenum, datatype,
+                                                   length=length, address=memaddress, matrixsize=dimensions)
         except SymbolError as x:
             raise self.PError(str(x)) from x
 
     def parse_const_def(self, line: str) -> None:
-        dotargs = self.psplit(line)
-        if dotargs[0] != "const" or len(dotargs) not in (3, 4):
-            raise self.PError("invalid const definition")
-        if len(dotargs) == 4:
-            # 'const .datatype symbolname expression'
-            if dotargs[1] == ".byte":
-                datatype = DataType.BYTE
-            elif dotargs[1] == ".word":
-                datatype = DataType.WORD
-            elif dotargs[1] == ".float":
-                datatype = DataType.FLOAT
-            elif dotargs[1] == ".text":
-                datatype = DataType.STRING
-            elif dotargs[1] == ".ptext":
-                datatype = DataType.STRING_P
-            elif dotargs[1] == ".stext":
-                datatype = DataType.STRING_S
-            elif dotargs[1] == ".pstext":
-                datatype = DataType.STRING_PS
-            else:
-                raise self.PError("invalid const datatype")
-            varname = dotargs[2]
-            value = dotargs[3]
-        else:
-            # 'const symbolname expression'
-            datatype = DataType.BYTE
-            varname = dotargs[1]
-            if varname[0] == ".":
-                raise self.PError("invalid const definition, missing constant name or value?")
-            value = dotargs[2]
-        if not varname.isidentifier():
-            raise self.PError("invalid symbol name")
-        if varname in RESERVED_NAMES:
-            raise self.PError("can't use a reserved name here")
-        else:
-            constvalue = parse_primitive(value, self.cur_block.symbols, self.sourcefile, self.cur_linenum)
-            # if we're a BYTE type, and the value is a single character, convert it to the numeric value
-            if datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX) and isinstance(constvalue, str):
-                if len(constvalue) == 1:
-                    constvalue = self.char_to_bytevalue(constvalue)
-                else:
-                    raise self.PError("byte value expected")
-            try:
-                self.cur_block.symbols.define_constant(varname, self.sourcefile, self.cur_linenum, datatype, value=constvalue)
-            except (ValueError, SymbolError) as x:
-                raise self.PError(str(x)) from x
+        varname, datatype, length, dimensions, valuetext = self.parse_def_common(line, "const")
+        if dimensions:
+            raise self.PError("cannot declare a constant matrix")
+        value = parse_expr_as_primitive(valuetext, self.cur_block.symbols, self.sourcefile, self.cur_linenum)
+        value = self.coerce_value(value, datatype, length)
+        try:
+            self.cur_block.symbols.define_constant(varname, self.sourcefile, self.cur_linenum, datatype,
+                                                   length=length, value=value)
+        except (ValueError, SymbolError) as x:
+            raise self.PError(str(x)) from x
 
     def parse_subx_def(self, line: str) -> None:
-        #  subx P_CHROUT (char: A) -> (A,X,Y)     $ffd2
-        #  subx SUBNAME (PARAMETERS) -> (RESULTS)  ADDRESS
         match = re.match(r"^subx\s+(?P<name>\w+)\s+"
                          r"\((?P<parameters>[\w\s:,]*)\)"
                          r"\s*->\s*"
                          r"\((?P<results>[\w\s?,]*)\)\s*"
-                         r"(?P<address>\S*)\s*$", line)
+                         r"\s+=\s+(?P<address>\S*)\s*$", line)
         if not match:
             raise self.PError("invalid subx declaration")
         name, parameterlist, resultlist, address_str = \
@@ -831,7 +749,7 @@ class Parser:
                       for match in re.finditer(r"(?:(?P<name>[\w]+)\s*:\s*(?P<target>[\w]+))(?:,|$)", parameterlist)]
         results = {match.group("name") for match in re.finditer(r"\s*(?P<name>\w\?+)\s*(?:,|$)", resultlist)}
         try:
-            address = parse_int(address_str, None, self.sourcefile, self.cur_linenum)
+            address = parse_expr_as_int(address_str, None, self.sourcefile, self.cur_linenum)
         except ParseError:
             raise self.PError("invalid subroutine address")
         try:
@@ -839,95 +757,68 @@ class Parser:
         except SymbolError as x:
             raise self.PError(str(x)) from x
 
+    def get_datatype(self, typestr: str) -> Tuple[DataType, int, Optional[Tuple[int, int]]]:
+        if typestr == ".byte":
+            return DataType.BYTE, 1, None
+        elif typestr == ".word":
+            return DataType.WORD, 1, None
+        elif typestr == ".float":
+            return DataType.FLOAT, 1, None
+        elif typestr.endswith("text"):
+            if typestr == ".text":
+                return DataType.STRING, 0, None
+            elif typestr == ".ptext":
+                return DataType.STRING_P, 0, None
+            elif typestr == ".stext":
+                return DataType.STRING_S, 0, None
+            elif typestr == ".pstext":
+                return DataType.STRING_PS, 0, None
+        elif typestr.startswith(".array(") and typestr.endswith(")"):
+            return DataType.BYTEARRAY, self._size_from_arraydecl(typestr), None
+        elif typestr.startswith(".wordarray(") and typestr.endswith(")"):
+            return DataType.WORDARRAY, self._size_from_arraydecl(typestr), None
+        elif typestr.startswith(".matrix(") and typestr.endswith(")"):
+            dimensions = self._size_from_matrixdecl(typestr)
+            return DataType.MATRIX, dimensions[0] * dimensions[1], dimensions
+        raise self.PError("invalid data type: " + typestr)
+
     def parse_var_def(self, line: str) -> None:
-        match = re.match(r"^var\s+.(?P<type>(?:s|p|ps|)text)\s+(?P<name>\w+)\s+(?P<value>['\"].+['\"])$", line)
-        if match:
-            # it's a var string definition.
-            datatype = {
-                "text": DataType.STRING,
-                "ptext": DataType.STRING_P,
-                "stext": DataType.STRING_S,
-                "pstext": DataType.STRING_PS
-            }[match.group("type")]
-            vname = match.group("name")
-            if vname in RESERVED_NAMES:
-                raise self.PError("can't use a reserved name here")
-            strvalue = parse_string(match.group("value"), self.cur_block.symbols, self.sourcefile, self.cur_linenum)
-            try:
-                self.cur_block.symbols.define_variable(vname, self.sourcefile, self.cur_linenum, datatype, value=strvalue)
-            except SymbolError as x:
-                raise self.PError(str(x)) from x
-            return
-
-        args = self.psplit(line)
-        if args[0] != "var" or len(args) < 2 or len(args) > 5:
-            raise self.PError("invalid var decl (1)")
-
-        def get_datatype(datatype: str) -> Tuple[DataType, Union[int, Tuple[int, int]]]:
-            if datatype == ".byte":
-                return DataType.BYTE, 1
-            elif datatype == ".word":
-                return DataType.WORD, 1
-            elif datatype == ".float":
-                return DataType.FLOAT, 1
-            elif datatype.startswith(".array(") and datatype.endswith(")"):
-                return DataType.BYTEARRAY, self._size_from_arraydecl(datatype)
-            elif datatype.startswith(".wordarray(") and datatype.endswith(")"):
-                return DataType.WORDARRAY, self._size_from_arraydecl(datatype)
-            elif datatype.startswith(".matrix(") and datatype.endswith(")"):
-                return DataType.MATRIX, self._size_from_matrixdecl(datatype)
-            else:
-                raise self.PError("invalid data type: " + datatype)
-
-        vaddr = None
-        value = 0    # type: Union[int, float, str]
-        matrixsize = None  # type: Tuple[int, int]
-        if len(args) == 2:  # var uninit_bytevar
-            vname = args[1]
-            if not vname.isidentifier():
-                raise self.PError("invalid variable name")
-            if vname in REGISTER_SYMBOLS:
-                raise self.PError("cannot use a register name as variable")
-            datatype = DataType.BYTE
-            vlen = 1
-        elif len(args) == 3:  # var datatype varname, OR var varname expression
-            if args[1][0] != '.':
-                # assume var varname expression
-                vname = args[1]
-                if not vname.isidentifier():
-                    raise self.PError("invalid variable name, or maybe forgot variable type")
-                datatype, vlen = DataType.BYTE, 1
-                value = parse_primitive(args[2], self.cur_block.symbols, self.sourcefile,  self.cur_linenum)
-            else:
-                # assume var datatype varname
-                datatype, vlen = get_datatype(args[1])   # type: ignore
-                vname = args[2]
-        elif len(args) == 4:  # var datatype varname expression
-            vname = args[2]
-            if not vname.isidentifier():
-                raise self.PError("invalid variable name, or var syntax")
-            datatype, vlen = get_datatype(args[1])   # type: ignore
-            value = parse_primitive(args[3], self.cur_block.symbols, self.sourcefile, self.cur_linenum)
-        else:
-            raise self.PError("invalid var decl (2)")
-        if datatype == DataType.MATRIX:
-            matrixsize = vlen   # type: ignore
-            vlen = None
-        if vname in RESERVED_NAMES:
-            raise self.PError("can't use a reserved name here")
-        # if we're a BYTE type, and the value is a single character, convert it to the numeric value
-        if datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX) and isinstance(value, str):
-            if len(value) == 1:
-                value = self.char_to_bytevalue(value)
-            else:
-                raise self.PError("byte value expected")
-        elif isinstance(value, str):
-            raise self.PError("use .text type to define string variables")
+        varname, datatype, length, dimensions, valuetext = self.parse_def_common(line, "var", False)
+        value = parse_expr_as_primitive(valuetext, self.cur_block.symbols, self.sourcefile, self.cur_linenum)
+        value = self.coerce_value(value, datatype, length)
         try:
-            self.cur_block.symbols.define_variable(vname, self.sourcefile, self.cur_linenum, datatype,
-                                                   address=vaddr, length=vlen, value=value, matrixsize=matrixsize)
+            self.cur_block.symbols.define_variable(varname, self.sourcefile, self.cur_linenum, datatype,
+                                                   length=length, value=value, matrixsize=dimensions)
         except (ValueError, SymbolError) as x:
             raise self.PError(str(x)) from x
+
+    def parse_def_common(self, line: str, what: str, value_required: bool=True) -> \
+            Tuple[str, DataType, int, Optional[Tuple[int, int]], str]:
+        try:
+            vartext, valuetext = line.split("=", maxsplit=1)
+        except ValueError:
+            if '=' not in line:
+                if value_required:
+                    raise self.PError("missing value assignment")
+                vartext, valuetext = line, "0"  # unspecified value is '0'
+            else:
+                raise self.PError("invalid {:s} decl, '=' missing?".format(what))
+        args = self.psplit(vartext)
+        if args[0] != what or len(args) < 2:
+            raise self.PError("invalid {:s} decl".format(what))
+        if len(args) > 3 or valuetext.startswith('='):
+            raise self.PError("invalid {:s} decl, '=' missing?".format(what))
+        if len(args) == 2:
+            args.insert(1, ".byte")  # unspecified data type is ".byte"
+        if not args[1].startswith("."):
+            raise self.PError("invalid {:s} decl, type is missing".format(what))
+        varname = args[2]
+        if not varname.isidentifier():
+            raise self.PError("invalid {:s} name".format(what))
+        if varname in RESERVED_NAMES:
+            raise self.PError("can't use a reserved name as {:s} name".format(what))
+        datatype, length, matrix_dimensions = self.get_datatype(args[1])
+        return varname, datatype, length, matrix_dimensions, valuetext
 
     def parse_statement(self, line: str) -> ParseResult._Stmt:
         lhs, sep, rhs = line.partition("=")
@@ -1039,11 +930,11 @@ class Parser:
             return ParseResult.InlineAsm(self.cur_linenum, lines)
         elif aline[0] == "asmbinary":
             if len(aline) == 4:
-                offset = parse_int(aline[2], None, self.sourcefile, self.cur_linenum)
-                length = parse_int(aline[3], None, self.sourcefile, self.cur_linenum)
+                offset = parse_expr_as_int(aline[2], None, self.sourcefile, self.cur_linenum)
+                length = parse_expr_as_int(aline[3], None, self.sourcefile, self.cur_linenum)
                 lines = ['\t.binary "{:s}", ${:04x}, ${:04x}'.format(filename, offset, length)]
             elif len(aline) == 3:
-                offset = parse_int(aline[2], None, self.sourcefile, self.cur_linenum)
+                offset = parse_expr_as_int(aline[2], None, self.sourcefile, self.cur_linenum)
                 lines = ['\t.binary "{:s}", ${:04x}'.format(filename, offset)]
             elif len(aline) == 2:
                 lines = ['\t.binary "{:s}"'.format(filename)]
@@ -1068,11 +959,12 @@ class Parser:
             elif isinstance(expression, ParseResult.MemMappedValue):
                 return ParseResult.IntegerValue(expression.address, datatype=DataType.WORD, name=expression.name)
             elif isinstance(expression, ParseResult.PlaceholderSymbol):
+                print("EX", expression)
                 raise self.PError("cannot take the address from an unresolved symbol")
             else:
                 raise self.PError("cannot take the address from this type")
         elif text[0] in "-.0123456789$%":
-            number = parse_number(text, None, self.sourcefile, self.cur_linenum)
+            number = parse_expr_as_number(text, None, self.sourcefile, self.cur_linenum)
             try:
                 if type(number) is int:
                     return ParseResult.IntegerValue(int(number))
@@ -1087,7 +979,7 @@ class Parser:
         elif text in REGISTER_BYTES:
             return ParseResult.RegisterValue(text, DataType.BYTE)
         elif (text.startswith("'") and text.endswith("'")) or (text.startswith('"') and text.endswith('"')):
-            strvalue = parse_string(text, None, self.sourcefile, self.cur_linenum)
+            strvalue = parse_expr_as_string(text, None, self.sourcefile, self.cur_linenum)
             if len(strvalue) == 1:
                 petscii_code = self.char_to_bytevalue(strvalue)
                 return ParseResult.IntegerValue(petscii_code)
@@ -1157,7 +1049,7 @@ class Parser:
                 else:
                     raise self.PError("invalid symbol type used as lvalue of assignment (3)")
             else:
-                addr = parse_int(num_or_name, None, self.sourcefile, self.cur_linenum)
+                addr = parse_expr_as_int(num_or_name, None, self.sourcefile, self.cur_linenum)
                 if word_type:
                     return ParseResult.MemMappedValue(addr, DataType.WORD, length=1)
                 elif float_type:
@@ -1176,7 +1068,7 @@ class Parser:
         return False
 
     def _size_from_arraydecl(self, decl: str) -> int:
-        return parse_int(decl[:-1].split("(")[-1], self.cur_block.symbols, self.sourcefile, self.cur_linenum)
+        return parse_expr_as_int(decl[:-1].split("(")[-1], self.cur_block.symbols, self.sourcefile, self.cur_linenum)
 
     def _size_from_matrixdecl(self, decl: str) -> Tuple[int, int]:
         dimensions = decl[:-1].split("(")[-1]
@@ -1184,8 +1076,8 @@ class Parser:
             xs, ys = dimensions.split(",")
         except ValueError:
             raise self.PError("invalid matrix dimensions")
-        return (parse_int(xs, self.cur_block.symbols, self.sourcefile, self.cur_linenum),
-                parse_int(ys, self.cur_block.symbols, self.sourcefile, self.cur_linenum))
+        return (parse_expr_as_int(xs, self.cur_block.symbols, self.sourcefile, self.cur_linenum),
+                parse_expr_as_int(ys, self.cur_block.symbols, self.sourcefile, self.cur_linenum))
 
     def psplit(self, sentence: str, separators: str=" \t", lparen: str="(", rparen: str=")") -> List[str]:
         """split a sentence but not on separators within parenthesis"""
@@ -1216,6 +1108,15 @@ class Parser:
             return ord(character.translate(ascii_to_petscii_trans))
         else:
             raise NotImplementedError("screencode conversion not yet implemented for chars")
+
+    def coerce_value(self, value: Union[int, float, str], datatype: DataType, length: int) -> Union[int, float, str]:
+        # if we're a BYTE type, and the value is a single character, convert it to the numeric value
+        if datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX) and isinstance(value, str):
+            if len(value) == 1:
+                value = self.char_to_bytevalue(value)
+            else:
+                raise self.PError("byte value expected")
+        return value
 
 
 class Optimizer:

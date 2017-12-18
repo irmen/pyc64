@@ -69,10 +69,10 @@ class SourceLine:
         return text
 
 
-def parse_int(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
-              column: int=1, minimum: int=0, maximum: int=0xffff) -> int:
+def parse_expr_as_int(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
+                      column: int=1, minimum: int=0, maximum: int=0xffff) -> int:
     src = SourceLine(text, filename, line, column)
-    result = parse_expression(src, context)
+    result = parse_constant_expression(src, context)
     if isinstance(result, bool):
         return int(result)
     if isinstance(result, int):
@@ -81,10 +81,10 @@ def parse_int(text: str, context: Optional[SymbolTable], filename: str, line: in
     raise src.to_error("int expected, not " + type(result).__name__)
 
 
-def parse_number(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
-                 column: int=1, minimum: float=FLOAT_MAX_NEGATIVE, maximum: float=FLOAT_MAX_POSITIVE) -> Union[int, float]:
+def parse_expr_as_number(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
+                         column: int=1, minimum: float=FLOAT_MAX_NEGATIVE, maximum: float=FLOAT_MAX_POSITIVE) -> Union[int, float]:
     src = SourceLine(text, filename, line, column)
-    result = parse_expression(src, context)
+    result = parse_constant_expression(src, context)
     if isinstance(result, bool):
         return int(result)
     if isinstance(result, (int, float)):
@@ -94,18 +94,19 @@ def parse_number(text: str, context: Optional[SymbolTable], filename: str, line:
     raise src.to_error("int or float expected, not " + type(result).__name__)
 
 
-def parse_string(text: str, context: Optional[SymbolTable], filename: str, line: int, *, column: int=1) -> str:
+def parse_expr_as_string(text: str, context: Optional[SymbolTable], filename: str, line: int, *, column: int=1) -> str:
     src = SourceLine(text, filename, line, column)
-    result = parse_expression(src, context)
+    result = parse_constant_expression(src, context)
     if isinstance(result, str):
         return result
     raise src.to_error("string expected, not " + type(result).__name__)
 
 
-def parse_primitive(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
-                    column: int=1, minimum: float = FLOAT_MAX_NEGATIVE, maximum: float = FLOAT_MAX_POSITIVE) -> Union[int, float, str]:
+def parse_expr_as_primitive(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
+                            column: int=1, minimum: float = FLOAT_MAX_NEGATIVE,
+                            maximum: float = FLOAT_MAX_POSITIVE) -> Union[int, float, str]:
     src = SourceLine(text, filename, line, column)
-    result = parse_expression(src, context)
+    result = parse_constant_expression(src, context)
     if isinstance(result, bool):
         return int(result)
     if isinstance(result, (int, float)):
@@ -117,13 +118,15 @@ def parse_primitive(text: str, context: Optional[SymbolTable], filename: str, li
     raise src.to_error("int or float or string expected, not " + type(result).__name__)
 
 
-def parse_expression(src: SourceLine, context: Optional[SymbolTable]) -> Union[int, float, str]:
+def parse_constant_expression(src: SourceLine, context: Optional[SymbolTable]) -> Union[int, float, str]:
     text = src.preprocess()
-    node = ast.parse(text, src.filename, mode="eval")
+    try:
+        node = ast.parse(text, src.filename, mode="eval")
+    except SyntaxError as x:
+        raise src.to_error(str(x))
     # if isinstance(node, ast.Expression):
     if isinstance(node, ast.Expression):
         result = ExpressionTransformer(src, context).evaluate(node)
-        print("PARSE_EXPRESSION:", repr(src.text), src.line, "RESULT=", repr(result))  # XXX
         return result
     else:
         raise TypeError("ast.Expression expected")
@@ -219,5 +222,5 @@ if __name__ == "__main__":
     src = SourceLine("2+#derp", "<source>", 1, 0)
     symbols = SymbolTable("<root>", None, None)
     symbols.define_variable("derp", "<source>", 1, DataType.BYTE, address=2345)
-    e = parse_expression(src, symbols)
+    e = parse_constant_expression(src, symbols)
     print("EXPRESSION RESULT:", e)

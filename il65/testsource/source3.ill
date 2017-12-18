@@ -9,23 +9,23 @@ import "c64lib"               ; searched in several locations and with .ill file
 
 ~ main
 {
-	memory screen2 $0401
-	memory screen3 $0402
-	memory .word screenw $0500
+	memory screen2 = $0401
+	memory screen3 = $0402
+	memory .word screenw = $0500
 
 	; ascii to petscii, 0 terminated
-	var .text hoi "hello everyone out there."
+	var .text hello = "hello everyone out there."
 
 	; ascii to petscii, with length as first byte
-	var .ptext hoipascalstr "Hallo!\0x00\x01\x02d ag\0x01."
+	var .ptext hellopascalstr = "Hello!\0x00\x01\x02d ag\0x01."
 
 	; ascii to screen codes, 0 terminated
-	var .stext hoi_screen "Hallo!\n daar123."
+	var .stext hello_screen = "Hello!\n guys123."
 
 	; ascii to screen codes, length as first byte
-	var .pstext hoipascal_screen "Hallo! \n."
+	var .pstext hellopascal_screen = "Hello! \n."
 
-	var .text hoi2 "@@\f\b\n\r\t@@"        ; should be {..}
+	var .text hello2 = "@@\f\b\n\r\t@@"
 
 start
 	call global2.make_screen_black
@@ -66,7 +66,7 @@ start
 	call c64.CHROUT ;(49)
 	A='2'
 	call c64.CHROUT
-	XY = hoi
+	XY = hello
 	call global.print_string
 	A='!'
 	go c64.CHROUT

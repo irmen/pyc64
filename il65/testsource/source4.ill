@@ -4,9 +4,9 @@ output prg,sys  ; create a c-64 program with basic SYS call to launch it
 
  ~ main
 {
-	var .text greeting "hello world!\r12345678 is a big number.\r"
-	var .ptext p_greeting "hello world!\r12345678 is a big number.\r"
-	const .word BORDER $d020
+	var .text greeting = "hello world!\r12345678 is a big number.\r"
+	var .ptext p_greeting = "hello world!\r12345678 is a big number.\r"
+	const .word BORDER = $d020
 
 start
 	call global.print_pimmediate

@@ -7,82 +7,82 @@
 output raw
 
 ~ c64 {
-		memory SCRATCH_ZP1     $02
-		memory SCRATCH_ZP2     $03
+		memory SCRATCH_ZP1      = $02
+		memory SCRATCH_ZP2      = $03
 
-		memory COLOR       $286        ; cursor color
+		memory COLOR            = $286        ; cursor color
 
 ; ---- VIC-II registers ----
 
-		memory SP0X        $d000
-		memory SP0Y        $d001
-		memory SP1X        $d002
-		memory SP1Y        $d003
-		memory SP2X        $d004
-		memory SP2Y        $d005
-		memory SP3X        $d006
-		memory SP3Y        $d007
-		memory SP4X        $d008
-		memory SP4Y        $d009
-		memory SP5X        $d00a
-		memory SP5Y        $d00b
-		memory SP6X        $d00c
-		memory SP6Y        $d00d
-		memory SP7X        $d00e
-		memory SP7Y        $d00f
+		memory SP0X        = $d000
+		memory SP0Y        = $d001
+		memory SP1X        = $d002
+		memory SP1Y        = $d003
+		memory SP2X        = $d004
+		memory SP2Y        = $d005
+		memory SP3X        = $d006
+		memory SP3Y        = $d007
+		memory SP4X        = $d008
+		memory SP4Y        = $d009
+		memory SP5X        = $d00a
+		memory SP5Y        = $d00b
+		memory SP6X        = $d00c
+		memory SP6Y        = $d00d
+		memory SP7X        = $d00e
+		memory SP7Y        = $d00f
 
-		memory MSIGX       $d010
-		memory SCROLY      $d011
-		memory RASTER      $d012
-		memory LPENX       $d013
-		memory LPENY       $d014
-		memory SPENA       $d015
-		memory SCROLX      $d016
-		memory YXPAND      $d017
-		memory VMCSB       $d018
-		memory VICIRQ      $d019
-		memory IREQMASK    $d01a
-		memory SPBGPR      $d01b
-		memory SPMC        $d01c
-		memory XXPAND      $d01d
-		memory SPSPCL      $d01e
-		memory SPBGCL      $d01f
+		memory MSIGX       = $d010
+		memory SCROLY      = $d011
+		memory RASTER      = $d012
+		memory LPENX       = $d013
+		memory LPENY       = $d014
+		memory SPENA       = $d015
+		memory SCROLX      = $d016
+		memory YXPAND      = $d017
+		memory VMCSB       = $d018
+		memory VICIRQ      = $d019
+		memory IREQMASK    = $d01a
+		memory SPBGPR      = $d01b
+		memory SPMC        = $d01c
+		memory XXPAND      = $d01d
+		memory SPSPCL      = $d01e
+		memory SPBGCL      = $d01f
 
-		memory EXTCOL      $d020       ; border color
-		memory BGCOL0      $d021       ; screen color
-		memory BGCOL1      $d022
-		memory BGCOL2      $d023
-		memory BGCOL4      $d024
-		memory SPMC0       $d025
-		memory SPMC1       $d026
-		memory SP0COL      $d027
-		memory SP1COL      $d028
-		memory SP2COL      $d029
-		memory SP3COL      $d02a
-		memory SP4COL      $d02b
-		memory SP5COL      $d02c
-		memory SP6COL      $d02d
-		memory SP7COL      $d02e
+		memory EXTCOL      = $d020       ; border color
+		memory BGCOL0      = $d021       ; screen color
+		memory BGCOL1      = $d022
+		memory BGCOL2      = $d023
+		memory BGCOL4      = $d024
+		memory SPMC0       = $d025
+		memory SPMC1       = $d026
+		memory SP0COL      = $d027
+		memory SP1COL      = $d028
+		memory SP2COL      = $d029
+		memory SP3COL      = $d02a
+		memory SP4COL      = $d02b
+		memory SP5COL      = $d02c
+		memory SP6COL      = $d02d
+		memory SP7COL      = $d02e
 
 ; ---- end of VIC-II registers ----
 
 ; ---- C64 basic float constants ----
 
 		; constants in five-byte "mflpt" format in the BASIC ROM
-		memory .float mflpt_pi			$aea8	; 3.1415926...   (82 49 0F DA A1)
-		memory .float mflpt_minus32768		$b1a5	; -32768         (90 80 00 00 00)
-		memory .float mflpt_1			$b9bc	; 1              (81 00 00 00 00)
-		memory .float mflpt_half_sqr2		$b9d6	; SQR(2) / 2     (80 35 04 F3 34)
-		memory .float mflpt_sqr2		$b9db	; SQR(2)         (81 35 04 F3 34)
-		memory .float mflpt_minus_half  	$b9e0	; -.5            (80 80 00 00 00)
-		memory .float mflpt_log_2		$b9e5	; LOG(2)         (80 31 72 17 F8)
-		memory .float mflpt_10			$baf9	; 10             (84 20 00 00 00)
-		memory .float mflpt_1e9		        $bdbd	; 1 000 000 000  (9E 6E 6B 28 00)
-		memory .float mflpt_half        	$bf11	; .5             (80 00 00 00 00)
-		memory .float mflpt_one_over_log_2	$bfbf	; 1 / LOG(2)     (81 38 AA 3B 29)
-		memory .float mflpt_half_pi		$e2e0	; PI / 2         (81 49 0F DA A2)
-		memory .float mflpt_double_pi		$e2e5	; 2 * PI         (83 49 0F DA A2)
-		memory .float mflpt_point25		$e2ea	; .25            (7F 00 00 00 00)
+		memory .float mflpt_pi			= $aea8	; 3.1415926...   (82 49 0F DA A1)
+		memory .float mflpt_minus32768		= $b1a5	; -32768         (90 80 00 00 00)
+		memory .float mflpt_1			= $b9bc	; 1              (81 00 00 00 00)
+		memory .float mflpt_half_sqr2		= $b9d6	; SQR(2) / 2     (80 35 04 F3 34)
+		memory .float mflpt_sqr2		= $b9db	; SQR(2)         (81 35 04 F3 34)
+		memory .float mflpt_minus_half  	= $b9e0	; -.5            (80 80 00 00 00)
+		memory .float mflpt_log_2		= $b9e5	; LOG(2)         (80 31 72 17 F8)
+		memory .float mflpt_10			= $baf9	; 10             (84 20 00 00 00)
+		memory .float mflpt_1e9		        = $bdbd	; 1 000 000 000  (9E 6E 6B 28 00)
+		memory .float mflpt_half        	= $bf11	; .5             (80 00 00 00 00)
+		memory .float mflpt_one_over_log_2	= $bfbf	; 1 / LOG(2)     (81 38 AA 3B 29)
+		memory .float mflpt_half_pi		= $e2e0	; PI / 2         (81 49 0F DA A2)
+		memory .float mflpt_double_pi		= $e2e5	; 2 * PI         (83 49 0F DA A2)
+		memory .float mflpt_point25		= $e2ea	; .25            (7F 00 00 00 00)
 
 
 ; @todo better params, see also https://www.c64-wiki.com/wiki/Floating_point_arithmetic#Routines_for_converting_between_floating_point_and_other_formats
@@ -91,55 +91,55 @@ output raw
 ;	because stuff like fac1_times_memAY will load the value from memory
 ;	into fac2 first.
 ; for subtraction and division, the left operand is in fac2, the right operand in fac1.
-subx	fac1_print		() -> (A?, X?, Y?)	$aabc	; print string representation of contents of fac1
-subx	fac1_to_signedYA	() -> (A?, X?, Y?)	$b1aa	; might throw ILLEGAL QUANTITY
-subx	fac1_to_signed16	() -> (A?, X?, Y?)	$b1bf	; might throw ILLEGAL QUANTITY
-subx	fac1_read_signedYA	() -> (A?, X?, Y?)	$b391	; convert 16 bit signed int to float
-subx	fac1_read_unsignedY	() -> (A?, X?, Y?)	$b3a2	; convert 8 bit unsigned int to float
-subx	fac1_read_string	() -> (A?, X?, Y?)	$b7b5	; $22/23 must point to string, A must be string length
-subx	fac1_to_unsignedYA	() -> (A?, X?, Y?)	$b7f7	; might throw ILLEGAL QUANTITY (result is also in $14/15)
-subx	fac1_add_point5		() -> (A?, X?, Y?)	$b849	; for rounding, call this before fac1_int
-subx	fac1_memAY_minus_fac1	() -> (A?, X?, Y?)	$b850	; subtract fac1 from mflpt value
-subx	fac1_fac2_minus_fac1	() -> (A?, X?, Y?)	$b853
-subx	fac1_add_memAY		() -> (A?, X?, Y?)	$b867	; add mflpt value
-subx	fac1_add_fac2		() -> (A?, X?, Y?)	$b86a
-subx	fac1_log		() -> (A?, X?, Y?)	$b9ea	; LOG()
-subx	fac1_times_memAY	() -> (A?, X?, Y?)	$ba28	; multiply by mflpt value
-subx	fac2_read_memAY		() -> (A?, X?, Y?)	$ba8c	; load mflpt value from memory into fac2
-subx	fac2_read_mem0x22	() -> (A?, X?, Y?)	$ba90	; load mflpt value from memory into fac2
-subx	fac1_times_10		() -> (A?, X?, Y?)	$bae2
-subx	fac1_divide_by_10	() -> (A?, X?, Y?)	$bafe	; CAUTION: result is always positive!
-subx	fac1_divide_memAY_by_fac1  () -> (A?, X?, Y?)	$bb0f	; divide mflpt value by fac1 value
-subx	fac1_read_memAY		(A, Y) -> (A?, X?, Y?)	$bba2	; load mflpt value from memory into fac1
-subx	fac1_read_mem0x22	() -> (A?, X?, Y?)	$bba6	; load mflpt value from memory into fac1
-subx	fac1_to_memXY		() -> (A?, X?, Y?)	$bbd4	; store fac1 to memory as mflpt
-subx	fac1_read_fac2		() -> (A?, X?, Y?)	$bbfc	; copy fac2 to fac1
-subx	fac2_read_fac1		() -> (A?, X?, Y?)	$bc0c	; copy fac1 to fac2
-subx	fac1_sign_to_A		() -> (A?, X?, Y?)	$bc2b	; SIGN: $ff, $0, $1 for negative, zero, positive @todo sets N/Z rather than A?
-subx	fac1_sgn		() -> (A?, X?, Y?)	$bc39	; SGN()
-subx	fac1_abs		() -> (A?, X?, Y?)	$bc58	; ABS()
-subx	fac1_compare_to_memAY	() -> (A, X?, Y?)	$bc5b	; compare to mflpt value in memory
-subx	fac1_to_signed32	() -> (A?, X?, Y?)	$bc9b
-subx	fac1_int		() -> (A?, X?, Y?)	$bccc	; INT()
-subx	fac1_read_string0	() -> (A?, X?, Y?)	$bcf3	; use b7b5 instead; this only works after calling CHRGET
-subx	fac1_print_unsignedXA	() -> (A?, X?, Y?)	$bdcd
-subx	fac1_to_string		() -> (A?, X?, Y?)	$bddd	; string is stored at $0100 (address returned in AY)
-subx	fac1_sqr		() -> (A?, X?, Y?)	$bf71	; SQR()
-subx	fac1_fac2_to_the_power_of_memAY  () -> (A?, X?, Y?)	$bf78
-subx	fac1_negate		() -> (A?, X?, Y?)	$bfb4   ; switch sign on the number in fac1
-subx	fac1_exp		() -> (A?, X?, Y?)	$bfed	; EXP()
+subx	fac1_print		() -> (A?, X?, Y?)	        = $aabc	; print string representation of contents of fac1
+subx	fac1_to_signedYA	() -> (A?, X?, Y?)	        = $b1aa	; might throw ILLEGAL QUANTITY
+subx	fac1_to_signed16	() -> (A?, X?, Y?)	        = $b1bf	; might throw ILLEGAL QUANTITY
+subx	fac1_read_signedYA	() -> (A?, X?, Y?)	        = $b391	; convert 16 bit signed int to float
+subx	fac1_read_unsignedY	() -> (A?, X?, Y?)	        = $b3a2	; convert 8 bit unsigned int to float
+subx	fac1_read_string	() -> (A?, X?, Y?)	        = $b7b5	; $22/23 must point to string, A must be string length
+subx	fac1_to_unsignedYA	() -> (A?, X?, Y?)	        = $b7f7	; might throw ILLEGAL QUANTITY (result is also in $14/15)
+subx	fac1_add_point5		() -> (A?, X?, Y?)	        = $b849	; for rounding, call this before fac1_int
+subx	fac1_memAY_minus_fac1	() -> (A?, X?, Y?)	        = $b850	; subtract fac1 from mflpt value
+subx	fac1_fac2_minus_fac1	() -> (A?, X?, Y?)	        = $b853
+subx	fac1_add_memAY		() -> (A?, X?, Y?)	        = $b867	; add mflpt value
+subx	fac1_add_fac2		() -> (A?, X?, Y?)	        = $b86a
+subx	fac1_log		() -> (A?, X?, Y?)	        = $b9ea	; LOG()
+subx	fac1_times_memAY	() -> (A?, X?, Y?)	        = $ba28	; multiply by mflpt value
+subx	fac2_read_memAY		() -> (A?, X?, Y?)	        = $ba8c	; load mflpt value from memory into fac2
+subx	fac2_read_mem0x22	() -> (A?, X?, Y?)	        = $ba90	; load mflpt value from memory into fac2
+subx	fac1_times_10		() -> (A?, X?, Y?)	        = $bae2
+subx	fac1_divide_by_10	() -> (A?, X?, Y?)	        = $bafe	; CAUTION: result is always positive!
+subx	fac1_divide_memAY_by_fac1  () -> (A?, X?, Y?)	        = $bb0f	; divide mflpt value by fac1 value
+subx	fac1_read_memAY		(A, Y) -> (A?, X?, Y?)	        = $bba2	; load mflpt value from memory into fac1
+subx	fac1_read_mem0x22	() -> (A?, X?, Y?)	        = $bba6	; load mflpt value from memory into fac1
+subx	fac1_to_memXY		() -> (A?, X?, Y?)	        = $bbd4	; store fac1 to memory as mflpt
+subx	fac1_read_fac2		() -> (A?, X?, Y?)	        = $bbfc	; copy fac2 to fac1
+subx	fac2_read_fac1		() -> (A?, X?, Y?)	        = $bc0c	; copy fac1 to fac2
+subx	fac1_sign_to_A		() -> (A?, X?, Y?)	        = $bc2b	; SIGN: $ff, $0, $1 for negative, zero, positive @todo sets N/Z rather than A?
+subx	fac1_sgn		() -> (A?, X?, Y?)	        = $bc39	; SGN()
+subx	fac1_abs		() -> (A?, X?, Y?)	        = $bc58	; ABS()
+subx	fac1_compare_to_memAY	() -> (A, X?, Y?)	        = $bc5b	; compare to mflpt value in memory
+subx	fac1_to_signed32	() -> (A?, X?, Y?)	        = $bc9b
+subx	fac1_int		() -> (A?, X?, Y?)	        = $bccc	; INT()
+subx	fac1_read_string0	() -> (A?, X?, Y?)	        = $bcf3	; use b7b5 instead; this only works after calling CHRGET
+subx	fac1_print_unsignedXA	() -> (A?, X?, Y?)	        = $bdcd
+subx	fac1_to_string		() -> (A?, X?, Y?)	        = $bddd	; string is stored at $0100 (address returned in AY)
+subx	fac1_sqr		() -> (A?, X?, Y?)	        = $bf71	; SQR()
+subx	fac1_fac2_to_the_power_of_memAY  () -> (A?, X?, Y?)	= $bf78
+subx	fac1_negate		() -> (A?, X?, Y?)	        = $bfb4   ; switch sign on the number in fac1
+subx	fac1_exp		() -> (A?, X?, Y?)	        = $bfed	; EXP()
 ; KERNEL ROM FUNCTIONS:
-subx	fac1_rnd		() -> (A?, X?, Y?)	$e097	; RND()
-subx	fac1_cos		() -> (A?, X?, Y?)	$e264	; COS()
-subx	fac1_sin		() -> (A?, X?, Y?)	$e26b	; SIN()
-subx	fac1_tan		() -> (A?, X?, Y?)	$e2b4	; TAN()
-subx	fac1_atn		() -> (A?, X?, Y?)	$e30e	; ATN()
+subx	fac1_rnd		() -> (A?, X?, Y?)	        = $e097	; RND()
+subx	fac1_cos		() -> (A?, X?, Y?)	        = $e264	; COS()
+subx	fac1_sin		() -> (A?, X?, Y?)	        = $e26b	; SIN()
+subx	fac1_tan		() -> (A?, X?, Y?)	        = $e2b4	; TAN()
+subx	fac1_atn		() -> (A?, X?, Y?)	        = $e30e	; ATN()
 
 
 ; ---- C64 basic routines ----
 
-subx   CLEARSCR    () -> (A?, X?, Y?)          $E544   ; clear the screen
-subx   HOMECRSR    () -> (A?, X?, Y?)          $E566   ; cursor to top left of screen
+subx    CLEARSCR    () -> (A?, X?, Y?)                          = $E544   ; clear the screen
+subx    HOMECRSR    () -> (A?, X?, Y?)                          = $E566   ; cursor to top left of screen
 
 
 
@@ -148,51 +148,51 @@ subx   HOMECRSR    () -> (A?, X?, Y?)          $E566   ; cursor to top left of s
 
 ; ---- C64 kernal routines ----
 
-subx   CINT     () -> (A?, X?, Y?)        $FF81    ; (alias: SCINIT) initialize screen editor and video chip
-subx   IOINIT   () -> (A?, X?)            $FF84    ; initialize I/O devices
-subx   RAMTAS   () -> (A?, X?, Y?)        $FF87    ; initialize RAM, tape buffer, screen
-subx   RESTOR   () -> ()                  $FF8A    ; restore default I/O vectors
-subx   VECTOR   (direction: SC, userptr: XY) -> (A?, Y?)    $FF8D    ; read/set I/O vector table
-subx   SETMSG   (value: A) -> ()          $FF90    ; set Kernal message control flag
-subx   SECOND   (address: A) -> (A?)      $FF93    ; (alias: LSTNSA) send secondary address after LISTEN
-subx   TKSA     (address: A) -> (A?)      $FF96    ; (alias: TALKSA) send secondary address after TALK
-subx   MEMTOP   (direction: SC, address: XY) -> (XY)    $FF99    ; read/set top of memory pointer
-subx   MEMBOT   (direction: SC, address: XY) -> (XY)    $FF9C    ; read/set bottom of memory pointer
-subx   SCNKEY   () -> (A?, X?, Y?)        $FF9F    ; scan the keyboard
-subx   SETTMO   (timeout: A) -> ()        $FFA2    ; set time-out flag for IEEE bus
-subx   ACPTR    () -> (A)                 $FFA5    ; (alias: IECIN) input byte from serial bus
-subx   CIOUT    (byte: A) -> ()           $FFA8    ; (alias: IECOUT) output byte to serial bus
-subx   UNTLK    () -> (A?)                $FFAB    ; command serial bus device to UNTALK
-subx   UNLSN    () -> (A?)                $FFAE    ; command serial bus device to UNLISTEN
-subx   LISTEN   (device: A) -> (A?)       $FFB1    ; command serial bus device to LISTEN
-subx   TALK     (device: A) -> (A?)       $FFB4    ; command serial bus device to TALK
-subx   READST   () -> (A)                 $FFB7    ; read I/O status word
-subx   SETLFS   (logical: A, device: X, address: Y) -> ()    $FFBA    ; set logical file parameters
-subx   SETNAM   (namelen: A, filename: XY) -> ()   $FFBD    ; set filename parameters
-subx   OPEN     () -> (A?, X?, Y?)        $FFC0    ; (via 794 ($31A)) open a logical file
-subx   CLOSE    (logical: A) -> (A?, X?, Y?)       $FFC3    ; (via 796 ($31C)) close a logical file
-subx   CHKIN    (logical: X) -> (A?, X?)  $FFC6    ; (via 798 ($31E)) define an input channel
-subx   CHKOUT   (logical: X) -> (A?, X?)  $FFC9    ; (via 800 ($320)) define an output channel
-subx   CLRCHN   () -> (A?, X?)            $FFCC    ; (via 802 ($322)) restore default devices
-subx   CHRIN    () -> (A, Y?)             $FFCF    ; (via 804 ($324)) input a character
-subx   CHROUT   (char: A) -> ()           $FFD2    ; (via 806 ($326)) output a character
-subx   LOAD     (verify: A, address: XY) -> (SC, A, X, Y)   $FFD5    ; (via 816 ($330)) load from device
-subx   SAVE     (zp_startaddr: A, endaddr: XY) -> (SC, A)   $FFD8    ; (via 818 ($332)) save to a device
-subx   SETTIM   (low: A, middle: X, high: Y) -> ()          $FFDB    ; set the software clock
-subx   RDTIM    () -> (A, X, Y)           $FFDE    ; read the software clock
-subx   STOP     () -> (SZ, SC, A?, X?)    $FFE1    ; (via 808 ($328)) check the STOP key
-subx   GETIN    () -> (A, X?, Y?)         $FFE4    ; (via 810 ($32A)) get a character
-subx   CLALL    () -> (A?, X?)            $FFE7    ; (via 812 ($32C)) close all files
-subx   UDTIM    () -> (A?, X?)            $FFEA    ; update the software clock
-subx   SCREEN   () -> (X, Y)              $FFED    ; read number of screen rows and columns
-subx   PLOT     (direction: SC, column: X, row: Y) -> (X, Y)    $FFF0    ; read/set position of cursor on screen
-subx   IOBASE   () -> (X, Y)              $FFF3    ; read base address of I/O devices
+subx    CINT     () -> (A?, X?, Y?)                             = $FF81    ; (alias: SCINIT) initialize screen editor and video chip
+subx    IOINIT   () -> (A?, X?)                                 = $FF84    ; initialize I/O devices
+subx    RAMTAS   () -> (A?, X?, Y?)                             = $FF87    ; initialize RAM, tape buffer, screen
+subx    RESTOR   () -> ()                                       = $FF8A    ; restore default I/O vectors
+subx    VECTOR   (direction: SC, userptr: XY) -> (A?, Y?)       = $FF8D    ; read/set I/O vector table
+subx    SETMSG   (value: A) -> ()                               = $FF90    ; set Kernal message control flag
+subx    SECOND   (address: A) -> (A?)                           = $FF93    ; (alias: LSTNSA) send secondary address after LISTEN
+subx    TKSA     (address: A) -> (A?)                           = $FF96    ; (alias: TALKSA) send secondary address after TALK
+subx    MEMTOP   (direction: SC, address: XY) -> (XY)           = $FF99    ; read/set top of memory pointer
+subx    MEMBOT   (direction: SC, address: XY) -> (XY)           = $FF9C    ; read/set bottom of memory pointer
+subx    SCNKEY   () -> (A?, X?, Y?)                             = $FF9F    ; scan the keyboard
+subx    SETTMO   (timeout: A) -> ()                             = $FFA2    ; set time-out flag for IEEE bus
+subx    ACPTR    () -> (A)                                      = $FFA5    ; (alias: IECIN) input byte from serial bus
+subx    CIOUT    (byte: A) -> ()                                = $FFA8    ; (alias: IECOUT) output byte to serial bus
+subx    UNTLK    () -> (A?)                                     = $FFAB    ; command serial bus device to UNTALK
+subx    UNLSN    () -> (A?)                                     = $FFAE    ; command serial bus device to UNLISTEN
+subx    LISTEN   (device: A) -> (A?)                            = $FFB1    ; command serial bus device to LISTEN
+subx    TALK     (device: A) -> (A?)                            = $FFB4    ; command serial bus device to TALK
+subx    READST   () -> (A)                                      = $FFB7    ; read I/O status word
+subx    SETLFS   (logical: A, device: X, address: Y) -> ()      = $FFBA    ; set logical file parameters
+subx    SETNAM   (namelen: A, filename: XY) -> ()               = $FFBD    ; set filename parameters
+subx    OPEN     () -> (A?, X?, Y?)                             = $FFC0    ; (via 794 ($31A)) open a logical file
+subx    CLOSE    (logical: A) -> (A?, X?, Y?)                   = $FFC3    ; (via 796 ($31C)) close a logical file
+subx    CHKIN    (logical: X) -> (A?, X?)                       = $FFC6    ; (via 798 ($31E)) define an input channel
+subx    CHKOUT   (logical: X) -> (A?, X?)                       = $FFC9    ; (via 800 ($320)) define an output channel
+subx    CLRCHN   () -> (A?, X?)                                 = $FFCC    ; (via 802 ($322)) restore default devices
+subx    CHRIN    () -> (A, Y?)                                  = $FFCF    ; (via 804 ($324)) input a character
+subx    CHROUT   (char: A) -> ()                                = $FFD2    ; (via 806 ($326)) output a character
+subx    LOAD     (verify: A, address: XY) -> (SC, A, X, Y)      = $FFD5    ; (via 816 ($330)) load from device
+subx    SAVE     (zp_startaddr: A, endaddr: XY) -> (SC, A)      = $FFD8    ; (via 818 ($332)) save to a device
+subx    SETTIM   (low: A, middle: X, high: Y) -> ()             = $FFDB    ; set the software clock
+subx    RDTIM    () -> (A, X, Y)                                = $FFDE    ; read the software clock
+subx    STOP     () -> (SZ, SC, A?, X?)                         = $FFE1    ; (via 808 ($328)) check the STOP key
+subx    GETIN    () -> (A, X?, Y?)                              = $FFE4    ; (via 810 ($32A)) get a character
+subx    CLALL    () -> (A?, X?)                                 = $FFE7    ; (via 812 ($32C)) close all files
+subx    UDTIM    () -> (A?, X?)                                 = $FFEA    ; update the software clock
+subx    SCREEN   () -> (X, Y)                                   = $FFED    ; read number of screen rows and columns
+subx    PLOT     (direction: SC, column: X, row: Y) -> (X, Y)   = $FFF0    ; read/set position of cursor on screen
+subx    IOBASE   () -> (X, Y)                                   = $FFF3    ; read base address of I/O devices
 
 ; ---- end of C64 kernal routines ----
 
-		memory .word NMI_VEC   $FFFA
-		memory .word RESET_VEC $FFFC
-		memory .word IRQ_VEC   $FFFE
+		memory .word NMI_VEC   	= $FFFA
+		memory .word RESET_VEC 	= $FFFC
+		memory .word IRQ_VEC   	= $FFFE
 
 }
 
@@ -303,7 +303,7 @@ hex_digits      .text "0123456789abcdef"     ; can probably be reused for other 
 ; arithmetic is being done in BCD the result is a binary to decimal
 ; conversion.
 
-		var .array(3) word2bcd_bcdbuff
+		var .array(3)	word2bcd_bcdbuff
 
 word2bcd        ; (XY) -> (A?, X?)
 	asm {

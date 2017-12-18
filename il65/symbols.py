@@ -333,6 +333,7 @@ class SymbolTable:
             self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, datatype, True,
                                              value=value, length=len(value))     # type: ignore
         elif datatype == DataType.MATRIX:
+            assert isinstance(matrixsize, tuple)
             length = matrixsize[0] * matrixsize[1]
             self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.MATRIX, allocate,
                                              value=value, length=length, address=address, matrixsize=matrixsize)
@@ -371,6 +372,11 @@ class SymbolTable:
         else:
             raise ValueError("invalid data type for constant: " + str(datatype))
         self.eval_dict = None
+
+    def merge_roots(self, other_root: 'SymbolTable') -> None:
+        for name, thing in other_root.symbols.items():
+            if isinstance(thing, SymbolTable):
+                self.define_scope(thing)
 
 
 def trunc_float_if_needed(sourcefile: str, linenum: int, datatype: DataType,
