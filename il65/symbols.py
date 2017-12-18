@@ -1,5 +1,6 @@
 """
 Intermediate Language for 6502/6510 microprocessors
+Here are the symbol (name) operations such as lookups, datatype definitions.
 
 Written by Irmen de Jong (irmen@razorvine.net)
 License: GNU GPL 3.0, see LICENSE
@@ -239,7 +240,10 @@ class SymbolTable:
                 assert scope.name == namepart
             except LookupError:
                 raise SymbolError("undefined block '{:s}'".format(namepart))
-        return scope.lookup(nameparts[-1])
+        if isinstance(scope, SymbolTable):
+            return scope.lookup(nameparts[-1])
+        else:
+            raise SymbolError("invalid block name '{:s}' in dotted name".format(namepart))
 
     def get_address(self, name: str) -> int:
         scope, symbol = self.lookup(name)

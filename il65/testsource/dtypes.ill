@@ -27,14 +27,6 @@ clobberzp
 }
 
 ~ main {
-	; variables where value is an expression
-	;var                     expr_byte1      -1-2-3-4-$22+0x80+ZP.zpvar1.dep
-	;var                     expr_byte1b      -1-2-3-4-$22+0x80+ZP.const
-	;var                     expr_byte1b      -1-2-3-4-$22+0x80+ZP.const.derp
-	;var     .byte           expr_byte2      +1+2+3+4+$55+#ZP.zpvar22
-	;var     .byte           fout            1+(8/3)+sin(33)+max(1,2,3)+#derp22*0
-	;etc etc
-
 	; variables
 	var			uninitbyte1
 	var	.byte		uninitbyte2
@@ -50,8 +42,8 @@ clobberzp
 	var  .word              initword1b      true
 	var  .word              initword2       false
 	var  .word              initword3       9876.554321
-	var  .word              initword4       initword3/3
-	var  .word              initword5       (20 + 22)
+	var  .word              initword4       initword3
+	var  .word              initword5       20
 	var  .float             uninitfloat
 	var  .float             initfloat1      0
 	var  .float             initfloat1b     true
@@ -82,7 +74,7 @@ clobberzp
 	; memory-mapped variables
 	memory                          membyte1        $c001
 	memory  .byte                   membyte2        $c2
-	memory  .byte                   membyte3        initbyte2+12
+	memory  .byte                   membyte3        initbyte2
 	memory  .word                   memword1        $c003
 	memory  .float                  memfloat        $c004
 	memory  .array(10 )             membytes        $c005
@@ -108,21 +100,29 @@ clobberzp
 	const  .pstext          ctext6   	"constant-pstext"
 
         ; taking the address of various things:
-	var .word        memvaddr1              #membyte1
-	var .word        memvaddr2              #memword1
-	var .word        memvaddr3              #memfloat
-	var .word        memvaddr4              #membytes
-	var .word        memvaddr5              #memwords
-	var .word        memvaddr6              #memmatrix
-	;var .word        memvaddr7             cbyte1             ; @todo should work, is constant
-	;var .word        memvaddr8             cword5             ; @todo should work, is constant
-	;var .word        memvaddr9             cfloat2b           ; @todo should work, with float truncation
-	;var .word        memvaddr10            ctext4             ; @todo should not work, datatype
+	var .word        vmemaddr1              #membyte1
+	var .word        vmemaddr2              #memword1
+	var .word        vmemaddr3              #memfloat
+	var .word        vmemaddr4              #membytes
+	var .word        vmemaddr5              #memwords
+	var .word        vmemaddr6              #memmatrix
+	var .word        vmemaddr7              vmemaddr1                ;@todo must not work, not a constant
+	var .word        vmemaddr8              sin(cbyte1)             ; @todo should work, is constant
+	var .word        vmemaddr9              cword2+$5432             ; @todo should work, is constant
+	var .word        vmemaddr10             cfloat2b           ; @todo should work, with float truncation
 	var .word               initword0a      #ZP.zpvar2
 	var .word		initword0b      #foo.nonzpvar1
 	var .word		initword0       #ZP.zpvar1   ; @todo must not work! (address of non-mem var)
 	var                     initbytea0      #ZP.zpvar2   ; @todo must not work (overflow)
-	var			initbytea1      #ZP.zpvar1   ; @todo must not work! (address of non-mem var)
+	var	.word		initworda1      #ZP.zpvar1   ; @todo must not work! (address of non-mem var)
+
+        ; (constant) expressions
+	;var                     expr_byte1      -1-2-3-4-$22+0x80+ZP.zpvar1
+	;var                     expr_byte1b      -1-2-3-4-$22+0x80+ZP.const
+	;var                     expr_byte1b      -1-2-3-4-$22+0x80+ZP.const.derp
+	;var     .byte           expr_byte2      +1+2+3+4+$55+#ZP.zpvar22
+	;var     .byte           expr_fault      1+(8/3)+sin(33)+max(1,2,3)+#derp22*0
+	;var     .byte           expr_fault2      1 + (8/3)+sin(33) + max(1,2,3)+#derp22 * 0
 
 
 start

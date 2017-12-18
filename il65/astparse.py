@@ -1,3 +1,11 @@
+"""
+Intermediate Language for 6502/6510 microprocessors
+This is the expression parser/evaluator.
+
+Written by Irmen de Jong (irmen@razorvine.net)
+License: GNU GPL 3.0, see LICENSE
+"""
+
 import ast
 from symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SymbolTable, SymbolError, \
     VariableDef, ConstantDef, DataType, STRING_DATATYPES
@@ -64,72 +72,61 @@ class SourceLine:
 def parse_int(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
               column: int=1, minimum: int=0, maximum: int=0xffff) -> int:
     src = SourceLine(text, filename, line, column)
-    node = parse_expression(src, context)
-    if isinstance(node.body, ast.Name) and node.body.id in ("true", "false"):
-        node.body = ast.Num(1 if node.body.id == "true" else 0)  # convert boolean to int
-    if isinstance(node.body, ast.Num):
-        num = node.body.n
-        if isinstance(num, int):
-            if minimum <= num <= maximum:
-                return num
-            raise src.to_error("int too large")
-        raise src.to_error("int expected")
-    raise src.to_error("int expected, not " + type(node.body).__name__)
+    result = parse_expression(src, context)
+    if isinstance(result, bool):
+        return int(result)
+    if isinstance(result, int):
+        if minimum <= result <= maximum:
+            return result
+    raise src.to_error("int expected, not " + type(result).__name__)
 
 
 def parse_number(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
                  column: int=1, minimum: float=FLOAT_MAX_NEGATIVE, maximum: float=FLOAT_MAX_POSITIVE) -> Union[int, float]:
     src = SourceLine(text, filename, line, column)
-    node = parse_expression(src, context)
-    if isinstance(node.body, ast.Name) and node.body.id in ("true", "false"):
-        node.body = ast.Num(1 if node.body.id == "true" else 0)  # convert boolean to number
-    if isinstance(node.body, ast.Num):
-        num = node.body.n
-        if isinstance(num, (int, float)):
-            if minimum <= num <= maximum:
-                return num
-            raise src.to_error("number too large")
-        raise src.to_error("int or float expected")
-    # print("ast error, node: ", ast.dump(node))
-    raise src.to_error("int or float expected, not " + type(node.body).__name__)
+    result = parse_expression(src, context)
+    if isinstance(result, bool):
+        return int(result)
+    if isinstance(result, (int, float)):
+        if minimum <= result <= maximum:
+            return result
+        raise src.to_error("number too large")
+    raise src.to_error("int or float expected, not " + type(result).__name__)
 
 
 def parse_string(text: str, context: Optional[SymbolTable], filename: str, line: int, *, column: int=1) -> str:
     src = SourceLine(text, filename, line, column)
-    node = parse_expression(src, context)
-    if isinstance(node.body, ast.Str):
-        return node.body.s
-    # print("ast error, node: ", ast.dump(node))
-    raise src.to_error("string expected, not " + type(node.body).__name__)
+    result = parse_expression(src, context)
+    if isinstance(result, str):
+        return result
+    raise src.to_error("string expected, not " + type(result).__name__)
 
 
 def parse_primitive(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
                     column: int=1, minimum: float = FLOAT_MAX_NEGATIVE, maximum: float = FLOAT_MAX_POSITIVE) -> Union[int, float, str]:
     src = SourceLine(text, filename, line, column)
-    node = parse_expression(src, context)
-    if isinstance(node.body, ast.Str):
-        return node.body.s
-    if isinstance(node.body, ast.Name) and node.body.id in ("true", "false"):
-        node.body = ast.Num(1 if node.body.id == "true" else 0)  # convert boolean to int
-    if isinstance(node.body, ast.Num):
-        num = node.body.n
-        if isinstance(num, (int, float)):
-            if minimum <= num <= maximum:
-                return num
-            raise src.to_error("number too large")
-        raise src.to_error("int or float or string expected")
-    # print("ast error, node: ", ast.dump(node))
-    raise src.to_error("int or float or string expected, not " + type(node.body).__name__)
+    result = parse_expression(src, context)
+    if isinstance(result, bool):
+        return int(result)
+    if isinstance(result, (int, float)):
+        if minimum <= result <= maximum:
+            return result
+        raise src.to_error("number too large")
+    if isinstance(result, str):
+        return result
+    raise src.to_error("int or float or string expected, not " + type(result).__name__)
 
 
-def parse_expression(src: SourceLine, context: Optional[SymbolTable]) -> ast.Expression:
+def parse_expression(src: SourceLine, context: Optional[SymbolTable]) -> Union[int, float, str]:
     text = src.preprocess()
     node = ast.parse(text, src.filename, mode="eval")
+    # if isinstance(node, ast.Expression):
     if isinstance(node, ast.Expression):
-        node = ExpressionTransformer(src, context).visit(node)
-        return node
-    # print("ast error, node: ", ast.dump(node))
-    raise src.to_error("expression expected, not " + type(node.body).__name__)
+        result = ExpressionTransformer(src, context).evaluate(node)
+        print("PARSE_EXPRESSION:", repr(src.text), src.line, "RESULT=", repr(result))  # XXX
+        return result
+    else:
+        raise TypeError("ast.Expression expected")
 
 
 class EvaluatingTransformer(ast.NodeTransformer):
@@ -141,6 +138,18 @@ class EvaluatingTransformer(ast.NodeTransformer):
     def error(self, message: str, column: int=0) -> ParseError:
         return ParseError(message, self.src.text, self.src.filename, self.src.line, column or self.src.column)
 
+    def evaluate(self, node: ast.Expression) -> Union[int, float, str, bool]:
+        node = self.visit(node)
+        code = compile(node, self.src.filename, mode="eval")
+        if self.context:
+            globals = self.context.as_eval_dict()
+        else:
+            globals = {"__builtins__": {}}
+        try:
+            return eval(code, globals, {})
+        except Exception as x:
+            raise self.src.to_error(str(x))
+
 
 class ExpressionTransformer(EvaluatingTransformer):
     def _dotted_name_from_attr(self, node: ast.Attribute) -> str:
@@ -150,9 +159,20 @@ class ExpressionTransformer(EvaluatingTransformer):
             return self._dotted_name_from_attr(node.value) + '.' + node.attr
         raise self.error("dotted name error")
 
+    def visit_Name(self, node: ast.Name):
+        # convert true/false names to True/False constants
+        if node.id == "true":
+            return ast.copy_location(ast.NameConstant(True), node)
+        if node.id == "false":
+            return ast.copy_location(ast.NameConstant(False), node)
+        return node
+
     def visit_Attribute(self, node: ast.Attribute):
         dotted_name = self._dotted_name_from_attr(node)
-        scope, symbol = self.context.lookup(dotted_name)
+        try:
+            scope, symbol = self.context.lookup(dotted_name)
+        except SymbolError as x:
+            raise self.error(str(x))
         if isinstance(symbol, ConstantDef):
             if symbol.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
                 return ast.copy_location(ast.Num(symbol.value), node)
@@ -192,22 +212,7 @@ class ExpressionTransformer(EvaluatingTransformer):
                     raise self.error("can only take address of a named variable")
             else:
                 raise self.error("invalid MatMult/Pointer node in AST")
-
-        expression = ast.copy_location(ast.Expression(node), node)
-        code = compile(expression, self.src.filename, mode="eval")
-        if self.context:
-            globals = self.context.as_eval_dict()
-        else:
-            globals = {"__builtins__": {}}
-        try:
-            result = eval(code, globals, {})
-        except Exception as x:
-            raise self.src.to_error(str(x))
-        if type(result) in (int, float):
-            return ast.copy_location(ast.Num(result), node)
-        if type(result) is str:
-            return ast.copy_location(ast.Str(result), node)
-        raise self.error("cannot evaluate expression")
+        return node
 
 
 if __name__ == "__main__":
@@ -215,6 +220,4 @@ if __name__ == "__main__":
     symbols = SymbolTable("<root>", None, None)
     symbols.define_variable("derp", "<source>", 1, DataType.BYTE, address=2345)
     e = parse_expression(src, symbols)
-    print("EXPRESSION:", e)
-    import astunparse
-    print(astunparse.unparse(e))
+    print("EXPRESSION RESULT:", e)
