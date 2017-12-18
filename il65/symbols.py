@@ -9,8 +9,11 @@ License: GNU GPL 3.0, see LICENSE
 import inspect
 import math
 import enum
+import builtins
 from functools import total_ordering
 from typing import Optional, Set, Union, Tuple, Dict, Iterable, Sequence, Any, List
+
+PrimitiveType = Union[int, float, str]
 
 
 REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
@@ -22,7 +25,7 @@ REGISTER_WORDS = {"AX", "AY", "XY"}
 FLOAT_MAX_POSITIVE = 1.7014118345e+38
 FLOAT_MAX_NEGATIVE = -1.7014118345e+38
 
-RESERVED_NAMES = {"true", "false", "var", "memory", "const", "asm"}
+RESERVED_NAMES = {'true', 'false', 'var', 'memory', 'const', 'asm'}
 RESERVED_NAMES |= REGISTER_SYMBOLS
 
 
@@ -40,13 +43,14 @@ class DataType(enum.Enum):
     STRING_S = 9
     STRING_PS = 10
 
-    def assignable_from_value(self, value: Union[int, float]) -> bool:
-        if self == DataType.BYTE:
-            return 0 <= value < 0x100
-        if self == DataType.WORD:
-            return 0 <= value < 0x10000
-        if self == DataType.FLOAT:
-            return type(value) in (float, int)
+    def assignable_from_value(self, value: PrimitiveType) -> bool:
+        if isinstance(value, (int, float)):
+            if self == DataType.BYTE:
+                return 0 <= value < 0x100
+            if self == DataType.WORD:
+                return 0 <= value < 0x10000
+            if self == DataType.FLOAT:
+                return type(value) in (float, int)
         return False
 
     def __lt__(self, other):
@@ -93,7 +97,7 @@ class VariableDef(SymbolDefinition):
     # if address is not None, it's a memory mapped variable (=memory address referenced by a name).
     def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int,
                  datatype: DataType, allocate: bool, *,
-                 value: Union[int, float, str], length: int, address: Optional[int]=None,
+                 value: PrimitiveType, length: int, address: Optional[int]=None,
                  register: str=None, matrixsize: Tuple[int, int]=None) -> None:
         super().__init__(blockname, name, sourcefile, sourceline, allocate)
         self.type = datatype
@@ -121,7 +125,7 @@ class VariableDef(SymbolDefinition):
 
 class ConstantDef(SymbolDefinition):
     def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
-                 value: Union[int, float, str], length: int) -> None:
+                 value: PrimitiveType, length: int) -> None:
         super().__init__(blockname, name, sourcefile, sourceline, False)
         self.type = datatype
         self.length = length
@@ -258,14 +262,7 @@ class SymbolTable:
     def as_eval_dict(self) -> Dict[str, Any]:
         # return a dictionary suitable to be passed as locals or globals to eval()
         if self.eval_dict is None:
-            d = {}
-            for variable in self.iter_variables():
-                d[variable.name] = variable.value
-            for constant in self.iter_constants():
-                d[constant.name] = constant.value
-            for name, func in self.symbols.items():
-                if inspect.isbuiltin(func):
-                    d[name] = func
+            d = Eval_symbol_dict(self)
             self.eval_dict = d      # type: ignore
         return self.eval_dict
 
@@ -291,7 +288,7 @@ class SymbolTable:
             raise SymbolError("identifier already defined as " + str(type(identifier)))
 
     def define_variable(self, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
-                        address: int=None, length: int=0, value: Union[int, float, str]=0,
+                        address: int=None, length: int=0, value: PrimitiveType=0,
                         matrixsize: Tuple[int, int]=None, register: str=None) -> None:
         # this defines a new variable and also checks if the prefill value is allowed for the variable type.
         assert value is not None
@@ -300,7 +297,7 @@ class SymbolTable:
         if range_error:
             raise ValueError(range_error)
         if type(value) in (int, float):
-            _, value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)   # type: ignore
+            _, value = coerce_value(sourcefile, sourceline, datatype, value)   # type: ignore
         allocate = address is None
         if datatype == DataType.BYTE:
             if allocate and self.name == "ZP":
@@ -355,12 +352,12 @@ class SymbolTable:
         self.symbols[scope.name] = scope
 
     def define_constant(self, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
-                        length: int=0, value: Union[int, float, str]=0) -> None:
+                        length: int=0, value: PrimitiveType=0) -> None:
         # this defines a new constant and also checks if the value is allowed for the data type.
         assert value is not None
         self.check_identifier_valid(name)
         if type(value) in (int, float):
-            _, value = trunc_float_if_needed(sourcefile, sourceline, datatype, value)   # type: ignore
+            _, value = coerce_value(sourcefile, sourceline, datatype, value)   # type: ignore
         range_error = check_value_in_range(datatype, "", length, value)
         if range_error:
             raise ValueError(range_error)
@@ -379,25 +376,56 @@ class SymbolTable:
                 self.define_scope(thing)
 
 
-def trunc_float_if_needed(sourcefile: str, linenum: int, datatype: DataType,
-                          value: Union[int, float]) -> Tuple[bool, Union[int, float]]:
-    if type(value) not in (int, float):
-        raise TypeError("can only truncate numbers")
-    if datatype == DataType.FLOAT or type(value) is int or type(value) is str:
-        return False, value
-    frac = math.modf(value)     # type: ignore
-    if frac == 0:
-        return False, value
-    if datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX):
-        print("warning: {:s}:{:d}: Float value truncated.".format(sourcefile, linenum))
-        return True, int(value)
-    elif datatype == DataType.FLOAT:
-        return False, value
-    else:
-        raise TypeError("invalid datatype passed")
+class Eval_symbol_dict(dict):
+    def __init__(self, symboltable: SymbolTable, constants: bool=True) -> None:
+        super().__init__()
+        self._symboltable = symboltable
+        self._constants = constants
+
+    def __getattr__(self, name):
+        return self.__getitem__(name)
+
+    def __getitem__(self, name):
+        if name[0] != '_' and name in builtins.__dict__:
+            return builtins.__dict__[name]
+        try:
+            scope, symbol = self._symboltable.lookup(name)
+        except (LookupError, SymbolError):
+            # attempt lookup from global scope
+            global_scope = self._symboltable
+            while global_scope.parent:
+                global_scope = global_scope.parent
+            scope, symbol = global_scope.lookup(name)
+        if self._constants:
+            if isinstance(symbol, ConstantDef):
+                return symbol.value
+            elif isinstance(symbol, VariableDef):
+                return symbol.value
+            elif inspect.isbuiltin(symbol):
+                return symbol
+            elif isinstance(symbol, SymbolTable):
+                return symbol.as_eval_dict()
+            else:
+                raise SymbolError("invalid datatype referenced" + repr(symbol))
+        else:
+            raise SymbolError("no support for non-constant expression evaluation yet")
 
 
-def check_value_in_range(datatype: DataType, register: str, length: int, value: Union[int, float, str]) -> Optional[str]:
+def coerce_value(sourcefile: str, linenum: int, datatype: DataType, value: PrimitiveType) -> Tuple[bool, PrimitiveType]:
+    # if we're a BYTE type, and the value is a single character, convert it to the numeric value
+    if datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX) and isinstance(value, str):
+        if len(value) == 1:
+            return True, char_to_bytevalue(value)
+    # if we're an integer value and the passed value is float, truncate it (and give a warning)
+    if datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX) and type(value) is float:
+        frac = math.modf(value)   # type:ignore
+        if frac != 0:
+            print("warning: {:s}:{:d}: Float value truncated.".format(sourcefile, linenum))
+            return True, int(value)
+    return False, value
+
+
+def check_value_in_range(datatype: DataType, register: str, length: int, value: PrimitiveType) -> Optional[str]:
     if register:
         if register in REGISTER_BYTES:
             if value < 0 or value > 0xff:  # type: ignore
@@ -428,3 +456,117 @@ def check_value_in_range(datatype: DataType, register: str, length: int, value: 
     else:
         raise SymbolError("missing value check for type", datatype, register, length, value)
     return None  # all ok !
+
+
+def char_to_bytevalue(character: str, petscii: bool=True) -> int:
+    assert len(character) == 1
+    if petscii:
+        return ord(character.translate(ascii_to_petscii_trans))
+    else:
+        raise NotImplementedError("screencode conversion not yet implemented for chars")
+
+
+# ASCII/UNICODE-to-PETSCII translation table
+# Unicode symbols supported that map to a PETSCII character:  £ ↑ ← ♠ ♥ ♦ ♣ π ● ○ and various others
+ascii_to_petscii_trans = str.maketrans({
+    '\f': 147,  # form feed becomes ClearScreen
+    '\n': 13,   # line feed becomes a RETURN
+    '\r': 17,   # CR becomes CursorDown
+    'a': 65,
+    'b': 66,
+    'c': 67,
+    'd': 68,
+    'e': 69,
+    'f': 70,
+    'g': 71,
+    'h': 72,
+    'i': 73,
+    'j': 74,
+    'k': 75,
+    'l': 76,
+    'm': 77,
+    'n': 78,
+    'o': 79,
+    'p': 80,
+    'q': 81,
+    'r': 82,
+    's': 83,
+    't': 84,
+    'u': 85,
+    'v': 86,
+    'w': 87,
+    'x': 88,
+    'y': 89,
+    'z': 90,
+    'A': 97,
+    'B': 98,
+    'C': 99,
+    'D': 100,
+    'E': 101,
+    'F': 102,
+    'G': 103,
+    'H': 104,
+    'I': 105,
+    'J': 106,
+    'K': 107,
+    'L': 108,
+    'M': 109,
+    'N': 110,
+    'O': 111,
+    'P': 112,
+    'Q': 113,
+    'R': 114,
+    'S': 115,
+    'T': 116,
+    'U': 117,
+    'V': 118,
+    'W': 119,
+    'X': 120,
+    'Y': 121,
+    'Z': 122,
+    '{': 179,       # left squiggle
+    '}': 235,       # right squiggle
+    '£': 92,        # pound currency sign
+    '^': 94,        # up arrow
+    '~': 126,       # pi math symbol
+    'π': 126,       # pi symbol
+    '`': 39,        # single quote
+    '✓': 250,       # check mark
+
+    '|': 221,       # vertical bar
+    '│': 221,       # vertical bar
+    '─': 96,        # horizontal bar
+    '┼': 123,       # vertical and horizontal bar
+
+    '↑': 94,        # up arrow
+    '←': 95,        # left arrow
+
+    '▔': 163,       # upper bar
+    '_': 164,       # lower bar (underscore)
+    '▁': 164,       # lower bar
+    '▎': 165,       # left bar
+
+    '♠': 97,        # spades
+    '●': 113,       # circle
+    '♥': 115,       # hearts
+    '○': 119,       # open circle
+    '♣': 120,       # clubs
+    '♦': 122,       # diamonds
+
+    '├': 171,       # vertical and right
+    '┤': 179,       # vertical and left
+    '┴': 177,       # horiz and up
+    '┬': 178,       # horiz and down
+    '└': 173,       # up right
+    '┐': 174,       # down left
+    '┌': 175,       # down right
+    '┘': 189,       # up left
+    '▗': 172,       # block lr
+    '▖': 187,       # block ll
+    '▝': 188,       # block ur
+    '▘': 190,       # block ul
+    '▚': 191,       # block ul and lr
+    '▌': 161,       # left half
+    '▄': 162,       # lower half
+    '▒': 230,       # raster
+})

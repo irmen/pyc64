@@ -238,30 +238,22 @@ class CodeGenerator:
             self.p("\t.pend\n")
 
     def generate_block_vars(self, block: ParseResult.Block) -> None:
-        if self.parsed.format == ProgramFormat.PRG:
-            self.p("_il65_addr_save = *")
         mem_vars = [vi for vi in block.symbols.iter_variables() if not vi.allocate and not vi.register]
         if mem_vars:
             self.p("; memory mapped variables")
             for vardef in mem_vars:
                 # create a definition for variables at a specific place in memory (memory-mapped)
                 if vardef.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
-                    self.p("\t\t{:s} = {:s}".format(vardef.name, self.to_hex(vardef.address)))
+                    self.p("\t\t{:s} = {:s}\t; {:s}".format(vardef.name, self.to_hex(vardef.address), vardef.type.name.lower()))
                 elif vardef.type == DataType.BYTEARRAY:
-                    self.p("* = {:s}".format(self.to_hex(vardef.address)))
-                    self.p("{:s}\t\t.fill  {:d}".format(vardef.name, vardef.length))
+                    self.p("\t\t{:s} = {:s}\t; array of {:d} bytes".format(vardef.name, self.to_hex(vardef.address), vardef.length))
                 elif vardef.type == DataType.WORDARRAY:
-                    self.p("* = {:s}".format(self.to_hex(vardef.address)))
-                    self.p("{:s}\t\t.fill  {:d}\t\t; {:d} words".format(vardef.name, vardef.length * 2, vardef.length))
+                    self.p("\t\t{:s} = {:s}\t; array of {:d} words".format(vardef.name, self.to_hex(vardef.address), vardef.length))
                 elif vardef.type == DataType.MATRIX:
-                    self.p("* = {:s}".format(self.to_hex(vardef.address)))
-                    self.p("{:s}\t\t.fill  {:d}\t\t; matrix {:d}*{:d} bytes".format(vardef.name,
-                                                                                    vardef.matrixsize[0] * vardef.matrixsize[1],
-                                                                                    vardef.matrixsize[0], vardef.matrixsize[1]))
+                    self.p("\t\t{:s} = {:s}\t; matrix {:d} by {:d} = {:d} bytes"
+                           .format(vardef.name, self.to_hex(vardef.address), vardef.matrixsize[0], vardef.matrixsize[1], vardef.length))
                 else:
                     raise ValueError("invalid var type")
-        if self.parsed.format == ProgramFormat.PRG:
-            self.p("* = _il65_addr_save")
         non_mem_vars = [vi for vi in block.symbols.iter_variables() if vi.allocate]
         if non_mem_vars:
             self.p("; normal variables")

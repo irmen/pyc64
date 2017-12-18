@@ -108,6 +108,8 @@ because $00/$01 are used by the hardware and $02/$03 are reserved as general pur
 Block names cannot occur more than once, EXCEPT 'ZP' where the contents of every occurrence of it are merged.
 Block address must be >= $0200 (because $00-$fff is the ZP and $100-$200 is the cpu stack)
 
+You can omit the blockname but then you can only refer to the contents of the block via its absolute address,
+which is required in this case. If you omit both, the block is ignored altogether (and a warning is displayed).
 
 
 IMPORTING, INCLUDING and BINARY-INCLUDING files

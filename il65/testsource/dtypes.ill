@@ -1,4 +1,4 @@
-; var defintions and immediate primitve data type tests
+; var defintions and immediate primitive data type tests
 
 output raw
 clobberzp
@@ -12,7 +12,7 @@ clobberzp
 
 ~ ZP $0004 {
 	var    zpvar1
-	memory zpvar2   = $f0
+	memory zpmem1   = $f0
 	const  zpconst  = 1.234
 }
 
@@ -21,10 +21,13 @@ clobberzp
 	var zpvar1b      =   $88
 }
 
-~ foo {
-	memory nonzpvar1 = $c020
 
+~ foo {
+        var    foovar1
+	memory foomem1   = $f0f0
+	const  fooconst  = 1.234
 }
+
 
 ~ main {
 	; variables
@@ -72,14 +75,14 @@ clobberzp
 	var  .matrix(10, 20)   initmatrix1d     = 123.456
 
 	; memory-mapped variables
-	memory                          membyte1        = $c001
+	memory                          membyte1        = $cf01
 	memory  .byte                   membyte2        = $c2
 	memory  .byte                   membyte3        = initbyte2
-	memory  .word                   memword1        = $c003
-	memory  .float                  memfloat        = $c004
-	memory  .array(10 )             membytes        = $c005
-	memory  .wordarray( 10)         memwords        = $c006
-	memory  .matrix( 10, 20 )       memmatrix       = $c007
+	memory  .word                   memword1        = $cf03
+	memory  .float                  memfloat        = $cf04
+	memory  .array(10 )             membytes        = $cf05
+	memory  .wordarray( 10)         memwords        = $cf06
+	memory  .matrix( 10, 20 )       memmatrix       = $cf07
 
 	; constants   (= names for constant values, can never occur as lvalue)
 	const                   cbyte1          = 1
@@ -106,22 +109,20 @@ clobberzp
 	var .word        vmemaddr4              = #membytes
 	var .word        vmemaddr5              = #memwords
 	var .word        vmemaddr6              = #memmatrix
-	var .word        vmemaddr7              = vmemaddr1                ;@todo must not work, not a constant
-	var .word        vmemaddr8              = sin(cbyte1)             ; @todo should work, is constant
-	var .word        vmemaddr9              = cword2+$5432             ; @todo should work, is constant
-	var .word        vmemaddr10             = cfloat2b           ; @todo should work, with float truncation
-	var .word               initword0a      = #ZP.zpvar2
-	var .word		initword0b      = #foo.nonzpvar1
-	var .word		initword0       = #ZP.zpvar1   ; @todo must not work! (address of non-mem var)
-	var                     initbytea0      = #ZP.zpvar2   ; @todo must not work (overflow)
-	var	.word		initworda1      = #ZP.zpvar1   ; @todo must not work! (address of non-mem var)
+	var .word        vmemaddr7              = vmemaddr1
+	var .word        vmemaddr8              = 100*sin(cbyte1)
+	var .word        vmemaddr9              = cword2+$5432
+	var .word        vmemaddr10             = cfloat2b
+	; taking the address of things from the ZP will work even when it is a var
+	; because zp-vars get assigned a specific address (from a pool). Also, it's a byte.
+	var .word        initword0a             = #ZP.zpmem1
+	var .word	 initword0              = #ZP.zpvar1
+	var              initbytea0             = #ZP.zpmem1
+	var	.word	 initworda1             = #ZP.zpvar1
+
 
         ; (constant) expressions
-	;var                     expr_byte1      = -1-2-3-4-$22+0x80+ZP.zpvar1
-	;var                     expr_byte1b     =  -1-2-3-4-$22+0x80+ZP.const
-	;var                     expr_byte1b     =  -1-2-3-4-$22+0x80+ZP.const.derp
-	;var     .byte           expr_byte2      = +1+2+3+4+$55+#ZP.zpvar22
-	;var     .byte           expr_fault      = 1+(8/3)+sin(33)+max(1,2,3)+#derp22*0
+	var                     expr_byte1b     =  -1-2-3-4-$22+0x80+ZP.zpconst
 	var     .byte           expr_fault2     =  1 + (8/3)+sin(33) + max(1,2,3)
 
 
@@ -202,3 +203,4 @@ start
         [$c100.word] = "text-immediate"        ; reuse
         [$c200.word] = ""        ; reuse
 }
+

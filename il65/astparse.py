@@ -7,8 +7,7 @@ License: GNU GPL 3.0, see LICENSE
 """
 
 import ast
-from symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SymbolTable, SymbolError, \
-    VariableDef, ConstantDef, DataType, STRING_DATATYPES
+from symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SymbolTable, SymbolError, DataType, PrimitiveType
 from typing import Union, Optional
 
 
@@ -71,42 +70,43 @@ class SourceLine:
 
 def parse_expr_as_int(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
                       column: int=1, minimum: int=0, maximum: int=0xffff) -> int:
-    src = SourceLine(text, filename, line, column)
-    result = parse_constant_expression(src, context)
-    if isinstance(result, bool):
-        return int(result)
+    result = parse_expr_as_primitive(text, context, filename, line, column=column, minimum=minimum, maximum=maximum)
     if isinstance(result, int):
-        if minimum <= result <= maximum:
-            return result
+        return result
+    src = SourceLine(text, filename, line, column)
     raise src.to_error("int expected, not " + type(result).__name__)
 
 
 def parse_expr_as_number(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
                          column: int=1, minimum: float=FLOAT_MAX_NEGATIVE, maximum: float=FLOAT_MAX_POSITIVE) -> Union[int, float]:
-    src = SourceLine(text, filename, line, column)
-    result = parse_constant_expression(src, context)
-    if isinstance(result, bool):
-        return int(result)
+    result = parse_expr_as_primitive(text, context, filename, line, column=column, minimum=minimum, maximum=maximum)
     if isinstance(result, (int, float)):
-        if minimum <= result <= maximum:
-            return result
-        raise src.to_error("number too large")
+        return result
+    src = SourceLine(text, filename, line, column)
     raise src.to_error("int or float expected, not " + type(result).__name__)
 
 
 def parse_expr_as_string(text: str, context: Optional[SymbolTable], filename: str, line: int, *, column: int=1) -> str:
-    src = SourceLine(text, filename, line, column)
-    result = parse_constant_expression(src, context)
+    result = parse_expr_as_primitive(text, context, filename, line, column=column)
     if isinstance(result, str):
         return result
+    src = SourceLine(text, filename, line, column)
     raise src.to_error("string expected, not " + type(result).__name__)
 
 
 def parse_expr_as_primitive(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
                             column: int=1, minimum: float = FLOAT_MAX_NEGATIVE,
-                            maximum: float = FLOAT_MAX_POSITIVE) -> Union[int, float, str]:
+                            maximum: float = FLOAT_MAX_POSITIVE) -> PrimitiveType:
     src = SourceLine(text, filename, line, column)
-    result = parse_constant_expression(src, context)
+    text = src.preprocess()
+    try:
+        node = ast.parse(text, src.filename, mode="eval")
+    except SyntaxError as x:
+        raise src.to_error(str(x))
+    if isinstance(node, ast.Expression):
+        result = ExpressionTransformer(src, context).evaluate(node)
+    else:
+        raise TypeError("ast.Expression expected")
     if isinstance(result, bool):
         return int(result)
     if isinstance(result, (int, float)):
@@ -118,20 +118,6 @@ def parse_expr_as_primitive(text: str, context: Optional[SymbolTable], filename:
     raise src.to_error("int or float or string expected, not " + type(result).__name__)
 
 
-def parse_constant_expression(src: SourceLine, context: Optional[SymbolTable]) -> Union[int, float, str]:
-    text = src.preprocess()
-    try:
-        node = ast.parse(text, src.filename, mode="eval")
-    except SyntaxError as x:
-        raise src.to_error(str(x))
-    # if isinstance(node, ast.Expression):
-    if isinstance(node, ast.Expression):
-        result = ExpressionTransformer(src, context).evaluate(node)
-        return result
-    else:
-        raise TypeError("ast.Expression expected")
-
-
 class EvaluatingTransformer(ast.NodeTransformer):
     def __init__(self, src: SourceLine, context: SymbolTable) -> None:
         super().__init__()
@@ -141,17 +127,23 @@ class EvaluatingTransformer(ast.NodeTransformer):
     def error(self, message: str, column: int=0) -> ParseError:
         return ParseError(message, self.src.text, self.src.filename, self.src.line, column or self.src.column)
 
-    def evaluate(self, node: ast.Expression) -> Union[int, float, str, bool]:
+    def evaluate(self, node: ast.Expression) -> PrimitiveType:
         node = self.visit(node)
         code = compile(node, self.src.filename, mode="eval")
         if self.context:
-            globals = self.context.as_eval_dict()
+            globals = None
+            locals = self.context.as_eval_dict()
         else:
             globals = {"__builtins__": {}}
+            locals = None
         try:
-            return eval(code, globals, {})
+            result = eval(code, globals, locals)
         except Exception as x:
             raise self.src.to_error(str(x))
+        else:
+            if type(result) is bool:
+                return int(result)
+            return result
 
 
 class ExpressionTransformer(EvaluatingTransformer):
@@ -170,24 +162,6 @@ class ExpressionTransformer(EvaluatingTransformer):
             return ast.copy_location(ast.NameConstant(False), node)
         return node
 
-    def visit_Attribute(self, node: ast.Attribute):
-        dotted_name = self._dotted_name_from_attr(node)
-        try:
-            scope, symbol = self.context.lookup(dotted_name)
-        except SymbolError as x:
-            raise self.error(str(x))
-        if isinstance(symbol, ConstantDef):
-            if symbol.type in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
-                return ast.copy_location(ast.Num(symbol.value), node)
-            elif symbol.type in STRING_DATATYPES:
-                return ast.copy_location(ast.Str(symbol.value), node)
-            else:
-                raise self.error("primitive type (byte, word, float, str) required")
-        elif isinstance(symbol, VariableDef):
-            return ast.copy_location(ast.Name(dotted_name, ast.Load()), node)
-        else:
-            raise self.error("expected var or const")
-
     def visit_UnaryOp(self, node):
         if isinstance(node.operand, ast.Num):
             if isinstance(node.op, ast.USub):
@@ -204,23 +178,25 @@ class ExpressionTransformer(EvaluatingTransformer):
         node = self.generic_visit(node)
         if isinstance(node.op, ast.MatMult):
             if isinstance(node.left, ast.Name) and node.left.id == "__ptr":
-                if isinstance(node.right, ast.Name):
-                    try:
-                        address = self.context.get_address(node.right.id)
-                    except SymbolError as x:
-                        raise self.error(str(x))
-                    else:
-                        return ast.copy_location(ast.Num(address), node)
+                if isinstance(node.right, ast.Attribute):
+                    symbolname = self._dotted_name_from_attr(node.right)
+                elif isinstance(node.right, ast.Name):
+                    symbolname = node.right.id
                 else:
                     raise self.error("can only take address of a named variable")
+                try:
+                    address = self.context.get_address(symbolname)
+                except SymbolError as x:
+                    raise self.error(str(x))
+                else:
+                    return ast.copy_location(ast.Num(address), node)
             else:
                 raise self.error("invalid MatMult/Pointer node in AST")
         return node
 
 
 if __name__ == "__main__":
-    src = SourceLine("2+#derp", "<source>", 1, 0)
     symbols = SymbolTable("<root>", None, None)
     symbols.define_variable("derp", "<source>", 1, DataType.BYTE, address=2345)
-    e = parse_constant_expression(src, symbols)
-    print("EXPRESSION RESULT:", e)
+    result = parse_expr_as_primitive("2+#derp",  symbols, "<source>", 1)
+    print("EXPRESSION RESULT:", result)

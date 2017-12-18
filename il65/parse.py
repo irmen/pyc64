@@ -11,10 +11,10 @@ import re
 import os
 import shutil
 import enum
-from typing import Set, List, Tuple, Optional, Union, Any, Dict
+from typing import Set, List, Tuple, Optional, Any, Dict
 from astparse import ParseError, parse_expr_as_int, parse_expr_as_number, parse_expr_as_primitive, parse_expr_as_string
 from symbols import SymbolTable, DataType, SymbolDefinition, SubroutineDef, \
-    zeropage, check_value_in_range, trunc_float_if_needed, \
+    zeropage, check_value_in_range, coerce_value, char_to_bytevalue, \
     VariableDef, ConstantDef, SymbolError, STRING_DATATYPES, \
     REGISTER_SYMBOLS, REGISTER_WORDS, REGISTER_BYTES, RESERVED_NAMES
 
@@ -439,7 +439,6 @@ class Parser:
             else:
                 print("Error:", str(x))
             raise   # XXX temporary solution to get stack trace info in the event of parse errors
-            return None
         except Exception as x:
             print("ERROR: internal parser error: ", x)
             print("    file:", self.sourcefile, "block:", self.cur_block.name, "line:", self.cur_linenum)
@@ -597,6 +596,7 @@ class Parser:
                 parser = Parser(filename, self.outputdir, parsing_import=True)
                 print("importing", filename)
                 result = parser.parse()
+                print("\ncontinuing", self.sourcefile)
                 if result:
                     self.root_scope.merge_roots(parser.root_scope)
                     self.result.merge(result)
@@ -618,7 +618,6 @@ class Parser:
         while block_args:
             arg = block_args.pop(0)
             if arg.isidentifier():
-                print("  parsing block '" + arg + "'")
                 if arg.lower() == "zeropage" or arg in ("zp", "zP", "Zp"):
                     raise self.PError("zero page block should be named 'ZP'")
                 is_zp_block = arg == "ZP"
@@ -630,7 +629,10 @@ class Parser:
                     self.cur_block = orig  # zero page block occurrences are merged
                 else:
                     self.cur_block = ParseResult.Block(arg, self.sourcefile, linenum, self.root_scope)
-                    self.root_scope.define_scope(self.cur_block.symbols)
+                    try:
+                        self.root_scope.define_scope(self.cur_block.symbols)
+                    except SymbolError as x:
+                        raise self.PError(str(x))
             elif arg == "{":
                 break
             elif arg.endswith("{"):
@@ -656,6 +658,10 @@ class Parser:
                 raise self.PError("expected '{' after block")
             else:
                 self.next_line()
+        if self.cur_block.address:
+            print("  parsing block '{:s}' at ${:04x}".format(self.cur_block.name, self.cur_block.address))
+        else:
+            print("  parsing block '{:s}'".format(self.cur_block.name))
         while True:
             _, line = self.next_line()
             unstripped_line = line
@@ -663,6 +669,10 @@ class Parser:
             if line == "}":
                 if is_zp_block and any(b.name == "ZP" for b in self.result.blocks):
                     return None     # we already have the ZP block
+                if not self.cur_block.name and not self.cur_block.address:
+                    print("warning: {:s}:{:d}: Ignoring block without name and address."
+                          .format(self.sourcefile, self.cur_block.linenum))
+                    return None
                 return self.cur_block
             if line.startswith("var"):
                 self.parse_var_def(line)
@@ -728,7 +738,7 @@ class Parser:
         if dimensions:
             raise self.PError("cannot declare a constant matrix")
         value = parse_expr_as_primitive(valuetext, self.cur_block.symbols, self.sourcefile, self.cur_linenum)
-        value = self.coerce_value(value, datatype, length)
+        _, value = coerce_value(self.sourcefile, self.cur_linenum, datatype, value)
         try:
             self.cur_block.symbols.define_constant(varname, self.sourcefile, self.cur_linenum, datatype,
                                                    length=length, value=value)
@@ -785,7 +795,7 @@ class Parser:
     def parse_var_def(self, line: str) -> None:
         varname, datatype, length, dimensions, valuetext = self.parse_def_common(line, "var", False)
         value = parse_expr_as_primitive(valuetext, self.cur_block.symbols, self.sourcefile, self.cur_linenum)
-        value = self.coerce_value(value, datatype, length)
+        _, value = coerce_value(self.sourcefile, self.cur_linenum, datatype, value)
         try:
             self.cur_block.symbols.define_variable(varname, self.sourcefile, self.cur_linenum, datatype,
                                                    length=length, value=value, matrixsize=dimensions)
@@ -868,7 +878,7 @@ class Parser:
                 raise self.PError("cannot assign {0} to {1}; {2}".format(r_value, lv, reason))
             if lv.datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX):
                 if isinstance(r_value, ParseResult.FloatValue):
-                    truncated, value = trunc_float_if_needed(self.sourcefile, self.cur_linenum, lv.datatype, r_value.value)
+                    truncated, value = coerce_value(self.sourcefile, self.cur_linenum, lv.datatype, r_value.value)
                     if truncated:
                         r_value = ParseResult.IntegerValue(int(value), datatype=lv.datatype, name=r_value.name)
         return ParseResult.AssignmentStmt(l_values, r_value, self.cur_linenum)
@@ -946,7 +956,6 @@ class Parser:
 
     def parse_expression(self, text: str, cur_block: Optional[ParseResult.Block]=None) -> ParseResult.Value:
         # parse an expression into whatever it is (primitive value, register, memory, register, etc)
-        # XXX simplify using astparse
         cur_block = cur_block or self.cur_block
         text = text.strip()
         if not text:
@@ -981,7 +990,7 @@ class Parser:
         elif (text.startswith("'") and text.endswith("'")) or (text.startswith('"') and text.endswith('"')):
             strvalue = parse_expr_as_string(text, None, self.sourcefile, self.cur_linenum)
             if len(strvalue) == 1:
-                petscii_code = self.char_to_bytevalue(strvalue)
+                petscii_code = char_to_bytevalue(strvalue)
                 return ParseResult.IntegerValue(petscii_code)
             return ParseResult.StringValue(strvalue)
         elif text == "true":
@@ -1102,22 +1111,6 @@ class Parser:
         result = [sentence[i:j].strip(separators) for i, j in zip(indices, indices[1:])]
         return list(filter(None, result))   # remove empty strings
 
-    def char_to_bytevalue(self, character: str, petscii: bool=True) -> int:
-        assert len(character) == 1
-        if petscii:
-            return ord(character.translate(ascii_to_petscii_trans))
-        else:
-            raise NotImplementedError("screencode conversion not yet implemented for chars")
-
-    def coerce_value(self, value: Union[int, float, str], datatype: DataType, length: int) -> Union[int, float, str]:
-        # if we're a BYTE type, and the value is a single character, convert it to the numeric value
-        if datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX) and isinstance(value, str):
-            if len(value) == 1:
-                value = self.char_to_bytevalue(value)
-            else:
-                raise self.PError("byte value expected")
-        return value
-
 
 class Optimizer:
     def __init__(self, parseresult: ParseResult) -> None:
@@ -1178,109 +1171,3 @@ def value_sortkey(value: ParseResult.Value) -> int:
             return 20000 + value.address
     else:
         return 99999999
-
-
-# ASCII/UNICODE-to-PETSCII translation table
-# Unicode symbols supported that map to a PETSCII character:  £ ↑ ← ♠ ♥ ♦ ♣ π ● ○ and various others
-ascii_to_petscii_trans = str.maketrans({
-    '\f': 147,  # form feed becomes ClearScreen
-    '\n': 13,   # line feed becomes a RETURN
-    '\r': 17,   # CR becomes CursorDown
-    'a': 65,
-    'b': 66,
-    'c': 67,
-    'd': 68,
-    'e': 69,
-    'f': 70,
-    'g': 71,
-    'h': 72,
-    'i': 73,
-    'j': 74,
-    'k': 75,
-    'l': 76,
-    'm': 77,
-    'n': 78,
-    'o': 79,
-    'p': 80,
-    'q': 81,
-    'r': 82,
-    's': 83,
-    't': 84,
-    'u': 85,
-    'v': 86,
-    'w': 87,
-    'x': 88,
-    'y': 89,
-    'z': 90,
-    'A': 97,
-    'B': 98,
-    'C': 99,
-    'D': 100,
-    'E': 101,
-    'F': 102,
-    'G': 103,
-    'H': 104,
-    'I': 105,
-    'J': 106,
-    'K': 107,
-    'L': 108,
-    'M': 109,
-    'N': 110,
-    'O': 111,
-    'P': 112,
-    'Q': 113,
-    'R': 114,
-    'S': 115,
-    'T': 116,
-    'U': 117,
-    'V': 118,
-    'W': 119,
-    'X': 120,
-    'Y': 121,
-    'Z': 122,
-    '{': 179,       # left squiggle
-    '}': 235,       # right squiggle
-    '£': 92,        # pound currency sign
-    '^': 94,        # up arrow
-    '~': 126,       # pi math symbol
-    'π': 126,       # pi symbol
-    '`': 39,        # single quote
-    '✓': 250,       # check mark
-
-    '|': 221,       # vertical bar
-    '│': 221,       # vertical bar
-    '─': 96,        # horizontal bar
-    '┼': 123,       # vertical and horizontal bar
-
-    '↑': 94,        # up arrow
-    '←': 95,        # left arrow
-
-    '▔': 163,       # upper bar
-    '_': 164,       # lower bar (underscore)
-    '▁': 164,       # lower bar
-    '▎': 165,       # left bar
-
-    '♠': 97,        # spades
-    '●': 113,       # circle
-    '♥': 115,       # hearts
-    '○': 119,       # open circle
-    '♣': 120,       # clubs
-    '♦': 122,       # diamonds
-
-    '├': 171,       # vertical and right
-    '┤': 179,       # vertical and left
-    '┴': 177,       # horiz and up
-    '┬': 178,       # horiz and down
-    '└': 173,       # up right
-    '┐': 174,       # down left
-    '┌': 175,       # down right
-    '┘': 189,       # up left
-    '▗': 172,       # block lr
-    '▖': 187,       # block ll
-    '▝': 188,       # block ur
-    '▘': 190,       # block ul
-    '▚': 191,       # block ul and lr
-    '▌': 161,       # left half
-    '▄': 162,       # lower half
-    '▒': 230,       # raster
-})
