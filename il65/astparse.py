@@ -212,7 +212,7 @@ class ExpressionTransformer(EvaluatingTransformer):
 
 if __name__ == "__main__":
     src = SourceLine("2+#derp", "<source>", 1, 0)
-    e = parse_expression(src, SymbolTable(None))
+    e = parse_expression(src, SymbolTable())
     print("EXPRESSION:", e)
     import astunparse
     print(astunparse.unparse(e))

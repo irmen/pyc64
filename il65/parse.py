@@ -12,8 +12,8 @@ import shutil
 import enum
 from typing import Set, List, Tuple, Optional, Union, Any, Dict
 from astparse import ParseError, parse_int, parse_number, parse_primitive, parse_string
-from symbols import SymbolTable, Zeropage, DataType, SymbolDefinition, SubroutineDef, \
-    check_value_in_range, trunc_float_if_needed, \
+from symbols import SymbolTable, DataType, SymbolDefinition, SubroutineDef, \
+    zeropage, check_value_in_range, trunc_float_if_needed, \
     VariableDef, ConstantDef, SymbolError, STRING_DATATYPES, \
     REGISTER_SYMBOLS, REGISTER_WORDS, REGISTER_BYTES, RESERVED_NAMES
 
@@ -28,13 +28,13 @@ class ParseResult:
     class Block:
         _unnamed_block_labels = {}  # type: Dict[ParseResult.Block, str]
 
-        def __init__(self, sourcefile: str, linenum: int, zeropage: Zeropage) -> None:
+        def __init__(self, sourcefile: str, linenum: int) -> None:
             self.sourcefile = sourcefile
             self.linenum = linenum
             self.address = 0
             self.name = ""
             self.statements = []    # type: List[ParseResult._Stmt]
-            self.symbols = SymbolTable(zeropage)        # labels, vars, subroutine defs
+            self.symbols = SymbolTable()        # labels, vars, subroutine defs
 
         @property
         def label_names(self) -> Set[str]:
@@ -415,10 +415,8 @@ class ParseResult:
 
 
 class Parser:
-    def __init__(self, sourcefile: str, outputdir: str,
-                 sourcecode: Optional[str]=None, zeropage: Zeropage=None, parsing_import: bool=False) -> None:
+    def __init__(self, sourcefile: str, outputdir: str, sourcecode: Optional[str]=None, parsing_import: bool=False) -> None:
         self.result = ParseResult(sourcefile)
-        self.zeropage = zeropage
         self.sourcefile = sourcefile
         self.outputdir = outputdir
         self.parsing_import = parsing_import     # are we parsing a import file?
@@ -461,8 +459,7 @@ class Parser:
     def _parse(self) -> ParseResult:
         print("\nparsing (pass 1)", self.sourcefile)
         self.parse_header()
-        if not self.zeropage:
-            self.zeropage = Zeropage(self.result.clobberzp)
+        zeropage.configure(self.result.clobberzp)
         while True:
             next_line = self.peek_next_line()[1]
             if next_line.lstrip().startswith("~"):
@@ -616,7 +613,7 @@ class Parser:
                       filename_at_libs_location+".ill"]
         for filename in candidates:
             if os.path.isfile(filename):
-                parser = Parser(filename, self.outputdir, zeropage=self.zeropage, parsing_import=True)
+                parser = Parser(filename, self.outputdir, parsing_import=True)
                 print("importing", filename)
                 return parser.parse()
         raise self.PError("imported file not found")
@@ -627,7 +624,7 @@ class Parser:
         line = line.lstrip()
         if not line.startswith("~"):
             raise self.PError("expected '~' (block)")
-        self.cur_block = ParseResult.Block(self.sourcefile, num, self.zeropage)
+        self.cur_block = ParseResult.Block(self.sourcefile, num)
         block_args = line[1:].split()
         arg = ""
         is_zp_block = False

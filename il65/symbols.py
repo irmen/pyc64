@@ -9,7 +9,7 @@ import inspect
 import math
 import enum
 from functools import total_ordering
-from typing import Optional, Set, Union, Tuple, Dict, Iterable, Sequence, Any
+from typing import Optional, Set, Union, Tuple, Dict, Iterable, Sequence, Any, List
 
 
 REGISTER_SYMBOLS = {"A", "X", "Y", "AX", "AY", "XY", "SC"}
@@ -176,7 +176,11 @@ class Zeropage:
     SCRATCH_B1 = 0x02
     SCRATCH_B2 = 0x03
 
-    def __init__(self, clobber_zp: bool = False) -> None:
+    def __init__(self) -> None:
+        self.unused_bytes = []  # type: List[int]
+        self.unused_words = []  # type: List[int]
+
+    def configure(self, clobber_zp: bool = False) -> None:
         if clobber_zp:
             self.unused_bytes = list(range(0x04, 0x80))
             self.unused_words = list(range(0x80, 0x100, 2))
@@ -203,12 +207,14 @@ class Zeropage:
         return len(self.unused_words)
 
 
+zeropage = Zeropage()
+
+
 class SymbolTable:
     math_module_symbols = {name: definition for name, definition in vars(math).items() if not name.startswith("_")}
     global_blocks = {}   # type: Dict[str, BlockScope]
 
-    def __init__(self, zeropage: Zeropage) -> None:
-        self.zeropage = zeropage
+    def __init__(self) -> None:
         self.symbols = dict(SymbolTable.math_module_symbols)
         self.eval_dict = None
 
@@ -303,7 +309,7 @@ class SymbolTable:
         if datatype == DataType.BYTE:
             if allocate and blockname == "ZP":
                 try:
-                    address = self.zeropage.get_unused_byte()
+                    address = zeropage.get_unused_byte()
                 except LookupError:
                     raise SymbolError("too many global 8-bit variables in ZP")
             self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.BYTE, allocate,
@@ -311,7 +317,7 @@ class SymbolTable:
         elif datatype == DataType.WORD:
             if allocate and blockname == "ZP":
                 try:
-                    address = self.zeropage.get_unused_word()
+                    address = zeropage.get_unused_word()
                 except LookupError:
                     raise SymbolError("too many global 16-bit variables in ZP")
             self.symbols[name] = VariableDef(blockname, name, sourcefile, sourceline, DataType.WORD, allocate,
