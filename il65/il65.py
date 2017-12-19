@@ -374,16 +374,24 @@ class CodeGenerator:
             elif stmt.howmuch < 0:
                 raise NotImplementedError("decr by > 1")  # XXX
         elif isinstance(stmt, ParseResult.CallStmt):
-            # @todo do something with stmt.params
+            is_indirect = False
             if stmt.call_label:
                 call_target = stmt.call_label
                 if stmt.call_module:
                     call_target = stmt.call_module + "." + stmt.call_label
-            else:
+            elif stmt.address is not None:
                 call_target = self.to_hex(stmt.address)
+            else:
+                assert stmt.indirect_pointer is not None
+                if isinstance(stmt.indirect_pointer, int):
+                    call_target = self.to_hex(stmt.indirect_pointer)
+                else:
+                    call_target = stmt.indirect_pointer
+                is_indirect = True
             if stmt.subroutine:
+                assert not is_indirect
                 if stmt.subroutine.clobbered_registers:
-                    if stmt.preserve_regs:
+                    if stmt.preserve_regs:      # @todo make this work with the separate assignment statements for the parameters.. :(
                         clobbered = stmt.subroutine.clobbered_registers
                     else:
                         clobbered = set()
@@ -393,9 +401,44 @@ class CodeGenerator:
                         self.p("\t\trts")
                     return
             if stmt.is_goto:
-                self.p("\t\tjmp  " + call_target)
+                if is_indirect:
+                    if call_target in REGISTER_WORDS:
+                        self.p("\t\tst{:s}  {:s}".format(call_target[0].lower(), self.to_hex(Zeropage.SCRATCH_B1)))
+                        self.p("\t\tst{:s}  {:s}".format(call_target[1].lower(), self.to_hex(Zeropage.SCRATCH_B2)))
+                        self.p("\t\tjmp  ({:s})".format(self.to_hex(Zeropage.SCRATCH_B1)))
+                    else:
+                        self.p("\t\tjmp  ({:s})".format(call_target))
+                else:
+                    self.p("\t\tjmp  " + call_target)
             else:
-                self.p("\t\tjsr  " + call_target)
+                preserve_regs = {'A', 'X', 'Y'} if stmt.preserve_regs else {}
+                with self.preserving_registers(preserve_regs):
+                    if is_indirect:
+                        if call_target in REGISTER_WORDS:
+                            if stmt.preserve_regs:
+                                # cannot use zp scratch
+                                self.p("\t\tst{:s}  ++".format(call_target[0].lower()))
+                                self.p("\t\tst{:s}  +++".format(call_target[1].lower()))
+                                self.p("\t\tjsr  +")
+                                self.p("\t\tjmp  ++++")
+                                self.p("+\t\tjmp  (+)")
+                                self.p("+\t\t.byte  0\t; lo")
+                                self.p("+\t\t.byte  0\t; hi")
+                                self.p("+")
+                            else:
+                                self.p("\t\tst{:s}  {:s}".format(call_target[0].lower(), self.to_hex(Zeropage.SCRATCH_B1)))
+                                self.p("\t\tst{:s}  {:s}".format(call_target[1].lower(), self.to_hex(Zeropage.SCRATCH_B2)))
+                                self.p("\t\tjsr  +")
+                                self.p("\t\tjmp  ++")
+                                self.p("+\t\tjmp  ({:s})".format(self.to_hex(Zeropage.SCRATCH_B1)))
+                                self.p("+")
+                        else:
+                            self.p("\t\tjsr  +")
+                            self.p("\t\tjmp  ++")
+                            self.p("+\t\tjmp  ({:s})".format(call_target))
+                            self.p("+")
+                    else:
+                        self.p("\t\tjsr  " + call_target)
         elif isinstance(stmt, ParseResult.InlineAsm):
             self.p("\t\t; inline asm, src l. {:d}".format(stmt.linenum))
             for line in stmt.asmlines:

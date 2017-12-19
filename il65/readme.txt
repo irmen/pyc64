@@ -344,27 +344,33 @@ ISOLATION (register preservation when calling subroutines):  @todo isolation
 SUBROUTINE CALLS
 ----------------
 
-call subroutine and continue afterwards ('gosub'):
-        [f]call <subroutine> / <label> / <address>
-        @todo call [<registerpair>] / [<address>]   (indirect)
+CALL and FCALL:
+        These statements take no arguments, they assume you have prepared those otherwise.
+        They are just inserting a call to the specified location or subroutine.
+        [F]CALL: calls subroutine and continue afterwards ('gosub'):
+                [f]call <subroutine> / <label> / <address> / [indirect-pointer]
 
-        call preserves all registers when doing the procedure call and restores them afterwards.
-        fcall ('fast call') doesn't do this, so generates code that is a lot faster, but can clobber register values.
+        A 'call' preserves all registers when doing the procedure call and restores them afterwards.
+        'fcall' (fast call) doesn't preserve registers, so generates code that is a lot faster.
+        It's basically one jmp or jsr instruction. It can clobber register values because of this.
 
-The following syntax to call a subroutine is also available:
-        subroutine ( [parameters...] )
-        subroutine! ( [parameters...] )
-        These are understood as:  "call subroutine parameters" and "fcall subroutine parameters" respectively.
+The following contemporary syntax to call a subroutine is also available:
+        subroutine ( [arguments...] )
+        subroutine! ( [arguments...] )
+        These are understood as:  "call subroutine arguments" and "fcall subroutine arguments" respectively.
+        You can only call a subroutine or label this way. This syntax cannot be used
+        to call a memory address or variable, you have to use the call statement for that.
 
-jump to routine ('goto'):
-        go <subroutine> / <label> / <address>
-        @todo go [<registerpair>] / [<address>]   (indirect)
-
-@todo support args (start with A,X,Y reg args, later named params that go via stack/memory)
-@todo support return values (so that you can assign these to other variables, and allows the line to be a full expression)
+GO:
+        'go' continues execution with the specified routine or address and doesn't retuurn (it is a 'goto'):
+                go <subroutine> / <label> / <address> / [indirect-pointer]
 
 
-BITMAP DEFINITIONS:
+@todo support call non-register args (variable parameter passing)
+@todo support call return values (so that you can assign these to other variables, and allows the line to be a full expression)
+
+
+@todo BITMAP DEFINITIONS:
 to define CHARACTERS (8x8 monochrome or 4x8 multicolor = 8 bytes)
 --> PLACE in memory on correct address (???k aligned)
 and SPRITES (24x21 monochrome or 12x21 multicolor = 63 bytes)
