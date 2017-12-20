@@ -345,18 +345,20 @@ SUBROUTINE CALLS
 ----------------
 
 CALL and FCALL:
-        These statements take no arguments, they assume you have prepared those otherwise.
         They are just inserting a call to the specified location or subroutine.
         [F]CALL: calls subroutine and continue afterwards ('gosub'):
-                [f]call <subroutine> / <label> / <address> / [indirect-pointer]
+                [f]call <subroutine> / <label> / <address> / `[`indirect-pointer`]`  [arguments...]
 
         A 'call' preserves all registers when doing the procedure call and restores them afterwards.
         'fcall' (fast call) doesn't preserve registers, so generates code that is a lot faster.
         It's basically one jmp or jsr instruction. It can clobber register values because of this.
+        If you provide arguments (not required) these will be matched to the subroutine's parameters.
+        If you don't provide arguments, it is assumed you have prepared the correct registers etc yourself.
+
 
 The following contemporary syntax to call a subroutine is also available:
-        subroutine ( [arguments...] )
-        subroutine! ( [arguments...] )
+        subroutine `(` [arguments...] `)`
+        subroutine! `(` [arguments...] `)`
         These are understood as:  "call subroutine arguments" and "fcall subroutine arguments" respectively.
         You can only call a subroutine or label this way. This syntax cannot be used
         to call a memory address or variable, you have to use the call statement for that.

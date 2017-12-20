@@ -13,16 +13,20 @@ start
         var     .float          myfloat_large2  = -123456.2222
         var     .text           myfloatstr   = "1234.998877"
         var     .float          myfloatzero     = 0
-        var     .float          myfloatsmall     = 1.234
+        var     .float          myfloatsmall1     = 1.234
+        var     .float          myfloatsmall2     = 2.6677
 
-        c64.fac1_read_memAY!(#myfloatsmall)
+        c64.MOVFM!(#myfloatsmall1)
+        c64.FCOMP!(#myfloatsmall1)
+        [$0400]=A
+        c64.MOVFM!(#myfloatsmall1)
+        c64.FCOMP!(#myfloatsmall2)
+        [$0401]=A
+        c64.MOVFM!(#myfloatsmall2)
+        c64.FCOMP!(#myfloatsmall1)
+        [$0402]=A
 
-        c64.fac1_rnd!()
-        c64.fac1_print_line!()
-        c64.fac1_rnd!()
-        c64.fac1_print_line!()
-        c64.fac1_rnd!()
-        c64.fac1_print_line!()
+        c64util.FREADS32()
 
         return
 }
@@ -61,75 +65,75 @@ start
         [some_address.word] = #flt_pi
         [$c000.word] = # flt_pi
 
-        c64.fac1_read_memAY!(#flt_pi)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_pi)
-        c64.fac1_print_line !()
+        c64.MOVFM!(#flt_pi)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_pi)
+        c64.FPRINTLN !()
 
-        c64.fac1_read_memAY!(#flt_minus32768)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_minus32768)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_minus32768)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_minus32768)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_1)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_1)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_1)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_1)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_half_sqr2)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!( #  c64.mflpt_half_sqr2)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_half_sqr2)
+        c64.FPRINTLN!()
+        c64.MOVFM!( #  c64.mflpt_half_sqr2)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_sqr2)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_sqr2)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_sqr2)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_sqr2)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_minus_half)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_minus_half)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_minus_half)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_minus_half)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_log_2)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_log_2)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_log_2)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_log_2)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_10)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_10)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_10)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_10)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_1e9)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_1e9)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_1e9)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_1e9)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_half)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_half)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_half)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_half)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_one_over_log_2)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_one_over_log_2)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_one_over_log_2)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_one_over_log_2)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_half_pi)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_half_pi)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_half_pi)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_half_pi)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(#flt_double_pi)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_double_pi)
-        c64.fac1_print_line!()
+        c64.MOVFM!(#flt_double_pi)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_double_pi)
+        c64.FPRINTLN!()
 
-        c64.fac1_read_memAY!(# flt_point25)
-        c64.fac1_print_line!()
-        c64.fac1_read_memAY!(#c64.mflpt_point25)
-        c64.fac1_print_line!()
+        c64.MOVFM!(# flt_point25)
+        c64.FPRINTLN!()
+        c64.MOVFM!(#c64.mflpt_point25)
+        c64.FPRINTLN!()
 
         return
 

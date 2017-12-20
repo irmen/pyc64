@@ -389,7 +389,7 @@ class ParseResult:
             self.call_module = ""
             self.call_label = ""
             self.line_number = line_number
-            self.arguments = arguments or []
+            self.arguments = arguments
             self.address = address
             self.indirect_pointer = indirect_pointer
             if self.indirect_pointer:
@@ -403,11 +403,11 @@ class ParseResult:
                     raise parser.PError("unknown symbol '{:s}'".format(self.unresolved), self.line_number)
                 if isinstance(identifier, SubroutineDef):
                     self.subroutine = identifier
-                    if len(self.arguments) != len(self.subroutine.parameters):
+                    if self.arguments is not None and len(self.arguments) != len(self.subroutine.parameters):
                         raise parser.PError("invalid number of arguments ({:d}, expected {:d})"
                                             .format(len(self.arguments), len(self.subroutine.parameters)), self.line_number)
                     arguments = []
-                    for i, (argname, value) in enumerate(self.arguments):
+                    for i, (argname, value) in enumerate(self.arguments or []):
                         pname, preg = self.subroutine.parameters[i]
                         if argname:
                             if argname != preg:
@@ -917,7 +917,7 @@ class Parser:
             subname = match.group("subname")
             fcall = "f" if match.group("fcall") else ""
             param_str = match.group("params")
-            # desugar this into "[f]call subname parameters"
+            # turn this into "[f]call subname parameters" so it will be parsed below
             line = "{:s}call {:s} {:s}".format(fcall, subname, param_str)
         if line.startswith("return"):
             return self.parse_return(line)

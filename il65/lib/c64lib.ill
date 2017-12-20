@@ -1,5 +1,5 @@
-; IL65 global definitions for the Commodore-64
-; Including memory registers, I/O registers, Basic and Kernel subroutines.
+; IL65 definitions for the Commodore-64
+; Including memory registers, I/O registers, Basic and Kernel subroutines, utility subroutines.
 ;
 ; Written by Irmen de Jong (irmen@razorvine.net)
 ; License: GNU GPL 3.0, see LICENSE
@@ -7,10 +7,10 @@
 output raw
 
 ~ c64 {
-		memory SCRATCH_ZP1	= $02
-		memory SCRATCH_ZP2	= $03
+		memory SCRATCH_ZP1	= $02		; scratch register #1 in ZP 
+		memory SCRATCH_ZP2	= $03		; scratch register #2 in ZP
 
-		memory COLOR		= $286        ; cursor color
+		memory COLOR		= $286		; cursor color
 
 ; ---- VIC-II registers ----
 
@@ -48,8 +48,8 @@ output raw
 		memory SPSPCL		= $d01e
 		memory SPBGCL		= $d01f
 
-		memory EXTCOL		= $d020       ; border color
-		memory BGCOL0		= $d021       ; screen color
+		memory EXTCOL		= $d020		; border color
+		memory BGCOL0		= $d021		; screen color
 		memory BGCOL1		= $d022
 		memory BGCOL2		= $d023
 		memory BGCOL4		= $d024
@@ -66,10 +66,10 @@ output raw
 
 ; ---- end of VIC-II registers ----
 
-; ---- C64 basic ROM float constants and functions ----
+; ---- C64 basic and kernal ROM float constants and functions ----
 
-		; note: the fac1 and fac2 are working registers and take 6 bytes each
-		;       floats in memory (and rom) are stored in 5-byte MFLPT packed format.
+		; note: the fac1 and fac2 are working registers and take 6 bytes each,
+		; floats in memory (and rom) are stored in 5-byte MFLPT packed format.
 
 		; constants in five-byte "mflpt" format in the BASIC ROM
 ; @todo ?? use the symbol names from http://unusedino.de/ec64/technical/project64/mapping_c64.html
@@ -89,78 +89,67 @@ output raw
 		memory  .float  mflpt_point25		= $e2ea  ; .25
 
 
-; @todo use the symbol names from http://unusedino.de/ec64/technical/project64/mapping_c64.html		
 ; @todo verify clobbered registers?
-; @todo better params, see also https://www.c64-wiki.com/wiki/Floating_point_arithmetic#Routines_for_converting_between_floating_point_and_other_formats
-; @todo A/Y order (which is lo, which is high byte?)
-; functions - a few points to note:
-; fac1/2 might get clobbered even if not mentioned in the function's name,
-;	because stuff like fac1_times_memAY will load the value from memory
-;	into fac2 first.
-; for subtraction and division, the left operand is in fac2, the right operand in fac1.
+; note: fac1/2 might get clobbered even if not mentioned in the function's name.
+; note: for subtraction and division, the left operand is in fac2, the right operand in fac1.
 
 ; checked functions below:
-subx	fac1_read_memAY		(AY) -> (A?, Y?)	= $bba2	 ; load mflpt value from memory in A/Y into fac1
-subx	fac1_read_mem0x22	() -> (A?, Y?)		= $bba6	 ; load mflpt value from memory in $22/$23 into fac1
-subx    fac2_read_memAY         (AY) -> (A?, Y?)	= $ba8c  ; load mflpt value from memory in A/Y into fac2
-subx	fac2_read_mem0x22	() -> (A?, Y?)		= $ba90  ; load mflpt value from memory in $22/$23 into fac2
-subx	fac1_read_fac2		() -> (A?, X?)		= $bbfc  ; copy fac2 to fac1
-subx	fac2_read_fac1_r	() -> (A?, X?)		= $bc0c  ; copy fac1 to fac2  (rounded)
-subx	fac2_read_fac1		() -> (A?, X?)		= $bc0f  ; copy fac1 to fac2
-subx	fac1_to_memXY		(XY) -> (A?, Y?)	= $bbd4  ; store fac1 to memory X/Y as 5-byte mflpt
-subx	fac1_to_signedYA	() -> (Y, A, X?)	= $b1aa  ; fac1-> signed word in Y/A (might throw ILLEGAL QUANTITY)
-		; use global.fac1_to_signedAY to get A/Y output (lo/hi switched to normal order)
-subx	fac1_to_unsignedYA	() -> (Y, A, X?)	= $b7f7  ; fac1 -> unsigned word in Y/A (might throw ILLEGAL QUANTITY)
-		; (result also in $14/15) use global.fac1_to_unsignedAY to get A/Y output (lo/hi switched to normal order)
-subx	fac1_to_signed32	() -> (A?, X?, Y?)	= $bc9b  ; fac1 -> 4-byte signed integer in 98-101 ($62-$65), with the MSB FIRST.
-subx	fac1_to_signed16	() -> (A?, X?, Y?)	= $b1bf  ; fac1-> signed word in 100-101 ($64-$65) MSB FIRST. (might throw ILLEGAL QUANTITY)
-; there is also global.fac1_read_signed32  that reads from 98-101 ($62-$65) MSB FIRST
-; there is also global.fac1_read_unsigned32  that reads from 98-101 ($62-$65) MSB FIRST
-subx	fac1_read_signedYA	(Y, A) -> (A?, X?, Y?)	= $b391  ; 16 bit signed int in Y/A -> float in fac1
-		; use global.fac1_read_signedAY to use A/Y input (lo/hi switched to normal order)
-; there is also global.fac1_read_unsignedAY - unsigned word in A/Y (lo/hi) to fac1  (AY) -> (A?, X?, Y?)
-subx	fac1_read_unsignedY	(Y) -> (A?, X?, Y?)	= $b3a2  ; 8 bit unsigned Y -> float in fac1
-subx	fac1_read_signedA	(A) -> (A?, X?, Y?)	= $bc3c  ; 8 bit signed A -> float in fac1
-subx	fac1_read_string	(A) -> (A?, X?, Y?)	= $b7b5  ; str -> fac1, $22/23 must point to string, A=string length
-subx	fac1_print_line		() -> (A?, X?, Y?)	= $aabc  ; print string of fac1, on one line (= with newline)
-subx	fac1_to_string		() -> (AY, X?)		= $bddd  ; fac1 -> string, address returned in AY ($0100)
+subx	MOVFM		(AY) -> (A?, Y?)	= $bba2		; load mflpt value from memory in A/Y into fac1
+subx	FREADMEM	() -> (A?, Y?)		= $bba6		; load mflpt value from memory in $22/$23 into fac1
+subx    CONUPK		(AY) -> (A?, Y?)	= $ba8c		; load mflpt value from memory in A/Y into fac2
+subx	FAREADMEM	() -> (A?, Y?)		= $ba90		; load mflpt value from memory in $22/$23 into fac2
+subx	MOVFA		() -> (A?, X?)		= $bbfc		; copy fac2 to fac1
+subx	MOVAF		() -> (A?, X?)		= $bc0c		; copy fac1 to fac2  (rounded)
+subx	MOVEF		() -> (A?, X?)		= $bc0f		; copy fac1 to fac2
+subx	FTOMEMXY	(XY) -> (A?, Y?)	= $bbd4		; store fac1 to memory X/Y as 5-byte mflpt
+subx	FTOSWORDYA	() -> (Y, A, X?)	= $b1aa		; fac1-> signed word in Y/A (might throw ILLEGAL QUANTITY)
+	; use c64util.FTOSWRDAY to get A/Y output (lo/hi switched to normal order)
+subx	GETADR		() -> (Y, A, X?)	= $b7f7		; fac1 -> unsigned word in Y/A (might throw ILLEGAL QUANTITY)
+	; (result also in $14/15) use c64util.GETADRAY to get A/Y output (lo/hi switched to normal order)
+subx	QINT		() -> (A?, X?, Y?)	= $bc9b		; fac1 -> 4-byte signed integer in 98-101 ($62-$65), with the MSB FIRST.
+subx	AYINT		() -> (A?, X?, Y?)	= $b1bf		; fac1-> signed word in 100-101 ($64-$65) MSB FIRST. (might throw ILLEGAL QUANTITY)
+subx	GIVAYF		(Y, A) -> (A?, X?, Y?)	= $b391		; signed word in Y/A -> float in fac1
+	; use c64util.GIVAYFAY to use A/Y input (lo/hi switched to normal order)
+; there is also c64util.GIVUAYF - unsigned word in A/Y (lo/hi) to fac1  (AY) -> (A?, X?, Y?)
+; there is also c64util.FREADS32  that reads from 98-101 ($62-$65) MSB FIRST
+; there is also c64util.FREADUS32  that reads from 98-101 ($62-$65) MSB FIRST
+; there is also c64util.FREADS24AXY  that reads signed int24 into fac1 from A/X/Y (lo/mid/hi bytes)
+subx	FREADUY		(Y) -> (A?, X?, Y?)	= $b3a2		; 8 bit unsigned Y -> float in fac1
+subx	FREADSA		(A) -> (A?, X?, Y?)	= $bc3c		; 8 bit signed A -> float in fac1
+subx	FREADSTR	(A) -> (A?, X?, Y?)	= $b7b5		; str -> fac1, $22/23 must point to string, A=string length
+subx	FPRINTLN	() -> (A?, X?, Y?)	= $aabc		; print string of fac1, on one line (= with newline)
+subx	FOUT		() -> (AY, X?)		= $bddd		; fac1 -> string, address returned in AY ($0100)
 
-subx	fac1_add_point5		() -> (A?, X?, Y?)	= $b849  ; fac1 += 0.5, for rounding- call this before fac1_int
+subx	FADDH		() -> (A?, X?, Y?)	= $b849		; fac1 += 0.5, for rounding- call this before INT
+subx	MUL10		() -> (A?, X?, Y?)	= $bae2		; fac1 *= 10
+subx	DIV10		() -> (A?, X?, Y?)	= $bafe		; fac1 /= 10 , CAUTION: result is always positive!
+subx	FCOMP		(AY) -> (A, X?, Y?)	= $bc5b		; A = compare fac1 to mflpt in A/Y, 0=equal 1=fac1 is greater, 255=fac1 is less than
 
-subx    fac1_not                () -> (A?, X?, Y?)	= $aed4  ; fac1 = NOT(fac1)
-subx	fac1_int		() -> (A?, X?, Y?)	= $bccc  ; INT() truncates, use fac1_add_point5 first to round instead of trunc
-subx	fac1_ln			() -> (A?, X?, Y?)	= $b9ea  ; fac1 = LN(fac1)  (natural log)
-subx	fac1_sgn		() -> (A?, X?, Y?)	= $bc39  ; fac1 = SGN(fac1), result of SIGN (-1, 0 or 1)
-subx	fac1_sign_to_A		() -> (A)		= $bc2b  ; SIGN(fac1) to A, $ff, $0, $1 for negative, zero, positive
-subx	fac1_abs		() -> ()		= $bc58  ; fac1 = ABS(fac1)
-subx	fac1_sqrt		() -> (A?, X?, Y?)	= $bf71  ; fac1 = SQRT(fac1)
-subx	fac1_exp		() -> (A?, X?, Y?)	= $bfed  ; fac1 = EXP(fac1)  (e ** fac1)
-subx	fac1_negate		() -> (A?)		= $bfb4  ; switch the sign of fac1
-subx	fac1_rnd		() -> (A?, X?, Y?)	= $e097  ; fac1 = RND()
+subx	FADDT		() -> (A?, X?, Y?)	= $b86a		; fac1 += fac2
+subx	FADD		(AY) -> (A?, X?, Y?)	= $b867		; fac1 += mflpt value from A/Y
+subx	FSUBT		() -> (A?, X?, Y?)	= $b853		; fac1 = fac2-fac1   mind the order of the operands
+subx	FSUB		(AY) -> (A?, X?, Y?)	= $b850		; fac1 = mflpt from A/Y - fac1
+subx	FMULTT 		() -> (A?, X?, Y?)	= $ba2b		; fac1 *= fac2 
+subx	FMULT		(AY) -> (A?, X?, Y?)	= $ba28		; fac1 *= mflpt value from A/Y
+subx	FDIVT 		() -> (A?, X?, Y?)	= $bb12		; fac1 = fac2/fac1   mind the order of the operands
+subx	FDIV  		(AY) -> (A?, X?, Y?)	= $bb0f		; fac1 = mflpt in A/Y / fac1
+subx	FPWRT		() -> (A?, X?, Y?)	= $bf7b		; fac1 = fac2 ** fac1
+subx	FPWR		(AY) -> (A?, X?, Y?)	= $bf78		; fac1 = fac2 ** mflpt from A/Y
 
-
-; unchecked functions follow below:
-
-subx	fac1_memAY_minus_fac1	() -> (A?, X?, Y?)	        = $b850	; subtract fac1 from mflpt value
-subx	fac1_fac2_minus_fac1	() -> (A?, X?, Y?)	        = $b853 ; fac1 = fac2-fac1
-subx	fac1_add_memAY		() -> (A?, X?, Y?)	        = $b867	; add mflpt value
-subx	fac1_add_fac2		() -> (A?, X?, Y?)	        = $b86a ; fac1 = fac1+fac2
-subx	fac1_times_memAY	() -> (A?, X?, Y?)	        = $ba28	; multiply by mflpt value
-subx	fac1_times_fac2 	() -> (A?, X?, Y?)	        = $ba2b	; fac1*fac2 -> fac1
-subx	fac1_divide_fac2 	() -> (A?, X?, Y?)	        = $bb12	; fac1/fac2 -> fac1
-subx	fac1_times_10		() -> (A?, X?, Y?)	        = $bae2 ; fac1 *= 10
-subx	fac1_divide_by_10	() -> (A?, X?, Y?)	        = $bafe	; fac1 /= 10 , CAUTION: result is always positive!
-subx	fac1_divide_memAY_by_fac1  () -> (A?, X?, Y?)	        = $bb0f	; divide mflpt in A/Y value by fac1 value
-subx	fac1_compare_to_memAY	() -> (A, X?, Y?)	        = $bc5b	; compare to mflpt value in memory
-subx	fac1_print_unsignedAX	() -> (A?, X?, Y?)	        = $bdcd ; this uses fac, so print_word_decimal() is a lot faster!
-subx	fac1_fac2_to_the_power_of_memAY  (AY) -> (A?, X?, Y?)	= $bf78 ; fac1 = fac2 ** mflpt from mem pointed to by A/Y
-subx	fac1_pow_fac2		() -> (A?, X?, Y?)	        = $bf7b	; fac1 ** fac2 -> fac1  @todo or fac2 ** fac1?
-; KERNEL ROM FUNCTIONS:
-subx	fac1_cos		() -> (A?, X?, Y?)	        = $e264	; COS()
-subx	fac1_sin		() -> (A?, X?, Y?)	        = $e26b	; SIN()
-subx	fac1_tan		() -> (A?, X?, Y?)	        = $e2b4	; TAN()
-subx	fac1_atn		() -> (A?, X?, Y?)	        = $e30e	; ATN()
-
+subx    NOTOP		() -> (A?, X?, Y?)	= $aed4		; fac1 = NOT(fac1)
+subx	INT		() -> (A?, X?, Y?)	= $bccc		; INT() truncates, use FADDH first to round instead of trunc
+subx	LOG		() -> (A?, X?, Y?)	= $b9ea		; fac1 = LN(fac1)  (natural log)
+subx	SGN		() -> (A?, X?, Y?)	= $bc39		; fac1 = SGN(fac1), result of SIGN (-1, 0 or 1)
+subx	SIGN		() -> (A)		= $bc2b		; SIGN(fac1) to A, $ff, $0, $1 for negative, zero, positive
+subx	ABS		() -> ()		= $bc58		; fac1 = ABS(fac1)
+subx	SQR		() -> (A?, X?, Y?)	= $bf71		; fac1 = SQRT(fac1)
+subx	EXP		() -> (A?, X?, Y?)	= $bfed		; fac1 = EXP(fac1)  (e ** fac1)
+subx	NEGOP		() -> (A?)		= $bfb4		; switch the sign of fac1
+subx	RND		() -> (A?, X?, Y?)	= $e097		; fac1 = RND()
+subx	COS		() -> (A?, X?, Y?)	= $e264		; fac1 = COS(fac1)
+subx	SIN		() -> (A?, X?, Y?)	= $e26b		; fac1 = SIN(fac1)
+subx	TAN		() -> (A?, X?, Y?)	= $e2b4		; fac1 = TAN(fac1)
+subx	ATN		() -> (A?, X?, Y?)	= $e30e		; fac1 = ATN(fac1)
 
 
 ; ---- C64 basic routines ----
@@ -169,9 +158,9 @@ subx    CLEARSCR    () -> (A?, X?, Y?)                          = $E544   ; clea
 subx    HOMECRSR    () -> (A?, X?, Y?)                          = $E566   ; cursor to top left of screen
 
 
-
-
 ; ---- end of C64 basic routines ----
+
+
 
 ; ---- C64 kernal routines ----
 
@@ -223,10 +212,10 @@ subx    IOBASE   () -> (X, Y)                                   = $FFF3    ; rea
 
 }
 
-~ global {
+~ c64util {
 
 ; ---- fac1 = signed int32 from $62-$65 big endian (MSB FIRST)
-fac1_read_signed32	; () -> (A?, X?, Y?)
+FREADS32	; () -> (A?, X?, Y?)
 	asm {
 		lda  $62
 		eor  #$ff
@@ -237,7 +226,7 @@ fac1_read_signed32	; () -> (A?, X?, Y?)
 	}
 
 ; ---- fac1 = uint32 from $62-$65 big endian (MSB FIRST)
-fac1_read_unsigned32	; () -> (A?, X?, Y?)
+FREADUS32	; () -> (A?, X?, Y?)
 	asm {
 		sec
 		lda  #0
@@ -246,8 +235,8 @@ fac1_read_unsigned32	; () -> (A?, X?, Y?)
 	}
 
 ; ---- fac1 = signed int24 (A/X/Y contain lo/mid/hi bytes)
-;      note: there is no fac1_read_unsigned24, use fac1_read_unsigned32 instead. 
-fac1_read_signed24	; (A, X, Y) -> (A?, X?, Y?)
+;      note: there is no FREADU24AXY (unsigned), use FREADUS32 instead. 
+FREADS24AXY	; (A, X, Y) -> (A?, X?, Y?)
 	asm {
 		sty  $62
 		stx  $63
@@ -263,7 +252,7 @@ fac1_read_signed24	; (A, X, Y) -> (A?, X?, Y?)
 
 	
 ; ---- unsigned 16 bit word in A/Y (lo/hi) to fac1
-fac1_read_unsignedAY    ; (AY) -> (A?, X?, Y?)
+GIVUAYF    ; (AY) -> (A?, X?, Y?)
 	asm {
 		sty  $62
 		sta  $63
@@ -273,18 +262,18 @@ fac1_read_unsignedAY    ; (AY) -> (A?, X?, Y?)
 	}
 
 ; ---- signed 16 bit word in A/Y (lo/hi) to float in fac1
-fac1_read_signedAY	; (AY) -> (A?, X?, Y?)
+GIVAYFAY	; (AY) -> (A?, X?, Y?)
 	asm {
 		sta  c64.SCRATCH_ZP1
 		tya
 		ldy  c64.SCRATCH_ZP1
-		jmp  c64.fac1_read_signedYA	; note the inverse Y/A order
+		jmp  c64.GIVAYF			; this uses the inverse order, Y/A
 	}
 	
 ; ---- fac1 to signed word in A/Y
-fac1_to_signedAY	; () -> (A, Y, X?)
+FTOSWRDAY	; () -> (A, Y, X?)
 	asm {
-		jsr  c64.fac1_to_signedYA	; note the inverse Y/A order
+		jsr  c64.FTOSWORDYA		; note the inverse Y/A order
 		sta  c64.SCRATCH_ZP1
 		tya
 		ldy  c64.SCRATCH_ZP1
@@ -292,9 +281,9 @@ fac1_to_signedAY	; () -> (A, Y, X?)
 	}
 
 ; ---- fac1 to unsigned word in A/Y
-fac1_to_unsignedAY	; () -> (A, Y, X?)
+GETADRAY	; () -> (A, Y, X?)
 	asm {
-		jsr  c64.fac1_to_unsignedYA	; note the inverse Y/A order
+		jsr  c64.GETADR			; this uses the inverse order, Y/A
 		sta  c64.SCRATCH_ZP1
 		tya
 		ldy  c64.SCRATCH_ZP1
@@ -313,7 +302,7 @@ print_string    ; (X, Y) -> (A?, Y?)
 		jsr  c64.CHROUT
 		iny
 		bne  -
-+               rts
++		rts
 	}
 
 ; ---- print pstring (length as first byte) from X/Y, returns str len in Y
@@ -330,7 +319,7 @@ print_pstring   ; (X, Y) -> (A?, X?, Y)
 		jsr  c64.CHROUT
 		dex
 		bne  -
-+               rts     ; output string length is in Y
++		rts     ; output string length is in Y
 	}
 
 
@@ -345,19 +334,19 @@ print_pimmediate
 		inx
 		bne  +
 		iny
-+               jsr  print_pstring   ; print string in XY, returns string length in y.
++		jsr  print_pstring   ; print string in XY, returns string length in y.
 		tya
 		tsx
 		clc
 		adc  $101,x     ; add content of 1st (length) byte to return addr.
 		bcc  +          ; if that made the low byte roll over to 00,
 		inc  $102,x     ; then increment the high byte too.
-+               clc
++		clc
 		adc  #1         ; now add 1 for the length byte itself.
 		sta  $101,x
 		bne  +          ; if that made it (the low byte) roll over to 00,
 		inc  $102,x     ; increment the high byte of the return addr too.
-+               rts
++		rts
 	}
 
 
@@ -453,7 +442,7 @@ word2decimal    ; (X, Y) -> (A?, X?, Y?)
 		jsr  +
 		lda  word2bcd_bcdbuff+0
 
-+               pha
++		pha
 		lsr  a
 		lsr  a
 		lsr  a

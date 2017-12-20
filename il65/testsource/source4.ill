@@ -9,57 +9,57 @@ output prg,sys  ; create a c-64 program with basic SYS call to launch it
 	const .word BORDER = $d020
 
 start
-	call global.print_pimmediate
+	fcall c64util.print_pimmediate          ; this prints the pstring immediately following it
 	asm {
 		.ptext "hello-pimmediate!{cr}"
 	}
 
 	A = 19
-	call global.print_byte_decimal0
+	fcall c64util.print_byte_decimal0
 	A = 13
-	call c64.CHROUT
+	fcall c64.CHROUT
 	A = 19
-	call global.print_byte_decimal
+	fcall c64util.print_byte_decimal
 	A = 13
-	call c64.CHROUT
+	fcall c64.CHROUT
 
 
 	X = $01
 	Y = $02
-	call global.print_word_decimal0
+	fcall c64util.print_word_decimal0
 	A = 13
-	call c64.CHROUT
+	fcall c64.CHROUT
 	X = $01
 	Y = $02
-	call global.print_word_decimal
+	fcall c64util.print_word_decimal
 	A = 13
-	call c64.CHROUT
+	fcall c64.CHROUT
 	return
 
 start2
 	call global2.make_screen_black
 	call c64.CLEARSCR
 	XY = greeting
-	call global.print_string
+	call c64util.print_string
 	XY = p_greeting
-	call global.print_pstring
+	call c64util.print_pstring
 	A = 0
-	call global.print_byte_decimal
+	call c64util.print_byte_decimal
 	A = 0
-	call global.print_byte_hex
+	call c64util.print_byte_hex
 	A = 13
 	call c64.CHROUT
-	call global.print_byte_decimal
+	call c64util.print_byte_decimal
 	A = 13
-	call global.print_byte_hex
+	call c64util.print_byte_hex
 	A = 13
 	call c64.CHROUT
 	A = 255
-	call global.print_byte_decimal
+	call c64util.print_byte_decimal
 	A = 254
-	call global.print_byte_hex
+	call c64util.print_byte_hex
 	A = 129
-	call global.print_byte_hex
+	call c64util.print_byte_hex
 	A = 13
 	call c64.CHROUT
 
@@ -67,7 +67,7 @@ start2
 	call c64.CHROUT
 	X = 1
 	Y = 0
-	call global.print_word_decimal
+	call c64util.print_word_decimal
 	A = 13
 	call c64.CHROUT
 	return

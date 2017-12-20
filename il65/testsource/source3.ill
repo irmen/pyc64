@@ -67,7 +67,7 @@ start
 	A='2'
 	call c64.CHROUT
 	XY = hello
-	call global.print_string
+	call c64util.print_string
 	A='!'
 	go c64.CHROUT
 
