@@ -4,8 +4,31 @@ output prg, sys
 
 import "c64lib"
 
-
 ~ main {
+start
+        var     .float          myfloat1        = 1234.56789
+        var     .float          myfloat2        = 9876.54321
+        var     .float          myfloatneg1     = -555.666
+        var     .float          myfloat_large1  = 987654.1111
+        var     .float          myfloat_large2  = -123456.2222
+        var     .text           myfloatstr   = "1234.998877"
+        var     .float          myfloatzero     = 0
+        var     .float          myfloatsmall     = 1.234
+
+        c64.fac1_read_memAY!(#myfloatsmall)
+
+        c64.fac1_rnd!()
+        c64.fac1_print_line!()
+        c64.fac1_rnd!()
+        c64.fac1_print_line!()
+        c64.fac1_rnd!()
+        c64.fac1_print_line!()
+
+        return
+}
+
+
+~ main___ {
 
         var .float flt_pi		 = 3.141592653589793
         var .float flt_minus32768	 = -32768
@@ -39,74 +62,74 @@ start
         [$c000.word] = # flt_pi
 
         c64.fac1_read_memAY!(#flt_pi)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_pi)
-        c64.fac1_print !()
+        c64.fac1_print_line !()
 
         c64.fac1_read_memAY!(#flt_minus32768)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_minus32768)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_1)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_1)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_half_sqr2)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!( #  c64.mflpt_half_sqr2)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_sqr2)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_sqr2)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_minus_half)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_minus_half)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_log_2)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_log_2)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_10)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_10)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_1e9)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_1e9)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_half)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_half)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_one_over_log_2)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_one_over_log_2)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_half_pi)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_half_pi)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(#flt_double_pi)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_double_pi)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         c64.fac1_read_memAY!(# flt_point25)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
         c64.fac1_read_memAY!(#c64.mflpt_point25)
-        c64.fac1_print!()
+        c64.fac1_print_line!()
 
         return
 

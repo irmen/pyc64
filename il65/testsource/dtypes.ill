@@ -136,6 +136,7 @@ start
 	A = true
 	A = false
 	A = 255
+	A = X
 
 	XY = 0
 	XY = '@'
@@ -150,6 +151,8 @@ start
 	AX = #"text-immediate"          ; equivalent to simply assigning the string directly
 	AX = # "text-immediate"         ; equivalent to simply assigning the string directly
 	AX = ""
+	AX = XY
+	AX = Y
 
 	[$c000] = 255
 	[$c000] = '@'
@@ -163,12 +166,21 @@ start
 	[$c000.float] = 65535
 	[$c000.float] = 456.66
 	[$c000.float] = 1.70141183e+38
+	;[$c000.byte] = AX     ; @todo out of range
+	[$c000.word] = AX
+	;[$c001] = [$c002]         ;@todo okay
+	;[$c001] = [$c002.word]          ;@todo out of range
+	;[$c001.word] = [$c002]          ;@todo okay
+	;[$c001.word] = [$c002.byte]     ;@tody okay
+	;[$c001.word] = [$c002.word]     ;@todo okay
+
 
 	SC = 0
 	SC = false
 	SC = 1.1
 	SC = 255
 	SC = '@'
+	; SC = X     ; @todo to be implemented
 
 	uninitbyte1 = 99
 	uninitbyte1 = 1.234
@@ -176,20 +188,31 @@ start
 	initbyte1 = 99
 	initbyte1 = 1.234
 	initbyte1 = '@'
+	initbyte1 = A
 	uninitword = 99
 	uninitword = 5.6778
 	uninitword = "test"
 	uninitword = '@'
+	uninitword = A
+	uninitword = XY
 	initfloat1 = 99
 	initfloat1 = 9.8765
 	initfloat1 = '@'
 	uninitfloat = 99
 	uninitfloat = 9.8765
 	uninitfloat = '@'
+	;uninitfloat = A         ; @todo support this
+	; uninitfloat = XY        ; @todo support this
 
         membyte1 = 22
         memword1 = 2233
         memfloat = 3.4567
+
+        membyte1 = A
+        memword1 = A
+        memword1 = XY
+        ;memfloat = A            ; @todo support this
+        ;memfloat = XY           ; @todo support this
 
 	return
 }

@@ -528,12 +528,20 @@ class CodeGenerator:
         # Memory = Register
         lv_string = lv.name or self.to_hex(lv.address)
         if lv.datatype == DataType.BYTE:
+            if len(r_register) > 1:
+                raise CodeError("cannot assign register pair to single byte memory")
             self.p("\t\tst{:s}  {}".format(r_register.lower(), lv_string))
         elif lv.datatype == DataType.WORD:
-            self.p("\t\tst{:s}  {}".format(r_register.lower(), lv_string))  # lsb
-            with self.preserving_registers({'A'}):
-                self.p("\t\tlda  #0")
-                self.p("\t\tsta  {:s}+1".format(lv_string))  # msb
+            if len(r_register) == 1:
+                self.p("\t\tst{:s}  {}".format(r_register.lower(), lv_string))  # lsb
+                with self.preserving_registers({'A'}):
+                    self.p("\t\tlda  #0")
+                    self.p("\t\tsta  {:s}+1".format(lv_string))  # msb
+            else:
+                self.p("\t\tst{:s}  {}".format(r_register[0].lower(), lv_string))
+                self.p("\t\tst{:s}  {}+1".format(r_register[1].lower(), lv_string))
+        elif lv.datatype == DataType.FLOAT:
+            raise CodeError("assigning register to float not yet supported")     # @todo support float=reg
         else:
             raise CodeError("invalid lvalue type", lv.datatype)
 
@@ -555,10 +563,32 @@ class CodeGenerator:
                 else:
                     # y -> x, 6502 doesn't have tyx
                     self.p("\t\tsty  ${0:02x}\n\t\tldx  ${0:02x}".format(Zeropage.SCRATCH_B1))
+            elif lv.register == "SC":
+                raise CodeError("assigning a register to the SC (carry flag) not yet supported")    # @todo support SC=reg
             elif lv.register in REGISTER_WORDS:
                 if len(r_register) == 1:
-                    raise CodeError("need register pair to assign to other register pair")
-                if lv.register == "AX" and r_register == "AY":
+                    # assign one register to a pair, so the hi byte is zero.
+                    if lv.register == "AX" and r_register == "A":
+                        self.p("\t\tldx  #0")
+                    elif lv.register == "AX" and r_register == "X":
+                        self.p("\t\ttxa\n\t\tldx  #0")
+                    elif lv.register == "AX" and r_register == "Y":
+                        self.p("\t\ttya\n\t\tldx  #0")
+                    elif lv.register == "AY" and r_register == "A":
+                        self.p("\t\tldy  #0")
+                    elif lv.register == "AY" and r_register == "X":
+                        self.p("\t\ttxa\n\t\tldy  #0")
+                    elif lv.register == "AY" and r_register == "Y":
+                        self.p("\t\ttya\n\t\tldy  #0")
+                    elif lv.register == "XY" and r_register == "A":
+                        self.p("\t\ttax\n\t\tldy  #0")
+                    elif lv.register == "XY" and r_register == "X":
+                        self.p("\t\tldy  #0")
+                    elif lv.register == "XY" and r_register == "Y":
+                        self.p("\t\ttyx\n\t\tldy  #0")
+                    else:
+                        raise CodeError("invalid register combination", lv.register, r_register)
+                elif lv.register == "AX" and r_register == "AY":
                     # y -> x, 6502 doesn't have tyx
                     self.p("\t\tsty  ${0:02x}\n\t\tldx  ${0:02x}".format(Zeropage.SCRATCH_B1))
                 elif lv.register == "AX" and r_register == "XY":

@@ -201,7 +201,7 @@ class ParseResult:
         def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
             if self.constant:
                 return False, "cannot assign to a constant"
-            if isinstance(other, ParseResult.RegisterValue) and len(self.register) != len(other.register):
+            if isinstance(other, ParseResult.RegisterValue) and len(self.register) < len(other.register):
                 return False, "register size mismatch"
             if isinstance(other, ParseResult.StringValue) and self.register in REGISTER_BYTES:
                 return False, "string address requires 16 bits combined register"
@@ -254,7 +254,7 @@ class ParseResult:
                 if isinstance(other, (ParseResult.IntegerValue, ParseResult.RegisterValue)):
                     if other.datatype == DataType.BYTE:
                         return True, ""
-                    return False, "can't assign non-byte to byte"
+                    return False, "(unsigned) byte required"
                 elif isinstance(other, ParseResult.FloatValue):
                     range_error = check_value_in_range(self.datatype, "", 1, other.value)
                     if range_error:
@@ -433,6 +433,7 @@ class ParseResult:
                 return [self]
             statements = []     # type: List[ParseResult._Stmt]
             for name, value in self.arguments:
+                assert name is not None, "call argument should have a parameter name assigned"
                 assignment = parser.parse_assignment("{:s}={:s}".format(name, value))
                 assignment.linenum = self.line_number
                 statements.append(assignment)
