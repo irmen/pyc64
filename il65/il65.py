@@ -199,7 +199,7 @@ class CodeGenerator:
         for zpblock in [b for b in self.parsed.blocks if b.name == "ZP"]:
             assert not zpblock.statements
             self.cur_block = zpblock
-            self.p("\n; ---- zero page block: '{:s}' ----\t\t; src l. {:d}\n".format(zpblock.name, zpblock.linenum))
+            self.p("\n; ---- zero page block: '{:s}' ----\t\t; src l. {:d}\n".format(zpblock.name, zpblock.lineno))
             self.p("{:s}\t.proc\n".format(zpblock.label))
             self.generate_block_vars(zpblock)
             self.p("\t.pend\n")
@@ -221,7 +221,7 @@ class CodeGenerator:
             if block.name == "ZP":
                 continue    # zeropage block is already processed
             self.cur_block = block
-            self.p("\n; ---- next block: '{:s}' ----\t\t; src l. {:d}\n".format(block.name, block.linenum))
+            self.p("\n; ---- next block: '{:s}' ----\t\t; src l. {:d}\n".format(block.name, block.lineno))
             if block.address:
                 self.p(".cerror * > ${0:04x}, 'block address overlaps by ', *-${0:04x},' bytes'".format(block.address))
                 self.p("* = ${:04x}".format(block.address))
@@ -332,7 +332,7 @@ class CodeGenerator:
         elif isinstance(stmt, ParseResult.AssignmentStmt):
             self.generate_assignment(stmt)
         elif isinstance(stmt, ParseResult.Label):
-            self.p("\n{:s}\t\t\t\t; src l. {:d}".format(stmt.name, stmt.linenum))
+            self.p("\n{:s}\t\t\t\t; src l. {:d}".format(stmt.name, stmt.lineno))
         elif isinstance(stmt, ParseResult.IncrDecrStmt):
             if stmt.howmuch in (-1, 1):
                 if isinstance(stmt.what, ParseResult.RegisterValue):
@@ -411,7 +411,7 @@ class CodeGenerator:
                 else:
                     self.p("\t\tjmp  " + call_target)
             else:
-                preserve_regs = {'A', 'X', 'Y'} if stmt.preserve_regs else {}
+                preserve_regs = {'A', 'X', 'Y'} if stmt.preserve_regs else set()
                 with self.preserving_registers(preserve_regs):
                     if is_indirect:
                         if call_target in REGISTER_WORDS:
@@ -440,16 +440,16 @@ class CodeGenerator:
                     else:
                         self.p("\t\tjsr  " + call_target)
         elif isinstance(stmt, ParseResult.InlineAsm):
-            self.p("\t\t; inline asm, src l. {:d}".format(stmt.linenum))
+            self.p("\t\t; inline asm, src l. {:d}".format(stmt.lineno))
             for line in stmt.asmlines:
                 self.p(line)
-            self.p("\t\t; end inline asm, src l. {:d}".format(stmt.linenum))
+            self.p("\t\t; end inline asm, src l. {:d}".format(stmt.lineno))
         else:
             raise CodeError("unknown statement " + repr(stmt))
         self.previous_stmt_was_assignment = isinstance(stmt, ParseResult.AssignmentStmt)
 
     def generate_assignment(self, stmt: ParseResult.AssignmentStmt) -> None:
-        self.p("\t\t\t\t\t; src l. {:d}".format(stmt.linenum))
+        self.p("\t\t\t\t\t; src l. {:d}".format(stmt.lineno))
         if isinstance(stmt.right, ParseResult.IntegerValue):
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):

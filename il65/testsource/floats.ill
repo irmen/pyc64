@@ -4,7 +4,7 @@ output prg, sys
 
 import "c64lib"
 
-~ main {
+~ main_testing {
 start
         var     .float          myfloat1        = 1234.56789
         var     .float          myfloat2        = 9876.54321
@@ -32,7 +32,7 @@ start
 }
 
 
-~ main___ {
+~ main {
 
         var .float flt_pi		 = 3.141592653589793
         var .float flt_minus32768	 = -32768
@@ -67,72 +67,72 @@ start
 
         c64.MOVFM!(#flt_pi)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_pi)
+        c64.MOVFM!(#c64.FL_PIVAL)
         c64.FPRINTLN !()
 
         c64.MOVFM!(#flt_minus32768)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_minus32768)
+        c64.MOVFM!(#c64.FL_N32768)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_1)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_1)
+        c64.MOVFM!(#c64.FL_FONE)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_half_sqr2)
         c64.FPRINTLN!()
-        c64.MOVFM!( #  c64.mflpt_half_sqr2)
+        c64.MOVFM!( #  c64.FL_SQRHLF)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_sqr2)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_sqr2)
+        c64.MOVFM!(#c64.FL_SQRTWO)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_minus_half)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_minus_half)
+        c64.MOVFM!(#c64.FL_NEGHLF)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_log_2)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_log_2)
+        c64.MOVFM!(#c64.FL_LOG2)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_10)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_10)
+        c64.MOVFM!(#c64.FL_TENC)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_1e9)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_1e9)
+        c64.MOVFM!(#c64.FL_NZMIL)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_half)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_half)
+        c64.MOVFM!(#c64.FL_FHALF)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_one_over_log_2)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_one_over_log_2)
+        c64.MOVFM!(#c64.FL_LOGEB2)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_half_pi)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_half_pi)
+        c64.MOVFM!(#c64.FL_PIHALF)
         c64.FPRINTLN!()
 
         c64.MOVFM!(#flt_double_pi)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_double_pi)
+        c64.MOVFM!(#c64.FL_TWOPI)
         c64.FPRINTLN!()
 
         c64.MOVFM!(# flt_point25)
         c64.FPRINTLN!()
-        c64.MOVFM!(#c64.mflpt_point25)
+        c64.MOVFM!(#c64.FL_FR4)
         c64.FPRINTLN!()
 
         return

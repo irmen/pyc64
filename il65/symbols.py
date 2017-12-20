@@ -414,7 +414,7 @@ class Eval_symbol_dict(dict):
             raise SymbolError("no support for non-constant expression evaluation yet")
 
 
-def coerce_value(sourcefile: str, linenum: int, datatype: DataType, value: PrimitiveType) -> Tuple[bool, PrimitiveType]:
+def coerce_value(sourcefile: str, lineno: int, datatype: DataType, value: PrimitiveType) -> Tuple[bool, PrimitiveType]:
     # if we're a BYTE type, and the value is a single character, convert it to the numeric value
     if datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX) and isinstance(value, str):
         if len(value) == 1:
@@ -423,7 +423,7 @@ def coerce_value(sourcefile: str, linenum: int, datatype: DataType, value: Primi
     if datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX) and type(value) is float:
         frac = math.modf(value)   # type:ignore
         if frac != 0:
-            print("warning: {:s}:{:d}: Float value truncated.".format(sourcefile, linenum))
+            print("warning: {:s}:{:d}: Float value truncated.".format(sourcefile, lineno))
             return True, int(value)
     return False, value
 
