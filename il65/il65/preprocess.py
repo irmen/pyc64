@@ -6,16 +6,17 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: GNU GPL 3.0, see LICENSE
 """
 
+from typing import List, Tuple
 from .parse import Parser, ParseResult, SymbolTable, SymbolDefinition
 
 
 # @todo use the preprocessed symboltable to resolve references in parse phase
 
 class PreprocessingParser(Parser):
-    def __init__(self, sourcefile: str) -> None:
-        super().__init__(sourcefile, "", parsing_import=True)
+    def __init__(self, filename: str) -> None:
+        super().__init__(filename, "", parsing_import=True)
 
-    def preprocess(self) -> SymbolTable:
+    def preprocess(self) -> Tuple[List[Tuple[int, str]], SymbolTable]:
         def cleanup_table(symbols: SymbolTable):
             symbols.owning_block = None   # not needed here
             for name, symbol in list(symbols.symbols.items()):
@@ -25,15 +26,20 @@ class PreprocessingParser(Parser):
                     del symbols.symbols[name]
         self.parse()
         cleanup_table(self.root_scope)
-        return self.root_scope
+        return self.lines, self.root_scope
+
+    def load_source(self, filename: str) -> List[Tuple[int, str]]:
+        lines = super().load_source(filename)
+        # can do some additional source-level preprocessing here
+        return lines
 
     def parse_file(self) -> ParseResult:
-        print("\npreprocessing", self.sourcefile, "...")
+        print("\npreprocessing", self.sourceref.file)
         self._parse_1()
         return self.result
 
     def parse_asminclude(self, line: str) -> ParseResult.InlineAsm:
-        return ParseResult.InlineAsm(self.cur_lineno, [])
+        return ParseResult.InlineAsm(self.sourceref.line, [])
 
     def parse_statement(self, line: str) -> ParseResult._Stmt:
         return None     # type: ignore

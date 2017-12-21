@@ -200,7 +200,7 @@ class CodeGenerator:
         for zpblock in [b for b in self.parsed.blocks if b.name == "ZP"]:
             assert not zpblock.statements
             self.cur_block = zpblock
-            self.p("\n; ---- zero page block: '{:s}' ----\t\t; src l. {:d}\n".format(zpblock.name, zpblock.lineno))
+            self.p("\n; ---- zero page block: '{:s}' ----\t\t; src l. {:d}\n".format(zpblock.sourceref.file, zpblock.sourceref.line))
             self.p("{:s}\t.proc\n".format(zpblock.label))
             self.generate_block_vars(zpblock)
             self.p("\t.pend\n")
@@ -222,7 +222,7 @@ class CodeGenerator:
             if block.name == "ZP":
                 continue    # zeropage block is already processed
             self.cur_block = block
-            self.p("\n; ---- next block: '{:s}' ----\t\t; src l. {:d}\n".format(block.name, block.lineno))
+            self.p("\n; ---- next block: '{:s}' ----\t\t; src l. {:d}\n".format(block.sourceref.file, block.sourceref.line))
             if block.address:
                 self.p(".cerror * > ${0:04x}, 'block address overlaps by ', *-${0:04x},' bytes'".format(block.address))
                 self.p("* = ${:04x}".format(block.address))
@@ -815,9 +815,9 @@ class Assembler64Tass:
             raise ValueError("don't know how to create format "+str(self.format))
         try:
             if self.format == ProgramFormat.PRG:
-                print("\ncreating C-64 .prg...")
+                print("\ncreating C-64 .prg")
             elif self.format == ProgramFormat.RAW:
-                print("\ncreating raw binary...")
+                print("\ncreating raw binary")
             subprocess.check_call(args)
         except subprocess.CalledProcessError as x:
             print("assembler failed with returncode", x.returncode)
@@ -839,10 +839,10 @@ def main() -> None:
     print("\n" + description)
 
     pp = PreprocessingParser(args.sourcefile)
-    symbols = pp.preprocess()
+    sourcelines, symbols = pp.preprocess()
     symbols.print_table(True)
 
-    p = Parser(args.sourcefile, args.output)
+    p = Parser(args.sourcefile, args.output, sourcelines)
     parsed = p.parse()
     if parsed:
         opt = Optimizer(parsed)
@@ -856,4 +856,3 @@ def main() -> None:
         assembler.assemble(assembly_filename, program_filename)
         print("Output file:      ", program_filename)
         print()
-

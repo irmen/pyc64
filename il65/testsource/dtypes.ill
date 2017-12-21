@@ -126,6 +126,13 @@ clobberzp
 	var     .byte           expr_fault2     =  1 + (8/3)+sin(33) + max(1,2,3)
 
 
+sin
+        return
+
+max
+        return
+
+
 start
 
 ; --- immediate primitive value assignments ----

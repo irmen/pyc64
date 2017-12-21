@@ -8,33 +8,26 @@ License: GNU GPL 3.0, see LICENSE
 
 import ast
 from typing import Union, Optional
-from .symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SymbolTable, SymbolError, DataType, PrimitiveType
+from .symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SourceRef, SymbolTable, SymbolError, DataType, PrimitiveType
 
 
 class ParseError(Exception):
-    def __init__(self, message: str, text: str, sourcefile: str, line: int, column: int=1) -> None:
-        self.filename = sourcefile
+    def __init__(self, message: str, text: str, sourceref: SourceRef) -> None:
+        self.sourceref = sourceref
         self.msg = message
-        self.lineno = line
-        self.offset = column
         self.text = text
 
     def __str__(self):
-        if self.offset:
-            return "{:s}:{:d}:{:d} {:s}".format(self.filename, self.lineno, self.offset, self.msg)
-        else:
-            return "{:s}:{:d}: {:s}".format(self.filename, self.lineno, self.msg)
+        return "{} {:s}".format(self.sourceref, self.msg)
 
 
 class SourceLine:
-    def __init__(self, text: str, filename: str, line: int, column: int=0) -> None:
-        self.filename = filename
+    def __init__(self, text: str, sourceref: SourceRef) -> None:
+        self.sourceref = sourceref
         self.text = text.strip()
-        self.line = line
-        self.column = column
 
     def to_error(self, message: str) -> ParseError:
-        return ParseError(message, self.text, self.filename, self.line, self.column)
+        return ParseError(message, self.text, self.sourceref)
 
     def preprocess(self) -> str:
         # transforms the source text into valid Python syntax by bending some things, so ast can parse it.
@@ -68,39 +61,38 @@ class SourceLine:
         return text
 
 
-def parse_expr_as_int(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
-                      column: int=1, minimum: int=0, maximum: int=0xffff) -> int:
-    result = parse_expr_as_primitive(text, context, filename, line, column=column, minimum=minimum, maximum=maximum)
+def parse_expr_as_int(text: str, context: Optional[SymbolTable], sourceref: SourceRef, *,
+                      minimum: int=0, maximum: int=0xffff) -> int:
+    result = parse_expr_as_primitive(text, context, sourceref, minimum=minimum, maximum=maximum)
     if isinstance(result, int):
         return result
-    src = SourceLine(text, filename, line, column)
+    src = SourceLine(text, sourceref)
     raise src.to_error("int expected, not " + type(result).__name__)
 
 
-def parse_expr_as_number(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
-                         column: int=1, minimum: float=FLOAT_MAX_NEGATIVE, maximum: float=FLOAT_MAX_POSITIVE) -> Union[int, float]:
-    result = parse_expr_as_primitive(text, context, filename, line, column=column, minimum=minimum, maximum=maximum)
+def parse_expr_as_number(text: str, context: Optional[SymbolTable], sourceref: SourceRef, *,
+                         minimum: float=FLOAT_MAX_NEGATIVE, maximum: float=FLOAT_MAX_POSITIVE) -> Union[int, float]:
+    result = parse_expr_as_primitive(text, context, sourceref, minimum=minimum, maximum=maximum)
     if isinstance(result, (int, float)):
         return result
-    src = SourceLine(text, filename, line, column)
+    src = SourceLine(text, sourceref)
     raise src.to_error("int or float expected, not " + type(result).__name__)
 
 
-def parse_expr_as_string(text: str, context: Optional[SymbolTable], filename: str, line: int, *, column: int=1) -> str:
-    result = parse_expr_as_primitive(text, context, filename, line, column=column)
+def parse_expr_as_string(text: str, context: Optional[SymbolTable], sourceref: SourceRef) -> str:
+    result = parse_expr_as_primitive(text, context, sourceref)
     if isinstance(result, str):
         return result
-    src = SourceLine(text, filename, line, column)
+    src = SourceLine(text, sourceref)
     raise src.to_error("string expected, not " + type(result).__name__)
 
 
-def parse_expr_as_primitive(text: str, context: Optional[SymbolTable], filename: str, line: int, *,
-                            column: int=1, minimum: float = FLOAT_MAX_NEGATIVE,
-                            maximum: float = FLOAT_MAX_POSITIVE) -> PrimitiveType:
-    src = SourceLine(text, filename, line, column)
+def parse_expr_as_primitive(text: str, context: Optional[SymbolTable], sourceref: SourceRef, *,
+                            minimum: float = FLOAT_MAX_NEGATIVE, maximum: float = FLOAT_MAX_POSITIVE) -> PrimitiveType:
+    src = SourceLine(text, sourceref)
     text = src.preprocess()
     try:
-        node = ast.parse(text, src.filename, mode="eval")
+        node = ast.parse(text, sourceref.file, mode="eval")
     except SyntaxError as x:
         raise src.to_error(str(x))
     if isinstance(node, ast.Expression):
@@ -118,10 +110,10 @@ def parse_expr_as_primitive(text: str, context: Optional[SymbolTable], filename:
     raise src.to_error("int or float or string expected, not " + type(result).__name__)
 
 
-def parse_statement(text: str, filename: str, line: int, *, column: int=1) -> int:    # @todo in progress...
-    src = SourceLine(text, filename, line, column)
+def parse_statement(text: str, sourceref: SourceRef) -> int:    # @todo in progress...
+    src = SourceLine(text, sourceref)
     text = src.preprocess()
-    node = ast.parse(text, src.filename, mode="single")
+    node = ast.parse(text, sourceref.file, mode="single")
     return node
 
 
@@ -132,11 +124,16 @@ class EvaluatingTransformer(ast.NodeTransformer):
         self.context = context
 
     def error(self, message: str, column: int=0) -> ParseError:
-        return ParseError(message, self.src.text, self.src.filename, self.src.line, column or self.src.column)
+        if column:
+            ref = self.src.sourceref.copy()
+            ref.column = column
+        else:
+            ref = self.src.sourceref
+        return ParseError(message, self.src.text, ref)
 
     def evaluate(self, node: ast.Expression) -> PrimitiveType:
         node = self.visit(node)
-        code = compile(node, self.src.filename, mode="eval")
+        code = compile(node, self.src.sourceref.file, mode="eval")
         if self.context:
             globals = None
             locals = self.context.as_eval_dict()
@@ -204,6 +201,6 @@ class ExpressionTransformer(EvaluatingTransformer):
 
 if __name__ == "__main__":
     symbols = SymbolTable("<root>", None, None)
-    symbols.define_variable("derp", "<source>", 1, DataType.BYTE, address=2345)
-    result = parse_expr_as_primitive("2+#derp",  symbols, "<source>", 1)
+    symbols.define_variable("derp", SourceRef("<source>", 1), DataType.BYTE, address=2345)
+    result = parse_expr_as_primitive("2+#derp",  symbols, SourceRef("<source>", 1))
     print("EXPRESSION RESULT:", result)

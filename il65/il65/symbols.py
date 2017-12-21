@@ -28,6 +28,9 @@ FLOAT_MAX_NEGATIVE = -1.7014118345e+38
 RESERVED_NAMES = {'true', 'false', 'var', 'memory', 'const', 'asm'}
 RESERVED_NAMES |= REGISTER_SYMBOLS
 
+MATH_SYMBOLS = {name for name in dir(math) if name[0].islower()}
+BUILTIN_SYMBOLS = {name for name in dir(builtins) if name[0].islower()}
+
 
 @total_ordering
 class DataType(enum.Enum):
@@ -69,11 +72,30 @@ class SymbolError(Exception):
 _identifier_seq_nr = 0
 
 
+class SourceRef:
+    __slots__ = ("file", "line", "column")
+
+    def __init__(self, file: str, line: int, column: int=0) -> None:
+        self.file = file
+        self.line = line
+        self.column = column
+
+    def __str__(self) -> str:
+        if self.column:
+            return "{:s}:{:d}:{:d}".format(self.file, self.line, self.column)
+        if self.line:
+            return "{:s}:{:d}".format(self.file, self.line)
+        return self.file
+
+    def copy(self) -> 'SourceRef':
+        return SourceRef(self.file, self.line, self.column)
+
+
 class SymbolDefinition:
-    def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int, allocate: bool) -> None:
+    def __init__(self, blockname: str, name: str, sourceref: SourceRef, allocate: bool) -> None:
         self.blockname = blockname
         self.name = name
-        self.sourceref = (sourcefile, sourceline)
+        self.sourceref = sourceref
         self.allocate = allocate     # set to false if the variable is memory mapped (or a constant) instead of allocated
         global _identifier_seq_nr
         self.seq_nr = _identifier_seq_nr
@@ -95,11 +117,11 @@ class LabelDef(SymbolDefinition):
 class VariableDef(SymbolDefinition):
     # if address is None, it's a dynamically allocated variable.
     # if address is not None, it's a memory mapped variable (=memory address referenced by a name).
-    def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int,
+    def __init__(self, blockname: str, name: str, sourceref: SourceRef,
                  datatype: DataType, allocate: bool, *,
                  value: PrimitiveType, length: int, address: Optional[int]=None,
                  register: str=None, matrixsize: Tuple[int, int]=None) -> None:
-        super().__init__(blockname, name, sourcefile, sourceline, allocate)
+        super().__init__(blockname, name, sourceref, allocate)
         self.type = datatype
         self.address = address
         self.length = length
@@ -124,9 +146,9 @@ class VariableDef(SymbolDefinition):
 
 
 class ConstantDef(SymbolDefinition):
-    def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
+    def __init__(self, blockname: str, name: str, sourceref: SourceRef, datatype: DataType, *,
                  value: PrimitiveType, length: int) -> None:
-        super().__init__(blockname, name, sourcefile, sourceline, False)
+        super().__init__(blockname, name, sourceref, False)
         self.type = datatype
         self.length = length
         self.value = value
@@ -144,9 +166,9 @@ class ConstantDef(SymbolDefinition):
 
 
 class SubroutineDef(SymbolDefinition):
-    def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int,
+    def __init__(self, blockname: str, name: str, sourceref: SourceRef,
                  parameters: Sequence[Tuple[str, str]], returnvalues: Set[str], address: Optional[int]=None) -> None:
-        super().__init__(blockname, name, sourcefile, sourceline, False)
+        super().__init__(blockname, name, sourceref, False)
         self.address = address
         self.parameters = parameters
         self.input_registers = set()        # type: Set[str]
@@ -212,11 +234,10 @@ zeropage = Zeropage()
 
 
 class SymbolTable:
-    math_module_symbols = {name: definition for name, definition in vars(math).items() if not name.startswith("_")}
 
     def __init__(self, name: str, parent: Optional['SymbolTable'], owning_block: Any) -> None:
         self.name = name
-        self.symbols = dict(SymbolTable.math_module_symbols)        # @todo check this differently rather than duplicating all builtins in every symboltable
+        self.symbols = {}       # type: Dict[str, Union[SymbolDefinition, SymbolTable]]
         self.parent = parent
         self.owning_block = owning_block
         self.eval_dict = None
@@ -224,18 +245,23 @@ class SymbolTable:
     def __iter__(self):
         yield from self.symbols.values()
 
-    def __getitem__(self, symbolname: str) -> SymbolDefinition:
+    def __getitem__(self, symbolname: str) -> Union[SymbolDefinition, 'SymbolTable']:
         return self.symbols[symbolname]
 
     def __contains__(self, symbolname: str) -> bool:
         return symbolname in self.symbols
 
-    def lookup(self, dottedname: str) -> Tuple['SymbolTable', SymbolDefinition]:
+    def lookup(self, dottedname: str, include_builtin_names: bool=False) -> Tuple['SymbolTable', Union[SymbolDefinition, 'SymbolTable']]:
         nameparts = dottedname.split('.')
         if len(nameparts) == 1:
             try:
                 return self, self.symbols[nameparts[0]]
             except LookupError:
+                if include_builtin_names:
+                    if nameparts[0] in MATH_SYMBOLS:
+                        return self, getattr(math, nameparts[0])
+                    elif nameparts[0] in BUILTIN_SYMBOLS:
+                        return self, getattr(builtins, nameparts[0])
                 raise SymbolError("undefined symbol '{:s}'".format(nameparts[0]))
         # start from toplevel namespace:
         scope = self
@@ -243,7 +269,7 @@ class SymbolTable:
             scope = scope.parent
         for namepart in nameparts[:-1]:
             try:
-                scope = scope.symbols[namepart]
+                scope = scope.symbols[namepart]     # type: ignore
                 assert scope.name == namepart
             except LookupError:
                 raise SymbolError("undefined block '{:s}'".format(namepart))
@@ -281,26 +307,30 @@ class SymbolTable:
     def iter_labels(self) -> Iterable[LabelDef]:
         yield from sorted((v for v in self.symbols.values() if isinstance(v, LabelDef)))
 
-    def check_identifier_valid(self, name: str) -> None:
+    def check_identifier_valid(self, name: str, sourceref: SourceRef) -> None:
         if not name.isidentifier():
             raise SymbolError("invalid identifier")
         identifier = self.symbols.get(name, None)
         if identifier:
             if isinstance(identifier, SymbolDefinition):
-                raise SymbolError("identifier was already defined at {:s}:{:d}".format(identifier.sourceref[0], identifier.sourceref[1]))
+                raise SymbolError("identifier was already defined at " + str(identifier.sourceref))
             raise SymbolError("identifier already defined as " + str(type(identifier)))
+        if name in MATH_SYMBOLS:
+            print("warning: {}: identifier shadows a name from the math module".format(sourceref))
+        elif name in BUILTIN_SYMBOLS:
+            print("warning: {}: identifier shadows a builtin name".format(sourceref))
 
-    def define_variable(self, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
+    def define_variable(self, name: str, sourceref: SourceRef, datatype: DataType, *,
                         address: int=None, length: int=0, value: PrimitiveType=0,
                         matrixsize: Tuple[int, int]=None, register: str=None) -> None:
         # this defines a new variable and also checks if the prefill value is allowed for the variable type.
         assert value is not None
-        self.check_identifier_valid(name)
+        self.check_identifier_valid(name, sourceref)
         range_error = check_value_in_range(datatype, register, length, value)
         if range_error:
             raise ValueError(range_error)
         if type(value) in (int, float):
-            _, value = coerce_value(sourcefile, sourceline, datatype, value)   # type: ignore
+            _, value = coerce_value(sourceref, datatype, value)   # type: ignore
         allocate = address is None
         if datatype == DataType.BYTE:
             if allocate and self.name == "ZP":
@@ -308,7 +338,7 @@ class SymbolTable:
                     address = zeropage.get_unused_byte()
                 except LookupError:
                     raise SymbolError("too many global 8-bit variables in ZP")
-            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.BYTE, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourceref, DataType.BYTE, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.WORD:
             if allocate and self.name == "ZP":
@@ -316,59 +346,59 @@ class SymbolTable:
                     address = zeropage.get_unused_word()
                 except LookupError:
                     raise SymbolError("too many global 16-bit variables in ZP")
-            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.WORD, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourceref, DataType.WORD, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.FLOAT:
             if allocate and self.name == "ZP":
                 raise SymbolError("floats cannot be stored in the ZP")
-            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.FLOAT, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourceref, DataType.FLOAT, allocate,
                                              value=value, length=1, address=address)
         elif datatype == DataType.BYTEARRAY:
-            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.BYTEARRAY, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourceref, DataType.BYTEARRAY, allocate,
                                              value=value, length=length, address=address)
         elif datatype == DataType.WORDARRAY:
-            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.WORDARRAY, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourceref, DataType.WORDARRAY, allocate,
                                              value=value, length=length, address=address)
         elif datatype in (DataType.STRING, DataType.STRING_P, DataType.STRING_S, DataType.STRING_PS):
-            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, datatype, True,
+            self.symbols[name] = VariableDef(self.name, name, sourceref, datatype, True,
                                              value=value, length=len(value))     # type: ignore
         elif datatype == DataType.MATRIX:
             assert isinstance(matrixsize, tuple)
             length = matrixsize[0] * matrixsize[1]
-            self.symbols[name] = VariableDef(self.name, name, sourcefile, sourceline, DataType.MATRIX, allocate,
+            self.symbols[name] = VariableDef(self.name, name, sourceref, DataType.MATRIX, allocate,
                                              value=value, length=length, address=address, matrixsize=matrixsize)
         else:
             raise ValueError("unknown type " + str(datatype))
         self.eval_dict = None
 
-    def define_sub(self, name: str, sourcefile: str, sourceline: int,
+    def define_sub(self, name: str, sourceref: SourceRef,
                    parameters: Sequence[Tuple[str, str]], returnvalues: Set[str], address: Optional[int]) -> None:
-        self.check_identifier_valid(name)
-        self.symbols[name] = SubroutineDef(self.name, name, sourcefile, sourceline, parameters, returnvalues, address)
+        self.check_identifier_valid(name, sourceref)
+        self.symbols[name] = SubroutineDef(self.name, name, sourceref, parameters, returnvalues, address)
 
-    def define_label(self, name: str, sourcefile: str, sourceline: int) -> None:
-        self.check_identifier_valid(name)
-        self.symbols[name] = LabelDef(self.name, name, sourcefile, sourceline, False)
+    def define_label(self, name: str, sourceref: SourceRef) -> None:
+        self.check_identifier_valid(name, sourceref)
+        self.symbols[name] = LabelDef(self.name, name, sourceref, False)
 
-    def define_scope(self, scope: 'SymbolTable') -> None:
-        self.check_identifier_valid(scope.name)
+    def define_scope(self, scope: 'SymbolTable', sourceref: SourceRef) -> None:
+        self.check_identifier_valid(scope.name, sourceref)
         self.symbols[scope.name] = scope
 
-    def define_constant(self, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
+    def define_constant(self, name: str, sourceref: SourceRef, datatype: DataType, *,
                         length: int=0, value: PrimitiveType=0) -> None:
         # this defines a new constant and also checks if the value is allowed for the data type.
         assert value is not None
-        self.check_identifier_valid(name)
+        self.check_identifier_valid(name, sourceref)
         if type(value) in (int, float):
-            _, value = coerce_value(sourcefile, sourceline, datatype, value)   # type: ignore
+            _, value = coerce_value(sourceref, datatype, value)   # type: ignore
         range_error = check_value_in_range(datatype, "", length, value)
         if range_error:
             raise ValueError(range_error)
         if datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
-            self.symbols[name] = ConstantDef(self.name, name, sourcefile, sourceline, datatype, value=value, length=length or 1)
+            self.symbols[name] = ConstantDef(self.name, name, sourceref, datatype, value=value, length=length or 1)
         elif datatype in STRING_DATATYPES:
             strlen = len(value)  # type: ignore
-            self.symbols[name] = ConstantDef(self.name, name, sourcefile, sourceline, datatype, value=value, length=strlen)
+            self.symbols[name] = ConstantDef(self.name, name, sourceref, datatype, value=value, length=strlen)
         else:
             raise ValueError("invalid data type for constant: " + str(datatype))
         self.eval_dict = None
@@ -376,7 +406,7 @@ class SymbolTable:
     def merge_roots(self, other_root: 'SymbolTable') -> None:
         for name, thing in other_root.symbols.items():
             if isinstance(thing, SymbolTable):
-                self.define_scope(thing)
+                self.define_scope(thing, thing.owning_block.sourceref)
 
     def print_table(self, summary_only: bool=False) -> None:
         if summary_only:
@@ -431,7 +461,7 @@ class Eval_symbol_dict(dict):
             global_scope = self._symboltable
             while global_scope.parent:
                 global_scope = global_scope.parent
-            scope, symbol = global_scope.lookup(name)
+            scope, symbol = global_scope.lookup(name, True)
         if self._constants:
             if isinstance(symbol, ConstantDef):
                 return symbol.value
@@ -447,7 +477,7 @@ class Eval_symbol_dict(dict):
             raise SymbolError("no support for non-constant expression evaluation yet")
 
 
-def coerce_value(sourcefile: str, lineno: int, datatype: DataType, value: PrimitiveType) -> Tuple[bool, PrimitiveType]:
+def coerce_value(sourceref: SourceRef, datatype: DataType, value: PrimitiveType) -> Tuple[bool, PrimitiveType]:
     # if we're a BYTE type, and the value is a single character, convert it to the numeric value
     if datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX) and isinstance(value, str):
         if len(value) == 1:
@@ -456,7 +486,7 @@ def coerce_value(sourcefile: str, lineno: int, datatype: DataType, value: Primit
     if datatype in (DataType.BYTE, DataType.WORD, DataType.MATRIX) and type(value) is float:
         frac = math.modf(value)   # type:ignore
         if frac != 0:
-            print("warning: {:s}:{:d}: Float value truncated.".format(sourcefile, lineno))
+            print("warning: {}: Float value truncated.".format(sourceref))
             return True, int(value)
     return False, value
 
@@ -472,7 +502,7 @@ def check_value_in_range(datatype: DataType, register: str, length: int, value: 
             if value < 0 or value > 0xffff:  # type: ignore
                 return "value out of range, must be (unsigned) word for 2 combined registers"
         else:
-            return "strange register..."
+            return "strange register"
     elif datatype in (DataType.BYTE, DataType.BYTEARRAY, DataType.MATRIX):
         if value is None and datatype == DataType.BYTE:
             return None
