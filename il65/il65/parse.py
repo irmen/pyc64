@@ -286,7 +286,7 @@ class ParseResult:
             return False, "incompatible value for assignment"
 
     class _Stmt:
-        def resolve_symbol_references(self, parser: 'Parser') -> None:
+        def resolve_symbol_references(self, parser: 'Parser') -> None:      # @todo don't need this when using ppsymbols?
             pass
 
     class Label(_Stmt):
@@ -453,7 +453,8 @@ class ParseResult:
 
 
 class Parser:
-    def __init__(self, filename: str, outputdir: str, sourcelines: List[Tuple[int, str]]=None, parsing_import: bool=False) -> None:
+    def __init__(self, filename: str, outputdir: str, sourcelines: List[Tuple[int, str]]=None,
+                 parsing_import: bool=False, ppsymbols: SymbolTable=None) -> None:
         self.result = ParseResult(filename)
         self.sourceref = SourceRef(filename, -1, 0)
         if sourcelines:
@@ -465,6 +466,7 @@ class Parser:
         self.cur_lineidx = -1
         self.cur_block = None  # type: ParseResult.Block
         self.root_scope = SymbolTable("<root>", None, None)
+        self.ppsymbols = ppsymbols  # symboltable from preprocess phase  # @todo use this
 
     def load_source(self, filename: str) -> List[Tuple[int, str]]:
         with open(filename, "rU") as source:

@@ -10,8 +10,6 @@ from typing import List, Tuple
 from .parse import Parser, ParseResult, SymbolTable, SymbolDefinition
 
 
-# @todo use the preprocessed symboltable to resolve references in parse phase
-
 class PreprocessingParser(Parser):
     def __init__(self, filename: str) -> None:
         super().__init__(filename, "", parsing_import=True)

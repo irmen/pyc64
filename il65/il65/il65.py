@@ -842,7 +842,7 @@ def main() -> None:
     sourcelines, symbols = pp.preprocess()
     symbols.print_table(True)
 
-    p = Parser(args.sourcefile, args.output, sourcelines)
+    p = Parser(args.sourcefile, args.output, sourcelines, ppsymbols=symbols)
     parsed = p.parse()
     if parsed:
         opt = Optimizer(parsed)
