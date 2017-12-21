@@ -481,7 +481,7 @@ class Parser:
     def parse(self) -> Optional[ParseResult]:
         # start the parsing
         try:
-            return self._parse()
+            return self.parse_file()
         except ParseError as x:
             if x.text:
                 print("\tsource text: '{:s}'".format(x.text))
@@ -497,8 +497,14 @@ class Parser:
             print("    file:", self.sourcefile, "block:", self.cur_block.name, "line:", self.cur_lineno)
             raise   # XXX temporary solution to get stack trace info in the event of parse errors
 
-    def _parse(self) -> ParseResult:
-        print("\nparsing (pass 1)", self.sourcefile)
+    def parse_file(self) -> ParseResult:
+        print("\nparsing (pass 1)", self.sourcefile, "...")
+        self._parse_1()
+        print("\nparsing (pass 2)", self.sourcefile, "...")
+        self._parse_2()
+        return self.result
+
+    def _parse_1(self) -> None:
         self.parse_header()
         zeropage.configure(self.result.clobberzp)
         while True:
@@ -526,8 +532,9 @@ class Parser:
                     break
             else:
                 raise self.PError("A block named 'main' should be defined for the program's entry point 'start'")
+
+    def _parse_2(self) -> None:
         # parsing pass 2
-        print("\nparsing (pass 2)", self.sourcefile)
         self.cur_block = None
         self.cur_lineno = 0
         for block in self.result.blocks:
@@ -552,8 +559,6 @@ class Parser:
                 if isinstance(stmt, ParseResult.AssignmentStmt):
                     self.cur_lineno = stmt.lineno
                     stmt.desugar_immediate_string(self)
-        # done parsing.
-        return self.result
 
     def next_line(self) -> Tuple[int, str]:
         self.cur_lineidx += 1
@@ -669,7 +674,7 @@ class Parser:
                       filename_at_libs_location+".ill"]
         for filename in candidates:
             if os.path.isfile(filename):
-                parser = Parser(filename, self.outputdir, parsing_import=True)
+                parser = self.create_import_parser(filename, self.outputdir)
                 print("importing", filename)
                 result = parser.parse()
                 print("\ncontinuing", self.sourcefile)
@@ -680,6 +685,9 @@ class Parser:
                 else:
                     raise self.PError("Error while parsing imported file")
         raise self.PError("imported file not found")
+
+    def create_import_parser(self, filename: str, outputdir: str) -> 'Parser':
+        return Parser(filename, outputdir, parsing_import=True)
 
     def parse_block(self) -> ParseResult.Block:
         # first line contains block header "~ [name] [addr]" followed by a '{'

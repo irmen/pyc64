@@ -73,7 +73,7 @@ class SymbolDefinition:
     def __init__(self, blockname: str, name: str, sourcefile: str, sourceline: int, allocate: bool) -> None:
         self.blockname = blockname
         self.name = name
-        self.sourceref = "{:s}:{:d}".format(sourcefile, sourceline)
+        self.sourceref = (sourcefile, sourceline)
         self.allocate = allocate     # set to false if the variable is memory mapped (or a constant) instead of allocated
         global _identifier_seq_nr
         self.seq_nr = _identifier_seq_nr
@@ -216,7 +216,7 @@ class SymbolTable:
 
     def __init__(self, name: str, parent: Optional['SymbolTable'], owning_block: Any) -> None:
         self.name = name
-        self.symbols = dict(SymbolTable.math_module_symbols)
+        self.symbols = dict(SymbolTable.math_module_symbols)        # @todo check this differently rather than duplicating all builtins in every symboltable
         self.parent = parent
         self.owning_block = owning_block
         self.eval_dict = None
@@ -287,7 +287,7 @@ class SymbolTable:
         identifier = self.symbols.get(name, None)
         if identifier:
             if isinstance(identifier, SymbolDefinition):
-                raise SymbolError("identifier was already defined at " + identifier.sourceref)
+                raise SymbolError("identifier was already defined at {:s}:{:d}".format(identifier.sourceref[0], identifier.sourceref[1]))
             raise SymbolError("identifier already defined as " + str(type(identifier)))
 
     def define_variable(self, name: str, sourcefile: str, sourceline: int, datatype: DataType, *,
@@ -377,6 +377,39 @@ class SymbolTable:
         for name, thing in other_root.symbols.items():
             if isinstance(thing, SymbolTable):
                 self.define_scope(thing)
+
+    def print_table(self, summary_only: bool=False) -> None:
+        if summary_only:
+            def count_symbols(symbols: 'SymbolTable') -> int:
+                count = 0
+                for s in symbols.symbols.values():
+                    if isinstance(s, SymbolTable):
+                        count += count_symbols(s)
+                    else:
+                        count += 1
+                return count
+            print("number of symbols:", count_symbols(self))
+        else:
+            def print_symbols(symbols: 'SymbolTable', level: int) -> None:
+                indent = '\t' * level
+                print("\n" + indent + "BLOCK:", symbols.name)
+                for name, s in sorted(symbols.symbols.items(), key=lambda x: getattr(x[1], "sourceref", ("", 0))):
+                    if isinstance(s, SymbolTable):
+                        print_symbols(s, level + 1)
+                    elif isinstance(s, SubroutineDef):
+                        print(indent * 2 + "SUB:   " + s.name, s.sourceref, sep="\t")
+                    elif isinstance(s, LabelDef):
+                        print(indent * 2 + "LABEL: " + s.name, s.sourceref, sep="\t")
+                    elif isinstance(s, VariableDef):
+                        print(indent * 2 + "VAR:   " + s.name, s.sourceref, s.type, sep="\t")
+                    elif isinstance(s, ConstantDef):
+                        print(indent * 2 + "CONST: " + s.name, s.sourceref, s.type, sep="\t")
+                    else:
+                        raise TypeError("invalid symbol def type", s)
+            print("\nSymbols defined in the symbol table:")
+            print("------------------------------------")
+            print_symbols(self, 0)
+            print()
 
 
 class Eval_symbol_dict(dict):
