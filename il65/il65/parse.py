@@ -12,9 +12,9 @@ import os
 import shutil
 import enum
 from typing import Set, List, Tuple, Optional, Any, Dict, Union
-from astparse import ParseError, parse_expr_as_int, parse_expr_as_number, parse_expr_as_primitive,\
+from .astparse import ParseError, parse_expr_as_int, parse_expr_as_number, parse_expr_as_primitive,\
     parse_expr_as_string
-from symbols import SymbolTable, DataType, SymbolDefinition, SubroutineDef, LabelDef, \
+from .symbols import SymbolTable, DataType, SymbolDefinition, SubroutineDef, LabelDef, \
     zeropage, check_value_in_range, coerce_value, char_to_bytevalue, \
     VariableDef, ConstantDef, SymbolError, STRING_DATATYPES, \
     REGISTER_SYMBOLS, REGISTER_WORDS, REGISTER_BYTES, RESERVED_NAMES
@@ -665,7 +665,7 @@ class Parser:
         if not filename:
             raise self.PError("invalid filename")
         filename_at_source_location = os.path.join(os.path.split(self.sourcefile)[0], filename)
-        filename_at_libs_location = os.path.join(os.path.split(sys.argv[0])[0], "lib", filename)
+        filename_at_libs_location = os.path.join(os.getcwd(), "lib", filename)
         candidates = [filename,
                       filename_at_source_location,
                       filename_at_libs_location,

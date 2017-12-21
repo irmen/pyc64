@@ -1,6 +1,5 @@
-import il65
-import parse
 import pytest
+from il65 import il65, symbols
 
 
 def test_float_to_mflpt5():
@@ -28,8 +27,8 @@ def test_float_to_mflpt5():
 
 
 def test_float_range():
-    assert b"\xff\x7f\xff\xff\xff" == il65.CodeGenerator.to_mflpt5(parse.FLOAT_MAX_POSITIVE)
-    assert b"\xff\xff\xff\xff\xff" == il65.CodeGenerator.to_mflpt5(parse.FLOAT_MAX_NEGATIVE)
+    assert b"\xff\x7f\xff\xff\xff" == il65.CodeGenerator.to_mflpt5(symbols.FLOAT_MAX_POSITIVE)
+    assert b"\xff\xff\xff\xff\xff" == il65.CodeGenerator.to_mflpt5(symbols.FLOAT_MAX_NEGATIVE)
     with pytest.raises(OverflowError):
         il65.CodeGenerator.to_mflpt5(1.7014118346e+38)
     with pytest.raises(OverflowError):

@@ -6,7 +6,7 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: GNU GPL 3.0, see LICENSE
 """
 
-from parse import Parser, ParseResult, SymbolTable, SymbolDefinition
+from .parse import Parser, ParseResult, SymbolTable, SymbolDefinition
 
 
 # @todo use the preprocessed symboltable to resolve references in parse phase

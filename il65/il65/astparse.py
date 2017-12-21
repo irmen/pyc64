@@ -7,8 +7,8 @@ License: GNU GPL 3.0, see LICENSE
 """
 
 import ast
-from symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SymbolTable, SymbolError, DataType, PrimitiveType
 from typing import Union, Optional
+from .symbols import FLOAT_MAX_POSITIVE, FLOAT_MAX_NEGATIVE, SymbolTable, SymbolError, DataType, PrimitiveType
 
 
 class ParseError(Exception):

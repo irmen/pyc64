@@ -17,9 +17,9 @@ import contextlib
 import argparse
 from functools import partial
 from typing import TextIO, Set, Union
-from preprocess import PreprocessingParser
-from parse import ProgramFormat, Parser, ParseResult, Optimizer
-from symbols import Zeropage, DataType, VariableDef, REGISTER_WORDS, FLOAT_MAX_NEGATIVE, FLOAT_MAX_POSITIVE
+from .preprocess import PreprocessingParser
+from .parse import ProgramFormat, Parser, ParseResult, Optimizer
+from .symbols import Zeropage, DataType, VariableDef, REGISTER_WORDS, FLOAT_MAX_NEGATIVE, FLOAT_MAX_POSITIVE
 
 
 class CodeError(Exception):
@@ -857,6 +857,3 @@ def main() -> None:
         print("Output file:      ", program_filename)
         print()
 
-
-if __name__ == "__main__":
-    main()
