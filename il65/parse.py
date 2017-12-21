@@ -199,6 +199,10 @@ class ParseResult:
             return "<RegisterValue {:s} type {:s} name={}>".format(self.register, self.datatype, self.name)
 
         def assignable_from(self, other: 'ParseResult.Value') -> Tuple[bool, str]:
+            if self.register == "SC":
+                if isinstance(other, ParseResult.IntegerValue) and other.value in (0, 1):
+                    return True, ""
+                return False, "can only assign an integer constant value of 0 or 1 to SC"
             if self.constant:
                 return False, "cannot assign to a constant"
             if isinstance(other, ParseResult.RegisterValue) and len(self.register) < len(other.register):
@@ -251,7 +255,7 @@ class ParseResult:
             if isinstance(other, ParseResult.PlaceholderSymbol):
                 return True, ""
             if self.datatype == DataType.BYTE:
-                if isinstance(other, (ParseResult.IntegerValue, ParseResult.RegisterValue)):
+                if isinstance(other, (ParseResult.IntegerValue, ParseResult.RegisterValue, ParseResult.MemMappedValue)):
                     if other.datatype == DataType.BYTE:
                         return True, ""
                     return False, "(unsigned) byte required"
@@ -268,15 +272,11 @@ class ParseResult:
                     if range_error:
                         return False, range_error
                     return True, ""
-                elif isinstance(other, ParseResult.RegisterValue):
-                    if other.datatype == DataType.BYTE:
-                        if self.datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
-                            return True, ""
-                        return False, "can't assign register to this"
-                    elif other.datatype == DataType.WORD:
-                        if self.datatype in (DataType.WORD, DataType.FLOAT):
-                            return True, ""
-                        return False, "can't assign 16 bit combined registers to byte"
+                elif isinstance(other, (ParseResult.RegisterValue, ParseResult.MemMappedValue)):
+                    if other.datatype in (DataType.BYTE, DataType.WORD, DataType.FLOAT):
+                        return True, ""
+                    else:
+                        return False, "byte or word or float required"
                 elif isinstance(other, ParseResult.StringValue):
                     if self.datatype == DataType.WORD:
                         return True, ""
@@ -990,7 +990,7 @@ class Parser:
         else:
             # subname can be a label, or an immediate address (but not #symbol - use subx for that)
             if subname[0] == '#':
-                raise self.PError("to call a memory mapped subroutine, use a subx defined symbol instead")
+                raise self.PError("to call a subroutine, use a subx definition instead")
             else:
                 try:
                     address = self.parse_integer(subname)

@@ -154,6 +154,13 @@ Expressions can contain function calls to the math library (sin, cos, etc) and y
 all builtin functions (max, avg, min, sum etc). They can also reference idendifiers defined elsewhere in your code,
 if this makes sense.
 
+The syntax "[address]" means: the contents of the memory at address.
+By default, if not otherwise known, a single byte is assumed. You can add the ".byte" or ".word" or ".float" suffix
+to make it clear what data type the address points to.
+
+Everything after a semicolon ';' is a comment and is ignored.
+# @todo Everything after a double semicolon ';;' is a comment and is ignored, but is copied into the resulting assembly source code.
+
 
     
 FLOW CONTROL

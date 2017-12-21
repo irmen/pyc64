@@ -137,6 +137,12 @@ start
 	A = false
 	A = 255
 	A = X
+	A = [$c020]
+	A = [membyte2]
+	;A = [membyte2.byte]     ; @todo ok
+	;A = [membyte2.word]     ; @todo type error
+	;A = [membyte2.float]     ; @todo type error
+	; A = #expr_byte1b        ; @todo cannot assign address to byte
 
 	XY = 0
 	XY = '@'
@@ -168,19 +174,19 @@ start
 	[$c000.float] = 1.70141183e+38
 	;[$c000.byte] = AX     ; @todo out of range
 	[$c000.word] = AX
-	;[$c001] = [$c002]         ;@todo okay
-	;[$c001] = [$c002.word]          ;@todo out of range
-	;[$c001.word] = [$c002]          ;@todo okay
-	;[$c001.word] = [$c002.byte]     ;@tody okay
-	;[$c001.word] = [$c002.word]     ;@todo okay
+	[$c001] = [$c002]
+	;[$c001.word] = [$c002]          ;@todo okay (pad)
+        ;[$c001.word] = [$c002.byte]     ;@todo okay (pad)
+	[$c001.word] = [$c002.word]
+	;[$c001.word] = [$c002.float]    ;@todo parse error
+	;[$c001.float] = [$c002.byte]    ;@todo ok
+	;[$c001.float] = [$c002.word]    ;@todo support this
+	;[$c001.float] = [$c002.float]    ;@todo support this
 
 
 	SC = 0
+	SC = 1
 	SC = false
-	SC = 1.1
-	SC = 255
-	SC = '@'
-	; SC = X     ; @todo to be implemented
 
 	uninitbyte1 = 99
 	uninitbyte1 = 1.234

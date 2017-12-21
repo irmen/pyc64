@@ -482,16 +482,11 @@ class CodeGenerator:
                 else:
                     raise CodeError("invalid assignment target (2)", str(stmt))
         elif isinstance(stmt.right, ParseResult.MemMappedValue):
-            if stmt.right.datatype != DataType.BYTE:
-                raise CodeError("can only assign memory mapped byte values for now", str(stmt))  # @todo support other mmapped types
-            r_str = stmt.right.name if stmt.right.name else "${:x}".format(stmt.right.address)
             for lv in stmt.leftvalues:
                 if isinstance(lv, ParseResult.RegisterValue):
-                    self.generate_assign_membyte_to_reg(lv.register, r_str)
+                    self.generate_assign_mem_to_reg(lv.register, stmt.right)
                 elif isinstance(lv, ParseResult.MemMappedValue):
-                    if lv.datatype != DataType.BYTE:
-                        raise CodeError("can only assign a memory mapped byte value into another byte")
-                    self.generate_assign_membyte_to_mem(lv, r_str)
+                    self.generate_assign_mem_to_mem(lv, stmt.right)
                 else:
                     raise CodeError("invalid assignment target (4)", str(stmt))
         elif isinstance(stmt.right, ParseResult.FloatValue):
@@ -516,13 +511,6 @@ class CodeGenerator:
             self.p("\t\tsta  {:s}+{:d}".format(target, num))
         if emit_pha:
             self.p("\t\tpla")
-
-    def generate_assign_membyte_to_reg(self, l_register: str, r_str: str) -> None:
-        # Register = memory (byte)
-        if l_register in ('A', 'X', 'Y'):
-            self.p("\t\tld{:s}  {:s}".format(l_register.lower(), r_str))
-        else:
-            raise CodeError("invalid register for memory byte assignment", l_register, r_str)
 
     def generate_assign_reg_to_memory(self, lv: ParseResult.MemMappedValue, r_register: str) -> None:
         # Memory = Register
@@ -563,8 +551,6 @@ class CodeGenerator:
                 else:
                     # y -> x, 6502 doesn't have tyx
                     self.p("\t\tsty  ${0:02x}\n\t\tldx  ${0:02x}".format(Zeropage.SCRATCH_B1))
-            elif lv.register == "SC":
-                raise CodeError("assigning a register to the SC (carry flag) not yet supported")    # @todo support SC=reg
             elif lv.register in REGISTER_WORDS:
                 if len(r_register) == 1:
                     # assign one register to a pair, so the hi byte is zero.
@@ -671,11 +657,46 @@ class CodeGenerator:
         else:
             raise TypeError("invalid lvalue type " + str(lvdatatype))
 
-    def generate_assign_membyte_to_mem(self, lv: ParseResult.MemMappedValue, r_str: str) -> None:
-        # Address/Memory = Memory (byte)
-        with self.preserving_registers(None):
-            self.p("\t\tlda  " + r_str)
-            self.p("\t\tsta  " + (lv.name or self.to_hex(lv.address)))
+    def generate_assign_mem_to_reg(self, l_register: str, rvalue: ParseResult.MemMappedValue) -> None:
+        r_str = rvalue.name if rvalue.name else "${:x}".format(rvalue.address)
+        if len(l_register) == 1:
+            if rvalue.datatype != DataType.BYTE:
+                raise CodeError("can only assign a byte to a register")
+            self.p("\t\tld{:s}  {:s}".format(l_register.lower(), r_str))
+        else:
+            if rvalue.datatype != DataType.WORD:
+                raise CodeError("can only assign a word to a register pair")
+            raise NotImplementedError    # @todo other mmapped types
+
+    def generate_assign_mem_to_mem(self, lv: ParseResult.MemMappedValue, rvalue: ParseResult.MemMappedValue) -> None:
+        r_str = rvalue.name if rvalue.name else "${:x}".format(rvalue.address)
+        if lv.datatype == DataType.BYTE:
+            if rvalue.datatype != DataType.BYTE:
+                raise CodeError("can only assign a byte to a byte")
+            with self.preserving_registers({'A'}):
+                self.p("\t\tlda  " + r_str)
+                self.p("\t\tsta  " + (lv.name or self.to_hex(lv.address)))
+        elif lv.datatype == DataType.WORD:
+            if rvalue.datatype == DataType.BYTE:
+                raise NotImplementedError   # XXX
+                with self.preserving_registers({'A'}):
+                    l_str = lv.name or self.to_hex(lv.address)
+                    self.p("\t\tlda  #0")
+                    self.p("\t\tsta  " + l_str)
+                    self.p("\t\tlda  " + r_str)
+                    self.p("\t\tsta  {:s}+1".format(l_str))
+            elif rvalue.datatype == DataType.WORD:
+                with self.preserving_registers({'A'}):
+                    l_str = lv.name or self.to_hex(lv.address)
+                    self.p("\t\tlda  {:s}".format(r_str))
+                    self.p("\t\tsta  {:s}".format(l_str))
+                    self.p("\t\tlda  {:s}+1".format(r_str))
+                    self.p("\t\tsta  {:s}+1".format(l_str))
+            else:
+                # @todo other mmapped types
+                raise CodeError("can only assign a byte or word to a word")
+        else:
+            raise CodeError("can only assign to a memory mapped byte or word value for now")   # @todo
 
     def generate_assign_char_to_memory(self, lv: ParseResult.MemMappedValue, char_str: str) -> None:
         # Memory = Character
