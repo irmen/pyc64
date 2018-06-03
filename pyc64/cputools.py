@@ -7,9 +7,8 @@ License: MIT open-source.
 """
 
 import time
-import os
 import py65.monitor
-import py65.devices.mpu6502
+import py65.devices.mpu6502 as mpu6502
 
 
 class Monitor(py65.monitor.Monitor):
@@ -30,7 +29,7 @@ class Monitor(py65.monitor.Monitor):
         self._mpu.memory = self.memory
 
 
-class CPU(py65.devices.mpu6502.MPU):
+class CPU(mpu6502.MPU):
     def run(self, pc=None, microsleep=None, loop_detect_delay=2):
         end_address = 0xffff
         self.stPushWord(end_address - 1)   # push a sentinel return address
@@ -59,7 +58,7 @@ class CPU(py65.devices.mpu6502.MPU):
                 raise InterruptedError("brk instruction")
         duration = end_time - start_time
         mips = instructions / duration / 1e6
-        print("6510 CPU simulator: {:d} instructions in {:.3f} seconds = {:.3f} mips (~{:.3f} times realtime)".format(instructions, duration, mips, mips/0.44))
+        print(self.name + " CPU simulator: {:d} instructions in {:.3f} seconds = {:.3f} mips (~{:.3f} times realtime)".format(instructions, duration, mips, mips/0.44))
 
 
 if __name__ == "__main__":
