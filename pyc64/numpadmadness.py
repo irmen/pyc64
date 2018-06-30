@@ -6,8 +6,8 @@ import tkinter
 class NumpadmadnessWindow(tkinter.Tk):
     def __init__(self):
         super().__init__()
-        l = tkinter.Label(self, text="Click here and type keys on your Numpad.\nObserve event codes on standard output.")
-        l.pack(padx=50, pady=50)
+        label = tkinter.Label(self, text="Click here and type keys on your Numpad.\nObserve event codes on standard output.")
+        label.pack(padx=50, pady=50)
         self.bind("<KeyPress>", self.keypress)
         self.bind("<KeyRelease>", self.keyrelease)
         self.bind("<KP_0>", self.keypadzero)
@@ -40,18 +40,18 @@ class NumpadmadnessWindow(tkinter.Tk):
     }
 
     joystick_keys_osx = {
-        524352: "fire",       # R alt
-        270336: "fire",       # R control
-        5374000: "fire",      # kp 0
-        498073: "fire",       # kp Enter
-        5963832: "up",        # kp 8
-        5505074: "down",      # kp 2
-        5636148: "left",      # kp 4
-        5767222: "right",     # kp 6
-        5832759: "leftup",    # kp 7
-        6029369: "rightup",   # kp 9
-        5439537: "leftdown",  # kp 1
-        5570611: "rightdown", # kp 3
+        524352: "fire",        # R alt
+        270336: "fire",        # R control
+        5374000: "fire",       # kp 0
+        498073: "fire",        # kp Enter
+        5963832: "up",         # kp 8
+        5505074: "down",       # kp 2
+        5636148: "left",       # kp 4
+        5767222: "right",      # kp 6
+        5832759: "leftup",     # kp 7
+        6029369: "rightup",    # kp 9
+        5439537: "leftdown",   # kp 1
+        5570611: "rightdown",  # kp 3
     }
 
     joystick_keys_windows_keycode = {
@@ -67,7 +67,8 @@ class NumpadmadnessWindow(tkinter.Tk):
     }
 
     def keyrelease(self, event):
-        print(time.time(), "KEYRELEASE {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event))) # XXX
+        print(time.time(), "KEYRELEASE {char!r} keysym='{keysym}' keycode={keycode} "
+                           "keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
             if event.keycode in self.joystick_keys_osx:
@@ -84,7 +85,8 @@ class NumpadmadnessWindow(tkinter.Tk):
             return
 
     def keypress(self, event):
-        print(time.time(), "KEYPRESS {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
+        print(time.time(), "KEYPRESS {char!r} keysym='{keysym}' keycode={keycode} "
+                           "keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
             if event.keycode in self.joystick_keys_osx:

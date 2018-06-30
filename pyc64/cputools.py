@@ -58,7 +58,8 @@ class CPU(mpu6502.MPU):
                 raise InterruptedError("brk instruction")
         duration = end_time - start_time
         mips = instructions / duration / 1e6
-        print(self.name + " CPU simulator: {:d} instructions in {:.3f} seconds = {:.3f} mips (~{:.3f} times realtime)".format(instructions, duration, mips, mips/0.44))
+        print(self.name + " CPU simulator: {:d} instructions in {:.3f} seconds = {:.3f} mips (~{:.3f} times realtime)"
+              .format(instructions, duration, mips, mips/0.44))
 
 
 if __name__ == "__main__":
@@ -85,4 +86,3 @@ if __name__ == "__main__":
     assert screen.memory[0xd800] != 1
     assert screen.memory[53280] == 0
     assert screen.memory[53281] == 0
-

@@ -41,7 +41,7 @@ class EmulatorWindowBase(tkinter.Tk):
     def __init__(self, screen, title):
         if len(self.colorpalette) not in (2, 4, 8, 16, 32, 64, 128, 256):
             raise ValueError("colorpalette size not a valid power of 2")
-        if self.columns <= 0 or self.columns > 128 or self.rows <=0 or self.rows > 128:
+        if self.columns <= 0 or self.columns > 128 or self.rows <= 0 or self.rows > 128:
             raise ValueError("row/col size invalid")
         if self.bordersize < 0 or self.bordersize > 256:
             raise ValueError("bordersize invalid")
@@ -60,7 +60,7 @@ class EmulatorWindowBase(tkinter.Tk):
         self.screen = screen
         self.canvas = tkinter.Canvas(self, width=2 * self.bordersize + self.columns * 16, height=2 * self.bordersize + self.rows * 16,
                                      borderwidth=0, highlightthickness=0, background="black",
-                                     xscrollincrement = 1, yscrollincrement = 1)
+                                     xscrollincrement=1, yscrollincrement=1)
         self.buttonbar = tkinter.Frame(self)
         resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
         resetbut.pack(side=tkinter.LEFT)
@@ -328,18 +328,18 @@ class C64EmulatorWindow(EmulatorWindowBase):
     }
 
     joystick_keys_osx = {
-        524352: "fire",       # R alt
-        270336: "fire",       # R control
-        5374000: "fire",      # kp 0
-        498073: "fire",       # kp Enter
-        5963832: "up",        # kp 8
-        5505074: "down",      # kp 2
-        5636148: "left",      # kp 4
-        5767222: "right",     # kp 6
-        5832759: "leftup",    # kp 7
-        6029369: "rightup",   # kp 9
-        5439537: "leftdown",  # kp 1
-        5570611: "rightdown", # kp 3
+        524352: "fire",        # R alt
+        270336: "fire",        # R control
+        5374000: "fire",       # kp 0
+        498073: "fire",        # kp Enter
+        5963832: "up",         # kp 8
+        5505074: "down",       # kp 2
+        5636148: "left",       # kp 4
+        5767222: "right",      # kp 6
+        5832759: "leftup",     # kp 7
+        6029369: "rightup",    # kp 9
+        5439537: "leftdown",   # kp 1
+        5570611: "rightdown",  # kp 3
     }
 
     joystick_keys_windows_keycode = {
@@ -355,7 +355,6 @@ class C64EmulatorWindow(EmulatorWindowBase):
     }
 
     def keyrelease(self, event):
-        # print(time.time(), "KEYRELEASE {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event))) # XXX
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
@@ -373,7 +372,6 @@ class C64EmulatorWindow(EmulatorWindowBase):
             return
 
     def keypress(self, event):
-        # print(time.time(), "KEYPRESS {char!r} keysym='{keysym}' keycode={keycode} keysym_num={keysym_num} state={state}".format(**vars(event)))  # XXX
         # first check special control keys
         if sys.platform == "darwin":
             # OSX numkeys are problematic, I try to solve this via raw keycode
