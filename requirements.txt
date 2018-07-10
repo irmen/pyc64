@@ -1,0 +1,3 @@
+cbmcodecs >= 0.2.0
+py65 >= 1.0.0
+pillow

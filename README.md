@@ -83,9 +83,13 @@ and memory for instance. Try 'dir()' to see what's there.
 You'll need the [pillow](https://pillow.readthedocs.io) library because 
 the program needs to do some charset bitmap conversions at startup for tkinter.
 
+You'll also need the [cbmcodecs](https://github.com/dj51d/cbmcodecs) library to handle
+translation of ASCII text to and from the C-64's PETSCII and screencode values.
+
 If you want to execute 6502 machine code or inspect the memory via a
 machine code monitor, you also need the [py65](https://github.com/mnaberez/py65) library. 
-
+()This allows you to actually run a few simple "real" C64 programs! Some of them 
+are included on the 'virtual disk' in this project)
 
 ## screenshots
 
