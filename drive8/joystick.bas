@@ -1,4 +1,4 @@
-10 poke646,1:?chr(147)
+10 poke646,1: cls
 20 print "joystick nr 2 via numpad"
 30 s = 1024 + 5 + 40*5
 40 j = peek(56320)

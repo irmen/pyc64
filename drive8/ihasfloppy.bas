@@ -1,7 +1,7 @@
 0 rem --- ihasfloppy by redcrab of genesis project ---
 1 rem --- see http://csdb.dk/release/?id=122467 ---
 9 rem
-10 poke 53280,0: poke 53281,0: poke 53272,21: print chr(147)
+10 poke 53280,0: poke 53281,0: poke 53272,21: cls
 11 rem determine screen size
 12 sys 65517: cols=peek(781): rows=peek(782)
 20 for y=0 to 24

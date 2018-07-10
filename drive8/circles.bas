@@ -2,7 +2,7 @@
 11 rem determine screen size
 12 sys 65517: cols=peek(781): rows=peek(782)
 20 for rs=1.25to 0.0499step -0.2
-30 ?chr(147)
+30 cls
 40 for r=2 to (cols-1)/2 step 2
 50 for i=0 to 2*π step rs
 60 x=r*sin(i)+cols/2

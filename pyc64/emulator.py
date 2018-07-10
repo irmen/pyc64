@@ -417,7 +417,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
             # if '1' <= char <= '8' and self.key_control_down:
             #     self.c64screen.text = ord(char)-1
             if char == '\r':    # RETURN key
-                line = self.screen.current_line(True, True)
+                line = self.screen.current_line(True, True, "ascii")
                 line1, line2, line3 = line[0: self.columns], line[self.columns: self.columns * 2], line[self.columns * 2:]
                 if line1.endswith(' '):
                     line1 = ''
@@ -466,7 +466,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
             elif char == "End":
                 # move to end of current line
                 x, y = self.screen.cursorpos()
-                line = self.screen.current_line(False, True).rstrip()
+                line = self.screen.current_line(False, True, "screencodes").rstrip()
                 x = len(line)
                 if x > self.columns:
                     if line[self.columns - 1] == ' ':
@@ -490,7 +490,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
                     self.execute_direct_line(self.interpreter.F6_load_command)
                 else:
                     self.screen.writestr(self.interpreter.F5_load_command)
-                    line = self.screen.current_line(False, False)
+                    line = self.screen.current_line(False, False, "ascii")
                     self.screen.return_key()
                     self.execute_direct_line(line)
             elif char == "F3":      # run program shortcut key

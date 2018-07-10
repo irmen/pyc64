@@ -12,7 +12,34 @@ License: MIT open-source.
 
 import time
 import struct
+import codecs
 from collections import defaultdict
+# noinspection PyUnresolvedReferences
+import cbmcodecs
+
+
+def _codec_errors_pyc64specials(error):
+    result = []
+    for i in range(error.start, error.end):
+        replacement = {
+                '{': '┤',
+                '}': '├',
+                '^': '↑',
+                '~': '▒',  # PI 'π' in lower-case charset
+                'π': '▒',  # PI 'π' in lower-case charset
+                '`': "'",
+                '_': '▁',
+                '|': '│',
+                '\\': 'M',  # 'backslash' in lower-case charset
+            }.get(error.object[i], None)
+        if replacement:
+            result.append(replacement)
+        else:
+            raise error
+    return "".join(result), error.end
+
+
+codecs.register_error("pyc64specials", _codec_errors_pyc64specials)
 
 
 class Memory:
@@ -439,115 +466,10 @@ class ScreenAndMemory:
                 self.memory[0xd800 + self.cursor] = self.memory[0x0287]   # restore char color from GDCOL address
             self.memory[0x0400 + self.cursor] ^= 0x80
 
-    # ASCII-to-PETSCII translation table
-    # Unicode symbols supported that map to a PETSCII character:  £ ↑ ← ♠ ♥ ♦ ♣ π ● ○ and various others
-    ascii_to_petscii_trans = str.maketrans({
-        '\f': 147,  # form feed becomes ClearScreen
-        '\n': 13,   # line feed becomes a RETURN
-        '\r': 17,   # CR becomes CursorDown
-        'a': 65,
-        'b': 66,
-        'c': 67,
-        'd': 68,
-        'e': 69,
-        'f': 70,
-        'g': 71,
-        'h': 72,
-        'i': 73,
-        'j': 74,
-        'k': 75,
-        'l': 76,
-        'm': 77,
-        'n': 78,
-        'o': 79,
-        'p': 80,
-        'q': 81,
-        'r': 82,
-        's': 83,
-        't': 84,
-        'u': 85,
-        'v': 86,
-        'w': 87,
-        'x': 88,
-        'y': 89,
-        'z': 90,
-        'A': 97,
-        'B': 98,
-        'C': 99,
-        'D': 100,
-        'E': 101,
-        'F': 102,
-        'G': 103,
-        'H': 104,
-        'I': 105,
-        'J': 106,
-        'K': 107,
-        'L': 108,
-        'M': 109,
-        'N': 110,
-        'O': 111,
-        'P': 112,
-        'Q': 113,
-        'R': 114,
-        'S': 115,
-        'T': 116,
-        'U': 117,
-        'V': 118,
-        'W': 119,
-        'X': 120,
-        'Y': 121,
-        'Z': 122,
-        '{': 179,       # left squiggle
-        '}': 235,       # right squiggle
-        '£': 92,        # pound currency sign
-        '^': 94,        # up arrow
-        '~': 126,       # pi math symbol
-        'π': 126,       # pi symbol
-        '`': 39,        # single quote
-        '✓': 250,       # check mark
-
-        '|': 221,       # vertical bar
-        '│': 221,       # vertical bar
-        '─': 96,        # horizontal bar
-        '┼': 123,       # vertical and horizontal bar
-
-        '↑': 94,        # up arrow
-        '←': 95,        # left arrow
-
-        '▔': 163,       # upper bar
-        '_': 164,       # lower bar (underscore)
-        '▁': 164,       # lower bar
-        '▎': 165,       # left bar
-
-        '♠': 97,        # spades
-        '●': 113,       # circle
-        '♥': 115,       # hearts
-        '○': 119,       # open circle
-        '♣': 120,       # clubs
-        '♦': 122,       # diamonds
-
-        '├': 171,       # vertical and right
-        '┤': 179,       # vertical and left
-        '┴': 177,       # horiz and up
-        '┬': 178,       # horiz and down
-        '└': 173,       # up right
-        '┐': 174,       # down left
-        '┌': 175,       # down right
-        '┘': 189,       # up left
-        '▗': 172,       # block lr
-        '▖': 187,       # block ll
-        '▝': 188,       # block ur
-        '▘': 190,       # block ul
-        '▚': 191,       # block ul and lr
-        '▌': 161,       # left half
-        '▄': 162,       # lower half
-        '▒': 230,       # raster
-    })
-
     def writestr(self, txt):
         """Write ASCII text to the screen."""
-        # convert ascii to petscii
-        self.write(txt.translate(self.ascii_to_petscii_trans))
+        # Convert ascii to petscii. Lower-case codec is used.
+        self.write(bytes(txt, "petscii-c64en-lc", "pyc64specials"))
 
     @classmethod
     def _petscii2screen(cls, petscii_code, inversevid=False):
@@ -571,53 +493,38 @@ class ScreenAndMemory:
             return code | 0x80
         return code
 
-    @classmethod
-    def _screen2petscii(cls, screencode):
-        """Translate screencode back to PETSCII code"""
-        screencode &= 0x7f
-        if screencode <= 0x1f:
-            return screencode + 64
-        if screencode <= 0x3f:
-            return screencode
-        return screencode + 32
-
-    @classmethod
-    def _screen2ascii(cls, screencode):
-        """Translate screencode back to ASCII char"""
-        return "@abcdefghijklmnopqrstuvwxyz[£]↑← !\"#$%&'()*+,-./0123456789:;<=>?\0ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
-               "\0\0|π\0 \0\0\0_\0\0\0\0\0\0}\0\0\0\0\0\0\0{\0\0\0\0\0\0\0\0\0\0\0\0"[screencode & 0x7f]
-
     def write(self, petscii):
         """Write PETSCII-encoded text to the screen."""
+        assert isinstance(petscii, bytes)
         self._fix_cursor()
-        # first, filter out all non-printable chars
-        txt = "".join(c for c in petscii if c not in "\x00\x01\x02\x03\x04\x06\x07\x08\x09\x0a\x0b\x0c\x0f\x10\x15\x16"
-                      "\x17\x18\x19\x1a\x1b\x80\x82\x83\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8f")
-        txt = txt.replace("\x8d", "\x0d")    # replace shift-RETURN by regular RETURN
+        petscii = petscii.replace(b"\x8d", b"\x0d")    # replace shift-RETURN by regular RETURN
+        txtcolors = {
+            0x05: 1,  # white
+            0x1c: 2,  # red
+            0x1e: 5,  # green
+            0x1f: 6,  # blue
+            0x81: 8,  # orange
+            0x90: 0,  # black
+            0x95: 9,  # brown
+            0x96: 10,  # pink/light red
+            0x97: 11,  # dark grey
+            0x98: 12,  # grey
+            0x99: 13,  # light green
+            0x9a: 14,  # light blue
+            0x9b: 15,  # light grey
+            0x9c: 4,  # purple
+            0x9e: 7,  # yellow
+            0x9f: 3,  # cyan
+        }
+        non_printable = {0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 15, 16,
+                         21, 22, 23, 24, 25, 26, 27, 128, 130, 131, 132,
+                         133, 134, 135, 136, 137, 138, 139, 140, 143}
 
         def handle_special(c):
             # note: return/shift-return are handled automatically
-            txtcolors = {
-                '\x05': 1,   # white
-                '\x1c': 2,   # red
-                '\x1e': 5,   # green
-                '\x1f': 6,   # blue
-                '\x81': 8,   # orange
-                '\x90': 0,   # black
-                '\x95': 9,   # brown
-                '\x96': 10,  # pink/light red
-                '\x97': 11,  # dark grey
-                '\x98': 12,  # grey
-                '\x99': 13,  # light green
-                '\x9a': 14,  # light blue
-                '\x9b': 14,  # light grey
-                '\x9c': 4,   # purple
-                '\x9e': 7,   # yellow
-                '\x9f': 3,   # cyan
-            }
             if c in txtcolors:
                 self.text = txtcolors[c]
-            elif c == '\x0d':
+            elif c == 0x0d:
                 # RETURN, go to next line
                 self.cursor = self.columns * (1 + self.cursor // self.columns)
                 if self.cursor > self.columns * (self.rows - 1):
@@ -625,29 +532,29 @@ class ScreenAndMemory:
                     self.cursor = self.columns * (self.rows - 1)
                 # also, disable inverse-video
                 self.inversevid = False
-            elif c == '\x0e':
+            elif c == 0x0e:
                 self._shifted = True
-            elif c == '\x8e':
+            elif c == 0x8e:
                 self._shifted = False
-            elif c == '\x11':
+            elif c == 0x11:
                 self.down()
-            elif c == '\x91':
+            elif c == 0x91:
                 self.up()
-            elif c == '\x1d':
+            elif c == 0x1d:
                 self.right()
-            elif c == '\x9d':
+            elif c == 0x9d:
                 self.left()
-            elif c == '\x12':
+            elif c == 0x12:
                 self.inversevid = True
-            elif c == '\x92':
+            elif c == 0x92:
                 self.inversevid = False
-            elif c == '\x13':
+            elif c == 0x13:
                 self.cursormove(0, 0)   # home
-            elif c == '\x14':
+            elif c == 0x14:
                 self.backspace()
-            elif c == '\x94':
+            elif c == 0x94:
                 self.insert()
-            elif c == '\x93':
+            elif c == 0x93:
                 self.clear()
             else:
                 return False
@@ -655,9 +562,11 @@ class ScreenAndMemory:
 
         prev_cursor_enabled = self._cursor_enabled
         self._cursor_enabled = False
-        for c in txt:
+        for c in petscii:
+            if c in non_printable:
+                continue
             if not handle_special(c):
-                self.memory[0x0400 + self.cursor] = self._petscii2screen(ord(c), self.inversevid)
+                self.memory[0x0400 + self.cursor] = self._petscii2screen(c, self.inversevid)
                 self.memory[0xd800 + self.cursor] = self.text
                 self.cursor += 1
                 if self.cursor >= self.columns * self.rows:
@@ -844,9 +753,7 @@ class ScreenAndMemory:
         row, col = divmod(self.cursor, self.columns)
         return col, row
 
-    def current_line(self, include_previous=False, include_next=False, *, petscii=True, ascii=False, codes=False):
-        if sum([petscii, ascii, codes]) > 1:
-            raise ValueError("select only one result type")
+    def current_line(self, include_previous=False, include_next=False, format="screencodes"):
         start_y = end_y = self.cursor // self.columns
         if include_previous:
             start_y = max(0, start_y - 1)
@@ -855,14 +762,26 @@ class ScreenAndMemory:
         self._fix_cursor()
         screencodes = self.memory[0x0400 + self.columns * start_y: 0x0400 + self.columns * (end_y + 1)]
         self._fix_cursor()
-        if petscii:
-            return "".join(self._screen2ascii(c) for c in screencodes)
-        elif ascii:
-            return "".join(chr(self._screen2petscii(c)) for c in screencodes)
-        elif codes:
+        if format == "ascii":
+            # use the cbmcodec to translate screen codes back into ASCII
+            screencodes = bytes(sc & 0x7f for sc in screencodes)        # get rid of reverse-video
+            return str(screencodes, "screencode-c64-lc")
+        elif format == "petscii":
+            # use a simple translation table to translate screen codes into petscii codes
+            screencodes = bytes(sc & 0x7f for sc in screencodes)        # get rid of reverse-video
+            result = []
+            for sc in screencodes:
+                if sc <= 0x1f:
+                    result.append(sc + 64)
+                elif sc <= 0x3f:
+                    result.append(sc)
+                else:
+                    result.append(sc + 32)
+            return bytes(result)
+        elif format == "screencodes":
             return screencodes
         else:
-            return "".join(chr(c) for c in screencodes)
+            raise ValueError("invalid format: " + format)
 
     def getdirty(self):
         # this is pretty fast, on my machine about 0.001 second to diff a 64x50 screen (3200 chars)

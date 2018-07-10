@@ -7,8 +7,8 @@ class EmulatorPlusWindow(C64EmulatorWindow):
     rows = 50
     bordersize = 32
     sprites = 0   # for now, a larger screen will overwrite the sprite pointers so you can't use sprites. also y can not be >255
-    smoothscrolling = False   # tkinter can't smoothly scroll a window of this size
-    charset_shifted = "charset-shifted-2.png"   # define alternate charset
+    smoothscrolling = True   # set to False, if your tkinter can't smoothly scroll a window of this size
+    # charset_shifted = "charset-shifted-2.png"   # define alternate charset
     welcome_message = "WHOAAA !!!! This is what a C-64 with a 512x400 screen would look like!\n\n\n\n" \
                       "pyc64 basic & function keys active\n\n" \
                       "use 'gopy' to enter Python mode\n\n\n\n" \

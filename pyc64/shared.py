@@ -38,7 +38,7 @@ def do_dos(screen, arg):
     files = sorted(os.listdir("drive8"))
     catalog = ((file, os.path.getsize("drive8/" + file)) for file in files if os.path.isfile("drive8/" + file))
     header = "\"floppy contents \" ** 2a"
-    screen.writestr("\n0 \x12" + header + "\x92\n")
+    screen.writestr("\n0 \uf11a" + header + "\uf11b\n")
     for file, size in sorted(catalog):
         name, suff = os.path.splitext(file)
         name = '"' + name + '"'
