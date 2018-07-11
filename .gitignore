@@ -16,3 +16,6 @@
 *.asm
 *.labels.txt
 .mypy_cache/
+/roms/basic
+/roms/chargen
+/roms/kernal

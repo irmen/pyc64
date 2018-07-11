@@ -10,6 +10,7 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 """
 
+import os
 import time
 import struct
 import codecs
@@ -52,6 +53,7 @@ class Memory:
         self.mem = bytearray(size)
         self.hooked_reads = bytearray(size)   # 'bitmap' of addresses that have read-hooks, for fast checking
         self.hooked_writes = bytearray(size)  # 'bitmap' of addresses that have write-hooks, for fast checking
+        self.rom_areas = set()     # set of tuples (start, end) addresses of ROM (read-only) areas
         self.endian = endian     # 'little' or 'big', affects the way 16-bit words are read/written
         self.write_hooks = defaultdict(list)
         self.read_hooks = defaultdict(list)
@@ -61,7 +63,9 @@ class Memory:
 
     def clear(self):
         """set all memory values to 0."""
-        self.mem = bytearray(self.size)
+        print("clear mem")  # XXX
+        for a in range(0, 0x10000):
+            self[a] = 0
 
     def getword(self, address, signed=False):
         """get a 16-bit (2 bytes) value from memory, no aligning restriction"""
@@ -116,7 +120,10 @@ class Memory:
                     newvalue = hook(addr_or_slice, self.mem[addr_or_slice], value)
                     if newvalue is not None:
                         value = newvalue
-            self.mem[addr_or_slice] = value
+            if self.rom_areas:
+                self._write_with_romcheck_addr(addr_or_slice, value)
+            else:
+                self.mem[addr_or_slice] = value
         elif type(addr_or_slice) is slice:
             if any(self.hooked_writes[addr_or_slice]):
                 # there's at least one address in the slice with a hook, so... slow mode
@@ -136,9 +143,29 @@ class Memory:
                     value = bytes([value]) * slice_len
                 elif len(value) != slice_len:
                     raise ValueError("value length differs from memory slice length")
-                self.mem[addr_or_slice] = value
+                if self.rom_areas:
+                    self._write_with_romcheck_slice(addr_or_slice, value)
+                else:
+                    self.mem[addr_or_slice] = value
         else:
             raise TypeError("invalid address type")
+
+    def _write_with_romcheck_addr(self, address, value):
+        for rom_start, rom_end in self.rom_areas:
+            if address >= rom_start and address <= rom_end:
+                return   # don't write to ROM address
+        self.mem[address] = value
+
+    def _write_with_romcheck_slice(self, addrslice, value):
+        for rom_start, rom_end in self.rom_areas:
+            if addrslice.start <= rom_end and addrslice.stop >= rom_start+1:
+                # the slice could be *partially* in RAM and *partially* in ROM
+                # we're not figuring that out here, just write/check every byte individually.
+                for addr in range(*addrslice.indices(self.size)):
+                    self[addr] = value
+                return
+        # whole slice is outside of all rom areas, just write it
+        self.mem[addrslice] = value
 
     def intercept_write(self, address, hook):
         """
@@ -155,6 +182,12 @@ class Memory:
         """
         self.read_hooks[address].append(hook)
         self.hooked_reads[address] = 1
+
+    def load_rom(self, romfile, address):
+        with open(romfile, "rb") as romf:
+            data = romf.read()
+            self.mem[address:address+len(data)] = data
+            self.rom_areas.add((address, address+len(data)-1))
 
 
 class ScreenAndMemory:
@@ -213,11 +246,16 @@ class ScreenAndMemory:
         0xADADAD,   # 15 = light grey
     )
 
-    def __init__(self, columns=40, rows=25, sprites=8):
+    def __init__(self, columns=40, rows=25, sprites=8, rom_directory=""):
         # zeropage is from $0000-$00ff
         # screen chars     $0400-$07ff
         # screen colors    $d800-$dbff
         self.memory = Memory(65536)    # 64 Kb
+        if rom_directory:
+            for rom, address in (("basic", 0xa000), ("kernal", 0xe000)):
+                if os.path.isfile(rom_directory + "/" + rom):
+                    print("loading rom file", rom, "at", hex(address))
+                    self.memory.load_rom(rom_directory+"/"+rom, address)
         self.hz = 60        # NTSC
         self.columns = columns
         self.rows = rows

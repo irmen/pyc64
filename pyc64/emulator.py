@@ -24,6 +24,38 @@ from .shared import ResetMachineException
 from .python import PythonInterpreter
 
 
+def create_bitmaps_from_char_rom(temp_graphics_folder, roms_directory):
+    # create char bitmaps from the orignal c-64 chargen rom file
+    rom = open(roms_directory+"/"+"chargen", "rb").read()
+    def doublewidth_and_mirror(b):
+        result = 0
+        for _ in range(8):
+            bit = b&1
+            b >>= 1
+            result <<= 1
+            result |= bit
+            result <<= 1
+            result |= bit
+        x, y = divmod(result, 256)
+        return y, x
+    def writechar(c, rom_offset, filesuffix):
+        with open("{:s}/char{:s}-{:02x}.xbm".format(temp_graphics_folder, filesuffix, c), "wb") as outf:
+            outf.write(b"#define im_width 16\n")
+            outf.write(b"#define im_height 16\n")
+            outf.write(b"static char im_bits[] = {\n")
+            for y in range(8):
+                b1, b2 = doublewidth_and_mirror(rom[c*8 + y + rom_offset])
+                outf.write(bytes("0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, ".format(b1, b2, b1, b2), "ascii"))
+            outf.seek(-2, os.SEEK_CUR)  # get rid of the last space and comma
+            outf.write(b"\n};\n")
+    # normal chars
+    for c in range(256):
+        writechar(c, 0, "")
+    # shifted chars
+    for c in range(256):
+        writechar(c, 256*8, "-sh")
+
+
 class EmulatorWindowBase(tkinter.Tk):
     temp_graphics_folder = "temp_gfx"
     update_rate = 1000 // 20    # 20 hz screen refresh rate
@@ -38,7 +70,7 @@ class EmulatorWindowBase(tkinter.Tk):
     colorpalette = []
     welcome_message = "Welcome to the emulator!"
 
-    def __init__(self, screen, title):
+    def __init__(self, screen, title, roms_directory):
         if len(self.colorpalette) not in (2, 4, 8, 16, 32, 64, 128, 256):
             raise ValueError("colorpalette size not a valid power of 2")
         if self.columns <= 0 or self.columns > 128 or self.rows <= 0 or self.rows > 128:
@@ -68,7 +100,8 @@ class EmulatorWindowBase(tkinter.Tk):
         self.refreshtick = threading.Event()
         self.spritebitmapbytes = [None] * self.sprites
         self.spritebitmaps = []
-        self.create_bitmaps()
+        self.roms_directory = roms_directory
+        self.create_bitmaps(self.roms_directory)
         # create the character bitmaps for all character tiles, fixed on the canvas:
         self.charbitmaps = []
         for y in range(self.rows):
@@ -206,28 +239,34 @@ class EmulatorWindowBase(tkinter.Tk):
     def smoothscroll(self, xs, ys):
         return -xs * 2, -self.ys * 2
 
-    def create_bitmaps(self):
+    def create_bitmaps(self, roms_directory=""):
         os.makedirs(self.temp_graphics_folder, exist_ok=True)
         with open(self.temp_graphics_folder + "/readme.txt", "w") as f:
             f.write("this is a temporary folder to cache pyc64 files for tkinter graphics bitmaps.\n")
-        # normal
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_normal))) as source_chars:
-            for i in range(256):
-                filename = self.temp_graphics_folder + "/char-{:02x}.xbm".format(i)
-                chars = source_chars.copy()
-                row, col = divmod(i, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
-                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                ci = ci.convert(mode="1", dither=None)
-                ci.save(filename, "xbm")
-        # shifted
-        with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_shifted))) as source_chars:
-            for i in range(256):
-                filename = self.temp_graphics_folder + "/char-sh-{:02x}.xbm".format(i)
-                chars = source_chars.copy()
-                row, col = divmod(i, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
-                ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
-                ci = ci.convert(mode="1", dither=None)
-                ci.save(filename, "xbm")
+        if roms_directory and os.path.isfile(roms_directory+"/"+"chargen"):
+            # create char bitmaps from the C64 chargen rom file.
+            print("creating char bitmaps from chargen rom")
+            create_bitmaps_from_char_rom(self.temp_graphics_folder, roms_directory)
+        else:
+            print("creating char bitmaps from png images in the package")
+            # normal
+            with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_normal))) as source_chars:
+                for i in range(256):
+                    filename = self.temp_graphics_folder + "/char-{:02x}.xbm".format(i)
+                    chars = source_chars.copy()
+                    row, col = divmod(i, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
+                    ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                    ci = ci.convert(mode="1", dither=None)
+                    ci.save(filename, "xbm")
+            # shifted
+            with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_shifted))) as source_chars:
+                for i in range(256):
+                    filename = self.temp_graphics_folder + "/char-sh-{:02x}.xbm".format(i)
+                    chars = source_chars.copy()
+                    row, col = divmod(i, source_chars.width // 16)        # we assume 16x16 pixel chars (2x zoom)
+                    ci = chars.crop((col * 16, row * 16, col * 16 + 16, row * 16 + 16))
+                    ci = ci.convert(mode="1", dither=None)
+                    ci.save(filename, "xbm")
         # monochrome sprites (including their double-size variants)
         sprites = self.screen.getsprites()
         for i, sprite in sprites.items():
@@ -277,8 +316,8 @@ class C64EmulatorWindow(EmulatorWindowBase):
                       "use 'gopy' to enter Python mode\n\n\n\n" \
                       "(install the py64 library to be able to execute 6502 machine code)"
 
-    def __init__(self, screen, title):
-        super().__init__(screen, title)
+    def __init__(self, screen, title, roms_directory):
+        super().__init__(screen, title, roms_directory)
         self.screen.memory[0x00fb] = EmulatorWindowBase.update_rate
         self.hertztick = threading.Event()
         self.interpret_thread = None
@@ -703,8 +742,11 @@ class InterpretThread(threading.Thread):
 
 
 def start():
-    screen = ScreenAndMemory(columns=C64EmulatorWindow.columns, rows=C64EmulatorWindow.rows, sprites=C64EmulatorWindow.sprites)
-    emu = C64EmulatorWindow(screen, "Commodore-64 'emulator' in pure Python!")
+    screen = ScreenAndMemory(columns=C64EmulatorWindow.columns,
+                             rows=C64EmulatorWindow.rows,
+                             sprites=C64EmulatorWindow.sprites,
+                             rom_directory="roms")
+    emu = C64EmulatorWindow(screen, "Commodore-64 'emulator' in pure Python!", "roms")
     emu.start()
     emu.mainloop()
 

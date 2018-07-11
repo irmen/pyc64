@@ -55,7 +55,7 @@ class CPU(mpu6502.MPU):
                 break
             if self.memory[self.pc] in stopcodes:
                 end_time = time.perf_counter()
-                raise InterruptedError("brk instruction")
+                raise InterruptedError("brk instruction at ${:04x}".format(self.pc))
         duration = end_time - start_time
         mips = instructions / duration / 1e6
         print(self.name + " CPU simulator: {:d} instructions in {:.3f} seconds = {:.3f} mips (~{:.3f} times realtime)"
