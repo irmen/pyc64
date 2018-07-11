@@ -30,8 +30,9 @@ class Monitor(py65.monitor.Monitor):
 
 
 class CPU(mpu6502.MPU):
-    def run(self, pc=None, microsleep=None, loop_detect_delay=2):
+    def run(self, pc=None, microsleep=None, loop_detect_delay=0.5):
         end_address = 0xffff
+        self.sp = 0xf2
         self.stPushWord(end_address - 1)   # push a sentinel return address
         if pc is not None:
             self.pc = pc
@@ -43,6 +44,8 @@ class CPU(mpu6502.MPU):
                 # JMP to itself, instead of looping forever we also consider this a program end
                 end_time = time.perf_counter()
                 time.sleep(loop_detect_delay)
+                print(self.name + " CPU simulator: infinite jmp loop detected at ${:04x}, considered as end-of-program.".format(self.pc))
+                self.stPopWord()   # pop the sentinel return address
                 break
             self.step()
             instructions += 1

@@ -56,8 +56,8 @@ def start():
     screen = ScreenAndMemory(columns=EmulatorPlusWindow.columns,
                              rows=EmulatorPlusWindow.rows,
                              sprites=EmulatorPlusWindow.sprites,
-                             rom_directory="roms")
-    emu = EmulatorPlusWindow(screen, "Commodore-64 \"PLUSPLUS\" 'emulator' in pure Python!", "roms")
+                             rom_directory=None)
+    emu = EmulatorPlusWindow(screen, "Commodore-64 \"PLUSPLUS\" simulator in pure Python!", None)
     emu.start()
     emu.mainloop()
 

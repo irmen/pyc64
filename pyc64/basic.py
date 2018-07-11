@@ -109,9 +109,11 @@ class BasicInterpreter:
         self.program_lines = None
         self.sleep_until = None
         self.must_run_stop = False
-        self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
-        self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
-        self.write_prompt("\n")
+        if not self.screen.using_roms:
+            # only print the basic header when we're not using actual roms
+            self.screen.writestr("\n    **** commodore 64 basic v2 ****\n")
+            self.screen.writestr("\n 64k ram system  38911 basic bytes free\n")
+            self.write_prompt("\n")
         self.stop_running_program()
 
     @property
@@ -211,7 +213,6 @@ class BasicInterpreter:
         self.write_prompt()
 
     def _execute_cmd(self, cmd, all_cmds_on_line=None):
-        # print("RUN CMD:", repr(cmd))   # XXX
         if cmd.startswith(("read", "rE")):
             self.execute_read(cmd)
         elif cmd.startswith(("restore", "reS")):

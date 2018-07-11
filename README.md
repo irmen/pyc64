@@ -1,4 +1,4 @@
-# pyc64: Commodore-64 "emulator" in pure Python!
+# pyc64: Commodore-64 simulator in pure Python!
 
 ![Screenshot one](demo_screenshot1.png)
 
@@ -17,6 +17,17 @@ This is made possible by the awesome [py65](https://github.com/mnaberez/py65) li
 Note that while it can run the 6502 code,
 you can only do the same things with it as what is supported
 for the BASIC mode. So no fancy screen scrolling or rasterbars...
+
+
+## can load and use real C64 ROMs
+
+If basic/kernal/chargen ROM files are supplied in the roms folder,
+the simulator will load these and make them part of the memory of the machine as ROM areas.
+You can actually call machine code routines from the roms!
+Such as the well-known reset routine, SYS 64738 .
+The simulator will use this routine as well when the machine is reset!
+(just a few slight kernel patches are made to make it compatible and to avoid ending
+up in the actual ROM BASIC program loop - that doesn't work for now)
 
 
 ## BASIC V2 and the VIC-registers (video chip)

@@ -1,5 +1,5 @@
 """
-Commodore-64 'emulator' in 100% pure Python 3.x :)
+Commodore-64 simulator in 100% pure Python 3.x :)
 
 This module is the GUI window logic, handling keyboard input
 and screen drawing via tkinter bitmaps.
@@ -20,13 +20,13 @@ from collections import deque
 from PIL import Image
 from .memory import ScreenAndMemory
 from .basic import BasicInterpreter
-from .shared import ResetMachineException
+from .shared import ResetMachineException, do_sys
 from .python import PythonInterpreter
 
 
 def create_bitmaps_from_char_rom(temp_graphics_folder, roms_directory):
     # create char bitmaps from the orignal c-64 chargen rom file
-    rom = open(roms_directory+"/"+"chargen", "rb").read()
+    rom = open(roms_directory+"/chargen", "rb").read()
     def doublewidth_and_mirror(b):
         result = 0
         for _ in range(8):
@@ -68,7 +68,7 @@ class EmulatorWindowBase(tkinter.Tk):
     charset_normal = "charset-normal.png"
     charset_shifted = "charset-shifted.png"
     colorpalette = []
-    welcome_message = "Welcome to the emulator!"
+    welcome_message = "Welcome to the simulator!"
 
     def __init__(self, screen, title, roms_directory):
         if len(self.colorpalette) not in (2, 4, 8, 16, 32, 64, 128, 256):
@@ -94,8 +94,8 @@ class EmulatorWindowBase(tkinter.Tk):
                                      borderwidth=0, highlightthickness=0, background="black",
                                      xscrollincrement=1, yscrollincrement=1)
         self.buttonbar = tkinter.Frame(self)
-        resetbut = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
-        resetbut.pack(side=tkinter.LEFT)
+        resetbut1 = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
+        resetbut1.pack(side=tkinter.LEFT)
         self.buttonbar.pack(fill=tkinter.X)
         self.refreshtick = threading.Event()
         self.spritebitmapbytes = [None] * self.sprites
@@ -243,12 +243,15 @@ class EmulatorWindowBase(tkinter.Tk):
         os.makedirs(self.temp_graphics_folder, exist_ok=True)
         with open(self.temp_graphics_folder + "/readme.txt", "w") as f:
             f.write("this is a temporary folder to cache pyc64 files for tkinter graphics bitmaps.\n")
-        if roms_directory and os.path.isfile(roms_directory+"/"+"chargen"):
+        if roms_directory and os.path.isfile(roms_directory+"/chargen"):
             # create char bitmaps from the C64 chargen rom file.
             print("creating char bitmaps from chargen rom")
             create_bitmaps_from_char_rom(self.temp_graphics_folder, roms_directory)
         else:
-            print("creating char bitmaps from png images in the package")
+            if roms_directory:
+                print("creating char bitmaps from png images in the package (consider supplying {:s}/chargen ROM file)".format(roms_directory))
+            else:
+                print("creating char bitmaps from png images in the package")
             # normal
             with Image.open(io.BytesIO(pkgutil.get_data(__name__, "charset/" + self.charset_normal))) as source_chars:
                 for i in range(256):
@@ -302,7 +305,7 @@ class EmulatorWindowBase(tkinter.Tk):
         raise NotImplementedError("implement in subclass")
 
     def reset_machine(self):
-        self.screen.reset()
+        self.screen.reset(False)
         self.repaint()
 
 
@@ -325,9 +328,9 @@ class C64EmulatorWindow(EmulatorWindowBase):
 
     def start(self):
         super().start()
-        self.switch_interpreter("basic")
         self._cyclic_herztick()
         self._cyclic_blink_cursor()
+        self.reset_machine()
 
     def _cyclic_herztick(self):
         self.after(1000 // self.screen.hz, self._cyclic_herztick)
@@ -616,6 +619,10 @@ class C64EmulatorWindow(EmulatorWindowBase):
         super().reset_machine()
         self.screen.memory[0x00fb] = EmulatorWindowBase.update_rate
         self.switch_interpreter("basic")
+        if self.screen.using_roms:
+            print("using actual ROM reset routine (sys 64738)")
+            do_sys(self.screen, 64738, use_rom_routines=True)
+            self.interpreter.write_prompt("\n\n\n\n\n")
 
 
 class InterpretThread(threading.Thread):
@@ -742,11 +749,12 @@ class InterpretThread(threading.Thread):
 
 
 def start():
+    rom_directory = "roms"
     screen = ScreenAndMemory(columns=C64EmulatorWindow.columns,
                              rows=C64EmulatorWindow.rows,
                              sprites=C64EmulatorWindow.sprites,
-                             rom_directory="roms")
-    emu = C64EmulatorWindow(screen, "Commodore-64 'emulator' in pure Python!", "roms")
+                             rom_directory=rom_directory)
+    emu = C64EmulatorWindow(screen, "Commodore-64 simulator in pure Python!", rom_directory)
     emu.start()
     emu.mainloop()
 
