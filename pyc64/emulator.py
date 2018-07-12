@@ -621,7 +621,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
         self.switch_interpreter("basic")
         if self.screen.using_roms:
             print("using actual ROM reset routine (sys 64738)")
-            do_sys(self.screen, 64738, use_rom_routines=True)
+            do_sys(self.screen, 64738, self.interpret_thread._microsleep, use_rom_routines=True)
             self.interpreter.write_prompt("\n\n\n\n\n")
 
 
@@ -700,7 +700,7 @@ class InterpretThread(threading.Thread):
 
     def _microsleep(self):
         # artificial microscopic delay to yield the thread and allow screen to refresh
-        self.window.hertztick.wait(1)
+        self.window.hertztick.wait(.02)
         self.window.hertztick.clear()
 
     def stop(self):

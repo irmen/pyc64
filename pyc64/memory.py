@@ -10,7 +10,7 @@ Written by Irmen de Jong (irmen@razorvine.net)
 License: MIT open-source.
 """
 
-import os
+import math
 import time
 import struct
 import codecs
@@ -273,11 +273,9 @@ class ScreenAndMemory:
             # apply some ROM patches to make the reset routine work on the simulator:
             self.memory._patch(0xe388, 0x4c)   # JMP to same address near the end of the reset routine
             self.memory._patch(0xe389, 0x88)   # ...to avoid entering actual basic program loop. RTS won't work because the stack is clobbered I think.
-            self.memory._patch(0xe38a, 0xe3)   # ...(this jmp loop is recognised by the cpu emulator as an 'end of the program')
+            self.memory._patch(0xe38a, 0xe3)   # ...(this jmp loop is recognised by tahe cpu emulator as an 'end of the program')
             # self.memory._patch(0xfce5, 0xea)   # NOP to not clobber stack pointer register in reset routine
             self.memory._patch(0xfcf6, 0x90)   # skip a large part of the memory init routine that is very slow and may cause issues
-            self.memory._patch(0xff61, 0xea)   # NOP to skip a loop in the reset routine
-            self.memory._patch(0xff62, 0xea)   # NOP to skip a loop in the reset routine
         self.hz = 60        # NTSC
         self.columns = columns
         self.rows = rows
@@ -324,6 +322,19 @@ class ScreenAndMemory:
         def write_controlregister(address, oldval, newval):
             pass
 
+        def read_controlregister(address, value):
+            # the high bit of the control register is bit#9 of the raster beam position (0-319)
+            frac, _ = math.modf(time.time() * self.hz)
+            if 320 * frac > 255:
+                return value | 0x80
+            return value & 0x7f
+
+        def read_raster(address, value):
+            # the raster beam position which goes from 0-319 every 1/hz second
+            # this register contains the low 8 bits of this value
+            frac, _ = math.modf(time.time() * self.hz)
+            return int(320 * frac) % 255
+
         self.memory.intercept_read(160, read_jiffieclock)
         self.memory.intercept_read(161, read_jiffieclock)
         self.memory.intercept_read(162, read_jiffieclock)
@@ -334,6 +345,8 @@ class ScreenAndMemory:
         self.memory.intercept_write(53281, write_screencolor)
         self.memory.intercept_write(53270, write_controlregister)
         self.memory.intercept_write(53265, write_controlregister)
+        self.memory.intercept_read(53265, read_controlregister)
+        self.memory.intercept_read(53266, read_raster)
 
     def reset(self, hard=False):
         self._full_repaint = True

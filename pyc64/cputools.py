@@ -49,8 +49,7 @@ class CPU(mpu6502.MPU):
                 break
             self.step()
             instructions += 1
-            if microsleep and instructions % 4000 == 0:
-                # print("microsleep", instructions)
+            if microsleep and instructions % 5000 == 0:
                 microsleep()
             if self.pc == end_address:
                 # when this address is reached, we consider it the end of the program
