@@ -160,7 +160,7 @@ class BasicInterpreter:
                     # schedule next line to be executed
                     self.next_run_line_idx += 1
         except GotoLineException as gx:
-            self.next_run_line_idx = gx.line_idx
+            self.implementGoto(gx)            
         except FlowcontrolException:
             if in_program:
                 if not recursive:
@@ -182,6 +182,9 @@ class BasicInterpreter:
             self.screen.writestr("\n?" + str(ex).lower() + "  error\n")
             self.write_prompt()
             self.stop_running_program()
+
+    def implementGoto(self,gx: GotoLineException):
+        self.next_run_line_idx = gx.line_idx
 
     def process_programline_entry(self, line):
         match = re.match("(\d+)(\s*.*)", line)
@@ -242,6 +245,8 @@ class BasicInterpreter:
             self.execute_sys(cmd)
         elif cmd.startswith(("goto", "gO")):
             self.execute_goto(cmd)
+        elif cmd.startswith(("on")):
+            self.execute_on_goto_gosub(cmd)
         elif cmd.startswith(("for", "fO")):
             self.execute_for(cmd, all_cmds_on_line)
         elif cmd.startswith(("next", "nE")):
@@ -292,7 +297,9 @@ class BasicInterpreter:
     def execute_help(self, cmd):
         self.screen.writestr("\nknown statements:\n")
         known = ["?", "print", "cls", "color", "cursor", "data", "dos", "end", "for", "get", "gopy",
-                 "goto", "if", "list", "load", "new", "next", "peek", "peekw", "poke", "pokew",
+                 "goto", 
+                 "on...goto",
+                 "if", "list", "load", "new", "next", "peek", "peekw", "poke", "pokew",
                  "read", "rem", "restore", "run", "save", "scroll", "sleep", "stop", "sys", "help",
                  "monitor", "sync"]
         for kw in sorted(known):
@@ -405,6 +412,51 @@ class BasicInterpreter:
             if line not in self.program:
                 raise BasicError("undef'd statement")
             raise GotoLineException(self.program_lines.index(line))
+    """
+    on <index-1-based> goto|gosub <line1>,<line2> 
+
+    if index evaluate to 1 the execution proceed on line1
+    """            
+    def execute_on_goto_gosub(self,cmd):
+        gosub=False
+        if cmd.startswith("on"):
+            cmd=cmd[2:]
+        if cmd.find("goto")==-1 and cmd.find("gosub")==-1:
+            raise BasicError("syntax")
+        else:
+            # Find out index list
+            l2=(cmd[(cmd.find("go")+2):]).strip()
+            # DEBUG print(l2)
+            if l2.startswith("to"):
+                # goto branch
+                gosub=False
+                targetLineList=l2[2:]
+            elif l2.startswith("sub"):
+                gosub=True
+                targetLineList=l2[3:]
+            else:
+                raise BasicError("syntax")
+        targetLineList=targetLineList.strip()
+        # Arrayz...ize it        
+        lineTargetTuple=eval("("+targetLineList+")")
+        goInx=cmd.find("go")
+        expr=cmd[0:goInx]
+        print("lineTargetTuple= %s expr=  %s " % (lineTargetTuple, str(expr)))
+        # Make a zero-based index
+        onGoIndex=int(eval(expr))-1        
+        line=lineTargetTuple[onGoIndex]
+        if gosub==False:
+            if not self.running_program:
+                # do a run instead
+                self.execute_run("run " + str(line))
+            else:
+                if line not in self.program:
+                    raise BasicError("undef'd statement")
+                raise GotoLineException(self.program_lines.index(line))               
+        else:
+            raise BasicError("gosub unsupported yet")
+            # raise BasicError("syntax")
+
 
     def execute_sleep(self, cmd, all_cmds_on_line):
         if cmd.startswith("sL"):
@@ -596,6 +648,7 @@ class BasicInterpreter:
         if program and not isinstance(program, dict):
             raise BasicError("invalid file type")
         self.program = program
+        # print("LOADED:"+str(program))
 
     def execute_dos(self, cmd):
         # to show floppy contents without clobbering basic program like LOAD"$",8 would
