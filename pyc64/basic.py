@@ -414,8 +414,8 @@ class BasicInterpreter:
             raise GotoLineException(self.program_lines.index(line))
     """
     on <index-1-based> goto|gosub <line1>,<line2> 
-
     if index evaluate to 1 the execution proceed on line1
+
     """            
     def execute_on_goto_gosub(self,cmd):
         gosub=False
@@ -437,17 +437,15 @@ class BasicInterpreter:
             else:
                 raise BasicError("syntax")
         targetLineList=targetLineList.strip()
-        # Arrayz...ize it        
+        # Make a tuple of the target list         
         lineTargetTuple=eval("("+targetLineList+")")
         goInx=cmd.find("go")
-        expr=cmd[0:goInx]
-        print("lineTargetTuple= %s expr=  %s " % (lineTargetTuple, str(expr)))
-        # Make a zero-based index
-        onGoIndex=int(eval(expr))-1        
+        expr=cmd[0:goInx]        
+        # eval the on <expr> goto part
+        onGoIndex=int(eval(expr,self.symbols))-1        
         line=lineTargetTuple[onGoIndex]
         if gosub==False:
             if not self.running_program:
-                # do a run instead
                 self.execute_run("run " + str(line))
             else:
                 if line not in self.program:
@@ -648,7 +646,6 @@ class BasicInterpreter:
         if program and not isinstance(program, dict):
             raise BasicError("invalid file type")
         self.program = program
-        # print("LOADED:"+str(program))
 
     def execute_dos(self, cmd):
         # to show floppy contents without clobbering basic program like LOAD"$",8 would

@@ -29,7 +29,7 @@ class BasicEmulatorTest(unittest.TestCase):
             self.assertEqual(3,b.next_run_line_idx)
             #b.execute_run("run")
             # print("***"+str(b.))
-    # TODO Implement a silly test program
+    # TODO Implement a silly test program to test the on expr syntax
 
 if __name__ == '__main__':
     unittest.main()
