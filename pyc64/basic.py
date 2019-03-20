@@ -436,14 +436,12 @@ class BasicInterpreter:
                 targetLineList=l2[3:]
             else:
                 raise BasicError("syntax")
-        targetLineList=targetLineList.strip()
-        # Make a tuple of the target list         
-        lineTargetTuple=eval("("+targetLineList+")")
+        lineTargetTuple=targetLineList.strip().split(",")        
         goInx=cmd.find("go")
         expr=cmd[0:goInx]        
         # eval the on <expr> goto part
         onGoIndex=int(eval(expr,self.symbols))-1        
-        line=lineTargetTuple[onGoIndex]
+        line=int(lineTargetTuple[onGoIndex])
         if gosub==False:
             if not self.running_program:
                 self.execute_run("run " + str(line))
