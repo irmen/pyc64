@@ -582,7 +582,7 @@ class ScreenAndMemory:
 
     @classmethod
     def _petscii2screen(cls, petscii_code, inversevid=False):
-        if petscii_code <= 0x0f:
+        if petscii_code <= 0x1f:
             code = petscii_code + 128
         elif petscii_code <= 0x3f:
             code = petscii_code
