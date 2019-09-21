@@ -5,7 +5,7 @@
 ... Or is it?
 
 Well, it emulates the character mode *with sprites* quite well and thus you can display pretty PETSCII pictures if you want.
-It's generally not possible to run actual C-64 software, but that's not the goal
+It's generally not possible to run actual C-64 software, but that's not the real goal
 of this project. (Look at actual c-64 emulators such as Vice or CCS64 if you want that)
 
 
@@ -19,15 +19,22 @@ you can only do the same things with it as what is supported
 for the BASIC mode. So no fancy screen scrolling or rasterbars...
 
 
-## can load and use real C64 ROMs
+## Can run the real BASIC and KERNAL roms! True C64 emulation! 
 
 If basic/kernal/chargen ROM files are supplied in the roms folder,
 the simulator will load these and make them part of the memory of the machine as ROM areas.
-You can actually call machine code routines from the roms!
-Such as the well-known reset routine, SYS 64738 .
-The simulator will use this routine as well when the machine is reset!
-(just a few slight kernel patches are made to make it compatible and to avoid ending
-up in the actual ROM BASIC program loop - that doesn't work for now)
+If you run the ``startreal64`` program, it will load the ``realemulator`` module
+instead of the simulated one, and will *actually run the C64 BASIC ROM*. 
+
+You can type anything in BASIC that you could type on a real C64 too!
+
+Unfortunately, the I/O is not emulated so it is not possible to load or save
+your programs in this mode.
+
+On my machine the current code runs at around 0.6 Mhz in regular Python 
+(around half the speed of a real c64),
+and between 2 and 3 Mhz in Pypy (there is a lot more speed than this obtainable
+with pypy, but that makes the c64's basic mode more or less unusable)
 
 
 ## BASIC V2 and the VIC-registers (video chip)
@@ -106,9 +113,12 @@ are included on the 'virtual disk' in this project)
 
 PETSCII image:
 
-![Screenshot two](demo_screenshot2.png)
+![Screenshot](demo_screenshot2.png)
 
 Python mode:
 
-![Screenshot two](demo_screenshot3.png)
+![Screenshot](demo_screenshot3.png)
 
+Real emulation of a C64:
+
+![Screenshot](demo_screenshot4.png)

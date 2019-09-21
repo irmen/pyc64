@@ -14,6 +14,7 @@ import sys
 import tkinter
 import pkgutil
 import threading
+import time
 import queue
 import time
 from collections import deque
@@ -127,8 +128,9 @@ class EmulatorWindowBase(tkinter.Tk):
             self.canvas.tag_raise(self.border3)
             self.border4 = self.canvas.create_rectangle(*b4, outline="", fill="#000")
             self.canvas.tag_raise(self.border4)
-        self.bind("<KeyPress>", self.keypress)
+        # self.bind("<KeyPress>", self.keypress)
         self.bind("<KeyRelease>", self.keyrelease)
+        self.bind("<Key>", self.keypress)
         self.canvas.pack()
 
     def start(self):
@@ -234,6 +236,7 @@ class EmulatorWindowBase(tkinter.Tk):
             if configure:
                 # reconfigure all changed properties in one go
                 self.canvas.itemconfigure(self.spritebitmaps[snum], **configure)
+        self.update_idletasks()
         self.refreshtick.set()
 
     def smoothscroll(self, xs, ys):
@@ -319,17 +322,20 @@ class C64EmulatorWindow(EmulatorWindowBase):
                       "use 'gopy' to enter Python mode\n\n\n\n" \
                       "(install the py64 library to be able to execute 6502 machine code)"
 
-    def __init__(self, screen, title, roms_directory):
+    def __init__(self, screen, title, roms_directory, run_real_roms):
         super().__init__(screen, title, roms_directory)
         self.screen.memory[0x00fb] = EmulatorWindowBase.update_rate
         self.hertztick = threading.Event()
         self.interpret_thread = None
         self.interpreter = None
+        self.real_cpu_running = None
+        self.run_real_roms = run_real_roms
 
     def start(self):
         super().start()
-        self._cyclic_herztick()
-        self._cyclic_blink_cursor()
+        if not self.run_real_roms:
+            self._cyclic_herztick()
+            self._cyclic_blink_cursor()
         self.reset_machine()
 
     def _cyclic_herztick(self):
@@ -618,11 +624,19 @@ class C64EmulatorWindow(EmulatorWindowBase):
     def reset_machine(self):
         super().reset_machine()
         self.screen.memory[0x00fb] = EmulatorWindowBase.update_rate
-        self.switch_interpreter("basic")
+        if not self.run_real_roms:
+            self.switch_interpreter("basic")
         if self.screen.using_roms:
-            print("using actual ROM reset routine (sys 64738)")
-            do_sys(self.screen, 64738, self.interpret_thread._microsleep, use_rom_routines=True)
-            self.interpreter.write_prompt("\n\n\n\n\n")
+            reset = self.screen.memory.getword(0xfffc)
+            print("using actual ROM reset routine at", reset)
+            if self.run_real_roms:
+                if self.real_cpu_running is None:
+                    threading.Thread(target=self.run_rom_code, args=(reset,), daemon=True).start()
+                else:
+                    self.real_cpu_running.reset()
+            else:
+                do_sys(self.screen, reset, self.interpret_thread._microsleep, use_rom_routines=True)
+                self.interpreter.write_prompt("\n\n\n\n\n")
 
 
 class InterpretThread(threading.Thread):
@@ -748,13 +762,17 @@ class InterpretThread(threading.Thread):
                 self.keybuffer.clear()
 
 
-def start():
+def start(run_real_roms):
     rom_directory = "roms"
     screen = ScreenAndMemory(columns=C64EmulatorWindow.columns,
                              rows=C64EmulatorWindow.rows,
                              sprites=C64EmulatorWindow.sprites,
-                             rom_directory=rom_directory)
-    emu = C64EmulatorWindow(screen, "Commodore-64 simulator in pure Python!", rom_directory)
+                             rom_directory=rom_directory,
+                             run_real_roms=run_real_roms)
+    if run_real_roms:
+        emu = RealC64EmulatorWindow(screen, "Commodore-64 emulator in pure Python! - running actual roms", rom_directory)
+    else:
+        emu = C64EmulatorWindow(screen, "Commodore-64 simulator in pure Python!", rom_directory, False)
     emu.start()
     emu.mainloop()
 
