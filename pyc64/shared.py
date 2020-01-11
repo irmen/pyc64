@@ -138,7 +138,7 @@ def do_sys(screen, addr, microsleep=None, use_rom_routines=False):
     cpu.a, cpu.x, cpu.y, cpu.p = screen.memory[0x030c:0x0310]
     try:
         import time
-        time.sleep(1)
+        time.sleep(0.1)
         cpu.run(microsleep=microsleep)
     finally:
         # store result A,X,Y and P back to ram

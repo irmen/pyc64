@@ -338,21 +338,18 @@ class ScreenAndMemory:
             frac, _ = math.modf(time.perf_counter() * self.hz)
             return int(320 * frac) % 255
 
-        if run_real_roms:
-            print("INTERCEPT SHIFTED")
-            self.memory.intercept_write(53272, write_shifted)
-            self.memory.intercept_write(53281, write_screencolor)
-            self.memory.intercept_read(53265, read_controlregister)
-            self.memory.intercept_read(53266, read_raster)
-            self.memory.intercept_write(53270, write_controlregister)
-            self.memory.intercept_write(53265, write_controlregister)
-        else:
-            self.memory.intercept_read(160, read_jiffieclock)
-            self.memory.intercept_read(161, read_jiffieclock)
-            self.memory.intercept_read(162, read_jiffieclock)
-            self.memory.intercept_write(160, write_jiffieclock)
-            self.memory.intercept_write(161, write_jiffieclock)
-            self.memory.intercept_write(162, write_jiffieclock)
+        self.memory.intercept_write(53272, write_shifted)
+        self.memory.intercept_write(53281, write_screencolor)
+        self.memory.intercept_read(53265, read_controlregister)
+        self.memory.intercept_read(53266, read_raster)
+        self.memory.intercept_write(53270, write_controlregister)
+        self.memory.intercept_write(53265, write_controlregister)
+        self.memory.intercept_read(160, read_jiffieclock)
+        self.memory.intercept_read(161, read_jiffieclock)
+        self.memory.intercept_read(162, read_jiffieclock)
+        self.memory.intercept_write(160, write_jiffieclock)
+        self.memory.intercept_write(161, write_jiffieclock)
+        self.memory.intercept_write(162, write_jiffieclock)
 
     def reset(self, hard=False):
         self._full_repaint = True
