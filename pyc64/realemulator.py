@@ -12,7 +12,7 @@ import time
 from pyc64.emulator import C64EmulatorWindow
 from .memory import ScreenAndMemory
 from .cputools import CPU
-
+import struct
 
 class RealC64EmulatorWindow(C64EmulatorWindow):
     welcome_message = "Running the Real ROMS!"
@@ -39,6 +39,10 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             while time.perf_counter() - irq_start_time < 1.0/60.0:
                 for _ in range(1000):
                     cpu.step()
+                    if cpu.pc == 0xFFD8:
+                        self.breakpointKernelSave(cpu,mem)
+                    elif cpu.pc == 0xffd5:
+                        self.breakpointKernelLoad(cpu,mem)
                     # set the raster line based off the number of CPU cycles processed
                     raster = (cpu.processorCycles//63) % 312
                     if raster != old_raster:
@@ -52,10 +56,87 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             self.irq(cpu)
             duration = time.perf_counter() - irq_start_time
             speed = (cpu.processorCycles-previous_cycles) / duration / 1e6
-            previous_cycles = cpu.processorCycles
+            previous_cycles = cpu.processorCycles            
             print("CPU simulator: PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} -  clockspeed = {:.1f} MHz   "
               .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed), end="\r")
 
+
+    def breakpointKernelSave(self,cpu,ram):
+        """ Ref https://github.com/irmen/ksim65/blob/d1d433c3a640e1429f8fe2755afa96ca39c4dfbb/src/main/kotlin/razorvine/c64emu/c64Main.kt#L82
+        """        
+        print("Kernal Save Intercept....")        
+        fnlen = ram[0xb7]   # file name length
+        fa = ram[0xba]      # device number
+        sa = ram[0xb9]      # secondary address
+        fnaddr = cpu.WordAt(0xbb)  # memory[0xbb]+256*memory[0xbc]  # file name address
+        if fnlen >0:
+            print("Saving...")
+            fname=self.get_filename(fnaddr,fnlen,cpu)            
+            startAddr= ram[cpu.a]+256*ram[cpu.a+1]
+            endAddr=cpu.x+256*cpu.y                        
+            print("Filename {} Start Addr:{:02X} End: {:02X} Size:{}".format(fname,startAddr,endAddr, endAddr-startAddr))
+            # Write fromAddr high and low
+            with open("drive8/" + fname, "wb") as file:
+                file.write(startAddr.to_bytes(2, byteorder='little'))
+                print("Header ok")
+                for i in range(startAddr,endAddr):
+                    data= ram[i].to_bytes(1, byteorder='little')
+                    file.write( data )
+                    print("{}".format(data))
+                file.close()                
+            # write data
+            ram[0x90]=0 # OK
+            print("Save completed")
+            #success!
+            cpu.pc=0xf5a9
+        else:
+            print("?missing file name")
+            cpu.pc=0xf710 
+
+    def get_filename(self,fnaddr,fnlen,cpu):
+        fname=""
+        for i in range(0,fnlen):
+            fname=fname + chr(cpu.ByteAt(fnaddr+i)).lower()
+        if not fname.endswith(".prg"):
+            fname=fname+".prg"
+        return fname         
+
+    def breakpointKernelLoad(self,cpu,ram):
+        """
+        """
+        if cpu.a ==0:
+            fnlen = ram[0xb7]   # file name length
+            fa = ram[0xba]      # device number (i.e 8)
+            sa = ram[0xb9]      # secondary address (i.e 15 for disk commands)
+            destinationAddress=ram[0x2b]+256*ram[0x2c]
+            fnaddr = cpu.WordAt(0xbb) 
+            # changePC = 0xf704)   // 'file not found'
+            fname=self.get_filename(fnaddr,fnlen,cpu)
+            if fnlen >0:
+                try:
+                    with open("drive8/" + fname, "rb") as file:
+                        startAddr = struct.unpack("<H", file.read(2))[0]                    
+                        print("Start Addr: {:02X}".format(startAddr))
+                        prog=file.read()
+                        endAddress= startAddr + len(prog)
+                        ram[startAddr: endAddress] = prog
+                        print("Load Completed up to: $ {:02X}".format(endAddress))
+                        ram[0x90] = 0  # status OK
+                        # low-high address here
+                        ram[0xae]= endAddress & 0x00ff
+                        high=(endAddress & 0xff00) >>8                    
+                        ram[0xaf]= high
+                        file.close()                
+                    # success
+                    cpu.pc=0xf5a9
+                except FileNotFoundError:
+                    cpu.pc=0xf704 # 'file not found'
+            else:
+                print("?missing file name")
+                cpu.pc=0xf710 
+        else:
+            print("device not present (VERIFY command not supported)")
+            cpu.pc=0xf707
     def irq(self, cpu):
         self.simulate_keystrokes()
         if hasattr(cpu, "irq"):
