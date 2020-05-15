@@ -14,18 +14,35 @@ from .memory import ScreenAndMemory
 from .cputools import CPU
 import struct
 
+class DummyEvent():
+    def __init__(self,c):
+        self.char=c
+        self.state=0
+        if c=='\r':
+            self.keysym="Return"
+            self.keycode=36
+        else:
+            self.keysym=''
+            self.keycode=0
+        self.x=0
+        self.y=0
+
 class RealC64EmulatorWindow(C64EmulatorWindow):
     welcome_message = "Running the Real ROMS!"
     update_rate = 1000/20
 
-    def __init__(self, screen, title, roms_directory):
-        super().__init__(screen, title, roms_directory, True)
-        self.keypresses = []
+    def __init__(self, screen, title, roms_directory,argv):
+        super().__init__(screen, title, roms_directory, True)        
+        self.keypresses = [ ]
+        if argv!=None and len(argv) >=2:            
+            for c in  reversed("lO\"" + argv[1]+ "\"\rlI\rrun\r"):
+                 self.keypresses.append( DummyEvent(c))
 
     def keyrelease(self, event):
         pass
 
     def keypress(self, event):
+        #print(repr(event))
         self.keypresses.append(event)
 
     def run_rom_code(self, reset):
@@ -93,50 +110,123 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             print("?missing file name")
             cpu.pc=0xf710 
 
-    def get_filename(self,fnaddr,fnlen,cpu):
-        fname=""
-        for i in range(0,fnlen):
-            fname=fname + chr(cpu.ByteAt(fnaddr+i)).lower()
-        if not fname.endswith(".prg"):
-            fname=fname+".prg"
-        return fname         
-
     def breakpointKernelLoad(self,cpu,ram):
-        """
-        """
+        """ Ported from kim65
+        https://github.com/irmen/ksim65/blob/d1d433c3a640e1429f8fe2755afa96ca39c4dfbb/src/main/kotlin/razorvine/c64emu/c64Main.kt#L82
+        """        
         if cpu.a ==0:
             fnlen = ram[0xb7]   # file name length
             fa = ram[0xba]      # device number (i.e 8)
             sa = ram[0xb9]      # secondary address (i.e 15 for disk commands)
+            # Redirect TAP to disk8
+            if fa==1:
+                fa=8
             destinationAddress=ram[0x2b]+256*ram[0x2c]
-            fnaddr = cpu.WordAt(0xbb) 
-            # changePC = 0xf704)   // 'file not found'
+            fnaddr = cpu.WordAt(0xbb)             
             fname=self.get_filename(fnaddr,fnlen,cpu)
-            if fnlen >0:
+            if fnlen ==0:
+                print("?missing file name")
+                cpu.pc=0xf710 
+                return
+            if fname=="$":
+                # Make magic dir listing
+                print("Generating dir listing")
+                prog=self.make_dir_listing(fa,destinationAddress)
+                self.load(destinationAddress,prog)  
+                cpu.pc=0xf5a9
+                return            
+            else:
                 try:
-                    with open("drive8/" + fname, "rb") as file:
-                        startAddr = struct.unpack("<H", file.read(2))[0]                    
-                        print("Start Addr: {:02X}".format(startAddr))
+                    with open("drive{}/{}".format(fa, fname), "rb") as file:
+                        startAddr = struct.unpack("<H", file.read(2))[0]                                            
                         prog=file.read()
-                        endAddress= startAddr + len(prog)
-                        ram[startAddr: endAddress] = prog
-                        print("Load Completed up to: $ {:02X}".format(endAddress))
-                        ram[0x90] = 0  # status OK
-                        # low-high address here
-                        ram[0xae]= endAddress & 0x00ff
-                        high=(endAddress & 0xff00) >>8                    
-                        ram[0xaf]= high
+                        endAddress=self.load(startAddr,prog)
+                        print("\nDevice: {:02X}:{:02X} Start Addr: {:02X} Load Completed up to: $ {:02X}\n".format(fa,sa,startAddr, endAddress))                        
                         file.close()                
                     # success
                     cpu.pc=0xf5a9
                 except FileNotFoundError:
-                    cpu.pc=0xf704 # 'file not found'
-            else:
-                print("?missing file name")
-                cpu.pc=0xf710 
+                    cpu.pc=0xf704 # 'file not found'           
         else:
             print("device not present (VERIFY command not supported)")
             cpu.pc=0xf707
+
+    def load(self,startAddr,prog):
+        """
+         Load a program into memory.
+         Emulate Kernal code for prg loads
+        """
+        ram = self.screen.memory
+        cpu = self.real_cpu_running
+        endAddress= startAddr + len(prog)
+        ram[startAddr: endAddress] = prog
+        ram[0x90] = 0  # status OK                
+        ram[0xae]= endAddress & 0x00ff
+        high=(endAddress & 0xff00) >>8                    
+        ram[0xaf]= high
+        return endAddress        
+
+    def get_filename(self,fnaddr,fnlen,cpu):
+        fname=""
+        for i in range(0,fnlen):
+            fname=fname + chr(cpu.ByteAt(fnaddr+i)).lower()
+        if not fname.endswith(".prg") and fname!="$":
+            fname=fname+".prg"
+        return fname         
+
+    def make_dir_listing(self,deviceNumber,basicLoadAddress):
+        listing=[]
+        address = basicLoadAddress
+        def add_line(lineNumber:int, line: str):
+            nonlocal address
+            address = address + len(line)+3
+            listing.append(address & 0xff)
+            listing.append( (address & 0xff00) >>8 )
+            listing.append( lineNumber & 0xff)
+            listing.append( (lineNumber & 0xff00) >>8 )
+            data=bytearray(line,"utf-8")
+            for d in data:
+                listing.append(d)
+            listing.append(0)
+        add_line(0, "\u0012\"DRIVE{}\" 00 2A".format(deviceNumber))
+        # scan directory and find out files.
+        # Then produce a "floppy disk drive"-like directory
+        add_line(644, "BLOCKS FREE.")
+        # Basic program termination
+        listing.append(0);listing.append(0)
+        return listing
+        """
+            private fun makeDirListing(dirname: String, files: Map<Pair<String, String>, Pair<File, Long>>,
+                                    basicLoadAddress: Address): Array<UByte> {
+                var address = basicLoadAddress
+                val listing = mutableListOf<UByte>()
+                fun addLine(lineNumber: Int, line: String) {
+                    address += line.length+3
+                    listing.add((address and 0xff).toShort())
+                    listing.add((address ushr 8).toShort())
+                    listing.add((lineNumber and 0xff).toShort())
+                    listing.add((lineNumber ushr 8).toShort())
+                    listing.addAll(line.map { it.toShort() })
+                    listing.add(0)
+                }
+                addLine(0, "\u0012\"${dirname.take(16).padEnd(16)}\" 00 2A")
+                var totalBlocks = 0
+                files.forEach {
+                    val blocksize = (it.value.second/256).toInt()
+                    totalBlocks += blocksize
+                    val filename = it.key.first.take(16)
+                    val padding1 = "   ".substring(blocksize.toString().length)
+                    val padding2 = "                ".substring(filename.length)
+                    addLine(blocksize, "$padding1 \"$filename\" $padding2${it.key.second.take(3).padEnd(3)}")
+                }
+                addLine(kotlin.math.max(0, 664-totalBlocks), "BLOCKS FREE.")
+                listing.add(0)
+                listing.add(0)
+                return listing.toTypedArray()
+            }
+        """
+
+
     def irq(self, cpu):
         self.simulate_keystrokes()
         if hasattr(cpu, "irq"):
@@ -187,6 +277,7 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         num_keys = self.screen.memory[0xc6]
         while self.keypresses and num_keys < self.screen.memory[0x289]:
             event = self.keypresses.pop()
+            #print(repr(event))
             char = event.char
             if not char or ord(char) > 255:
                 char = event.keysym
@@ -248,14 +339,14 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         self.screen.memory[0xc6] = num_keys
 
 
-def start():
+def start(args=None):
     rom_directory = "roms"
     screen = ScreenAndMemory(columns=C64EmulatorWindow.columns,
                              rows=C64EmulatorWindow.rows,
                              sprites=C64EmulatorWindow.sprites,
                              rom_directory=rom_directory,
                              run_real_roms=True)
-    emu = RealC64EmulatorWindow(screen, "Commodore-64 emulator in pure Python! - running actual roms", rom_directory)
+    emu = RealC64EmulatorWindow(screen, "Commodore-64 emulator in pure Python! - running actual roms", rom_directory,args)
     emu.start()
     emu.mainloop()
 

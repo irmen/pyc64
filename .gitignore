@@ -19,3 +19,5 @@
 /roms/basic
 /roms/chargen
 /roms/kernal
+.vscode
+roms/@eaDir
