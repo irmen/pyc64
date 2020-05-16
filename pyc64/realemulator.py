@@ -13,6 +13,7 @@ from pyc64.emulator import C64EmulatorWindow
 from .memory import ScreenAndMemory
 from .cputools import CPU
 import struct
+import os, fnmatch
 
 class DummyEvent():
     def __init__(self,c):
@@ -78,50 +79,49 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
               .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed), end="\r")
 
 
-    def breakpointKernelSave(self,cpu,ram):
+    def breakpointKernelSave(self,cpu,mem):        
         """ Ref https://github.com/irmen/ksim65/blob/d1d433c3a640e1429f8fe2755afa96ca39c4dfbb/src/main/kotlin/razorvine/c64emu/c64Main.kt#L82
-        """        
+        """
         print("Kernal Save Intercept....")        
-        fnlen = ram[0xb7]   # file name length
-        fa = ram[0xba]      # device number
-        sa = ram[0xb9]      # secondary address
+        fnlen = mem[0xb7]   # file name length
+        fa = mem[0xba]      # device number
+        sa = mem[0xb9]      # secondary address
         fnaddr = cpu.WordAt(0xbb)  # memory[0xbb]+256*memory[0xbc]  # file name address
-        if fnlen >0:
-            print("Saving...")
+        if fnlen >0:            
             fname=self.get_filename(fnaddr,fnlen,cpu)            
-            startAddr= ram[cpu.a]+256*ram[cpu.a+1]
+            startAddr= mem[cpu.a]+256*mem[cpu.a+1]
             endAddr=cpu.x+256*cpu.y                        
-            print("Filename {} Start Addr:{:02X} End: {:02X} Size:{}".format(fname,startAddr,endAddr, endAddr-startAddr))
+            print("\nSaving... {} Start Addr:{:02X} End: {:02X} Size:{}".format(fname,startAddr,endAddr, endAddr-startAddr))
             # Write fromAddr high and low
             with open("drive8/" + fname, "wb") as file:
                 file.write(startAddr.to_bytes(2, byteorder='little'))
                 print("Header ok")
                 for i in range(startAddr,endAddr):
-                    data= ram[i].to_bytes(1, byteorder='little')
+                    data= mem[i].to_bytes(1, byteorder='little')
                     file.write( data )
                     print("{}".format(data))
                 file.close()                
             # write data
-            ram[0x90]=0 # OK
-            print("Save completed")
+            mem[0x90]=0 # OK
+            print("Save completed\n")
             #success!
             cpu.pc=0xf5a9
         else:
             print("?missing file name")
             cpu.pc=0xf710 
 
-    def breakpointKernelLoad(self,cpu,ram):
+    def breakpointKernelLoad(self,cpu,mem):
         """ Ported from kim65
         https://github.com/irmen/ksim65/blob/d1d433c3a640e1429f8fe2755afa96ca39c4dfbb/src/main/kotlin/razorvine/c64emu/c64Main.kt#L82
-        """        
+        """
         if cpu.a ==0:
-            fnlen = ram[0xb7]   # file name length
-            fa = ram[0xba]      # device number (i.e 8)
-            sa = ram[0xb9]      # secondary address (i.e 15 for disk commands)
+            fnlen = mem[0xb7]   # file name length
+            fa = mem[0xba]      # device number (i.e 8)
+            sa = mem[0xb9]      # secondary address (i.e 15 for disk commands)
             # Redirect TAP to disk8
             if fa==1:
                 fa=8
-            destinationAddress=ram[0x2b]+256*ram[0x2c]
+            destinationAddress=mem[0x2b]+256*mem[0x2c]
             fnaddr = cpu.WordAt(0xbb)             
             fname=self.get_filename(fnaddr,fnlen,cpu)
             if fnlen ==0:
@@ -136,16 +136,19 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                 cpu.pc=0xf5a9
                 return            
             else:
+                final_path="drive{}/{}".format(fa, fname)
                 try:
-                    with open("drive{}/{}".format(fa, fname), "rb") as file:
+                    with open(final_path, "rb") as file:
                         startAddr = struct.unpack("<H", file.read(2))[0]                                            
                         prog=file.read()
                         endAddress=self.load(startAddr,prog)
-                        print("\nDevice: {:02X}:{:02X} Start Addr: {:02X} Load Completed up to: $ {:02X}\n".format(fa,sa,startAddr, endAddress))                        
+                        print("\nLoading {:02X}:{:02X} {} Start Addr: {:02X} ... up to: $ {:02X}\n".format(
+                                       fa,sa,final_path, startAddr, endAddress))                        
                         file.close()                
                     # success
                     cpu.pc=0xf5a9
                 except FileNotFoundError:
+                    print("ERR FILE NOT FOUND:", final_path)
                     cpu.pc=0xf704 # 'file not found'           
         else:
             print("device not present (VERIFY command not supported)")
@@ -187,44 +190,24 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             data=bytearray(line,"utf-8")
             for d in data:
                 listing.append(d)
-            listing.append(0)
-        add_line(0, "\u0012\"DRIVE{}\" 00 2A".format(deviceNumber))
+            listing.append(0)        
+        # For formatting see https://pyformat.info/#string_pad_align
+        add_line(0, "\u0012\"{:16.16}\" 00 2A".format("DRIVE"+str(deviceNumber)))
         # scan directory and find out files.
         # Then produce a "floppy disk drive"-like directory
-        add_line(644, "BLOCKS FREE.")
+        total_blocks=0
+        for root, dirs, filenames in os.walk("./drive{}".format(deviceNumber)):
+            for fname in fnmatch.filter(filenames,"*.prg"):                
+                st=os.stat(os.path.join(root,fname))
+                block_size=int(st.st_size/256)+1
+                total_blocks += block_size                                    
+                # Create an aligned line
+                pad1="   "[0: 3-len(str(block_size))] 
+                add_line(block_size,"{} {:18.18} {:3.3}".format(pad1,"\""+fname[0:-4].upper()+"\"",fname[-3:].upper()))                
+        add_line(644-total_blocks , "BLOCKS FREE.")
         # Basic program termination
         listing.append(0);listing.append(0)
         return listing
-        """
-            private fun makeDirListing(dirname: String, files: Map<Pair<String, String>, Pair<File, Long>>,
-                                    basicLoadAddress: Address): Array<UByte> {
-                var address = basicLoadAddress
-                val listing = mutableListOf<UByte>()
-                fun addLine(lineNumber: Int, line: String) {
-                    address += line.length+3
-                    listing.add((address and 0xff).toShort())
-                    listing.add((address ushr 8).toShort())
-                    listing.add((lineNumber and 0xff).toShort())
-                    listing.add((lineNumber ushr 8).toShort())
-                    listing.addAll(line.map { it.toShort() })
-                    listing.add(0)
-                }
-                addLine(0, "\u0012\"${dirname.take(16).padEnd(16)}\" 00 2A")
-                var totalBlocks = 0
-                files.forEach {
-                    val blocksize = (it.value.second/256).toInt()
-                    totalBlocks += blocksize
-                    val filename = it.key.first.take(16)
-                    val padding1 = "   ".substring(blocksize.toString().length)
-                    val padding2 = "                ".substring(filename.length)
-                    addLine(blocksize, "$padding1 \"$filename\" $padding2${it.key.second.take(3).padEnd(3)}")
-                }
-                addLine(kotlin.math.max(0, 664-totalBlocks), "BLOCKS FREE.")
-                listing.add(0)
-                listing.add(0)
-                return listing.toTypedArray()
-            }
-        """
 
 
     def irq(self, cpu):
