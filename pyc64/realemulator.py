@@ -197,13 +197,20 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         # Then produce a "floppy disk drive"-like directory
         total_blocks=0
         for root, dirs, filenames in os.walk("./drive{}".format(deviceNumber)):
-            for fname in fnmatch.filter(filenames,"*.prg"):                
+            for fname in fnmatch.filter(filenames,"*"):
                 st=os.stat(os.path.join(root,fname))
                 block_size=int(st.st_size/256)+1
-                total_blocks += block_size                                    
+                total_blocks += block_size
+                if "." in fname:
+                    splitted_filename=fname.upper().split(".")
+                    base_filename=splitted_filename[0]
+                    extension=splitted_filename[1]
+                else:
+                    base_filename=fname.upper()
+                    extension=""
                 # Create an aligned line
                 pad1="   "[0: 3-len(str(block_size))] 
-                add_line(block_size,"{} {:18.18} {:3.3}".format(pad1,"\""+fname[0:-4].upper()+"\"",fname[-3:].upper()))                
+                add_line(block_size,"{} {:18.18} {:3.3}".format(pad1,"\""+base_filename+"\"",extension))                
         add_line(644-total_blocks , "BLOCKS FREE.")
         # Basic program termination
         listing.append(0);listing.append(0)
