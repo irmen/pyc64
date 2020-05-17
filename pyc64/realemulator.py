@@ -88,12 +88,12 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         sa = mem[0xb9]      # secondary address
         fnaddr = cpu.WordAt(0xbb)  # memory[0xbb]+256*memory[0xbc]  # file name address
         if fnlen >0:            
-            fname=self.get_filename(fnaddr,fnlen,cpu)            
+            fname=self.get_filename(fnaddr,fnlen,cpu)
             startAddr= mem[cpu.a]+256*mem[cpu.a+1]
-            endAddr=cpu.x+256*cpu.y                        
+            endAddr=cpu.x+256*cpu.y
             print("\nSaving... {} Start Addr:{:02X} End: {:02X} Size:{}".format(fname,startAddr,endAddr, endAddr-startAddr))
             # Write fromAddr high and low
-            with open("drive8/" + fname, "wb") as file:
+            with open("drive{}/{}".format(fa,fname), "wb") as file:
                 file.write(startAddr.to_bytes(2, byteorder='little'))
                 print("Header ok")
                 for i in range(startAddr,endAddr):
