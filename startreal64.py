@@ -1,3 +1,4 @@
 from pyc64 import realemulator
+import sys
 
-realemulator.start()
+realemulator.start(sys.argv)

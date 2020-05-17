@@ -36,6 +36,19 @@ On my machine the current code runs at around 0.6 Mhz in regular Python
 and between 2 and 3 Mhz in Pypy (there is a lot more speed than this obtainable
 with pypy, but that makes the c64's basic mode more or less unusable)
 
+### I/O Emulation
+In real mode, you can load real programs using I/O emulation.
+Also you can specify load file at boot: for example, for loading drive8/hello.prg at boot type
+
+> python3 startreal64.py hello
+
+Try also:
+
+> python3 startreal64.py gary2
+
+TAPE are redirected to drive8
+
+
 
 ## BASIC V2 and the VIC-registers (video chip)
 
