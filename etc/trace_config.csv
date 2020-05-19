@@ -1,0 +1,505 @@
+# Category,entry_point, comment
+BASIC,A000,Restart Vectors
+BASIC,A004,'CBMBASIC'-Identifier
+BASIC,A00C,BASIC Command Vectors - 1
+BASIC,A052,BASIC Function Vectors
+BASIC,A080,BASIC Operator Vectors
+BASIC,A09E,BASIC Command Keyword Table
+BASIC,A129,BASIC Misc. Keyword Table
+BASIC,A140,BASIC Operator Keyword Table
+BASIC,A14D,BASIC Function Keyword Table
+BASIC,A19E,Error Message Table
+BASIC,A328,Error Message Pointers
+BASIC,A364,Misc. Messages
+BASIC,A38A,Find FOR/GOSUB Entry on Stack
+BASIC,A3B8,Open Space in Memory
+BASIC,A3FB,Check Stack Depth
+BASIC,A408,Check Memory Overlap
+BASIC,A435,Output ?OUT OF MEMORY Error
+BASIC,A437,Error Routine
+BASIC,A469,Break Entry
+BASIC,A474,Restart BASIC
+BASIC,A480,Input & Identify BASIC Line
+BASIC,A49C,Get Line Number & Tokenise Text
+BASIC,A4A2,Insert BASIC Text
+BASIC,A533,Rechain Lines
+BASIC,A560,Input Line Into Buffer
+BASIC,A579,Tokenise Input Buffer
+BASIC,A613,Search for Line Number
+BASIC,A642,Perform [new]
+BASIC,A65E,Perform [clr]
+BASIC,A68E,Reset TXTPTR
+BASIC,A69C,Perform [list]
+BASIC,A717,Handle LIST Character
+BASIC,A742,Perform [for]
+BASIC,A7AE,BASIC Warm Start
+BASIC,A7C4,Check End of Program
+BASIC,A7E1,Prepare to execute statement
+BASIC,A7ED,Perform BASIC Keyword
+BASIC,A81D,Perform [restore]
+BASIC,A82C,Perform [stop]
+BASIC,A82F,Perform [end]
+BASIC,A831,Perform Break
+BASIC,A857,Perform [cont]
+BASIC,A871,Perform [run]
+BASIC,A883,Perform [gosub]
+BASIC,A8A0,Perform [goto]
+BASIC,A8D2,Perform [return]
+BASIC,A8F8,Perform [data]
+BASIC,A906,Search for Next Statement / Line
+BASIC,A928,Perform [if]
+BASIC,A93B,Perform [rem]
+BASIC,A94B,Perform [on]
+BASIC,A96B,Fetch linnum From BASIC
+BASIC,A9A5,Perform [let]
+BASIC,A9C4,Assign Integer
+BASIC,A9D6,Assign Floating Point
+BASIC,A9D9,Assign String
+BASIC,A9E3,Assign TI$
+BASIC,AA2C,Add Digit to FAC#1
+BASIC,AA80,Perform [print#]
+BASIC,AA86,Perform [cmd]
+BASIC,AA9A,Print String From Memory
+BASIC,AAA0,Perform [print]
+BASIC,AAB8,Output Variable
+BASIC,AACA,-Add zero terminator to string
+BASIC,AAD7,Output CR/LF
+BASIC,AAE8,Handle comma, TAB(, SPC(,Handle comma, TAB(
+BASIC,AB1E,Output String
+BASIC,AB3B,Output Format Character
+BASIC,AB4D,Handle Bad Data
+BASIC,AB7B,Perform [get]
+BASIC,ABA5,Perform [input#]
+BASIC,ABBF,Perform [input]
+BASIC,ABEA,Read Input Buffer
+BASIC,ABF9,Do Input Prompt
+BASIC,AC06,Perform [read]
+BASIC,AC35,General Purpose Read Routine
+BASIC,ACFC,Input Error Messages
+BASIC,AD1E,Perform [next]
+BASIC,AD61,Check Valid Loop
+BASIC,AD8A,Confirm Result
+BASIC,AD9E,Evaluate Expression in Text
+BASIC,AE83,Evaluate Single Term
+BASIC,AEA8,Constant - pi
+BASIC,AEAD,Continue Expression
+BASIC,AEF1,Expression in Brackets
+BASIC,AEF7,Test ')'
+BASIC,AEFA,Test '('
+BASIC,AEFD,Test ',',Test '
+BASIC,AF08,Output ?SYNTAX Error
+BASIC,AF0D,Set up NOT Function
+BASIC,AF14,Identify Reserved Variable
+BASIC,AF28,Search for Variable
+BASIC,AF48,Convert TI to ASCII String
+BASIC,AFA7,Identify Function Type
+BASIC,AFB1,Evaluate String Function
+BASIC,AFD1,Evaluate Numeric Function
+BASIC,AFE6,Perform [or], [and],Perform [or]
+BASIC,B016,Perform <, =, >,Perform <, =
+BASIC,B01B,Numeric Comparison
+BASIC,B02E,String Comparison
+BASIC,B07E,Perform [dim]
+BASIC,B08B,Identify Variable
+BASIC,B0E7,Locate Ordinary Variable
+BASIC,B113,Does A hold an alphabetic character?
+BASIC,B11D,Create New Variable
+BASIC,B128,Create Variable
+BASIC,B194,Allocate Array Pointer Space
+BASIC,B1A5,Constant 32768 in Flpt
+BASIC,B1AA,FAC#1 to Integer in A/Y
+BASIC,B1B2,Evaluate Text for Integer
+BASIC,B1BF,FAC#1 to Positive Integer
+BASIC,B1D1,Get Array Parameters
+BASIC,B218,Find Array
+BASIC,B245,?BAD SUBSCRIPT
+BASIC,B248,?ILLEGAL QUANTITY
+BASIC,B24D,?REDIM'D ARRAY
+BASIC,B261,Create Array
+BASIC,B30E,Locate Element in Array
+BASIC,B34C,Number of Bytes in Subscript
+BASIC,B37D,Evaluate <fre>
+BASIC,B391,Convert Integer in (AC/YR) to Flpt
+BASIC,B39E,Evaluate <pos>
+BASIC,B3A6,Confirm Program Mode
+BASIC,B3AE,?UNDEF'D FUNCTION
+BASIC,B3B3,Perform [def fn]
+BASIC,B3E1,Check Syntax of FN
+BASIC,B3F4,Perform [fn]
+BASIC,B465,Evaluate <str$>
+BASIC,B487,Set Up String
+BASIC,B4D5,Save String Descriptor
+BASIC,B4F4,Allocate Space for String
+BASIC,B526,Garbage Collection
+BASIC,B5BD,Search for Next String
+BASIC,B606,Collect a String
+BASIC,B63D,Concatenate Two Strings
+BASIC,B67A,Store String in High RAM
+BASIC,B6A3,Perform String Housekeeping
+BASIC,B6DB,Clean Descriptor Stack
+BASIC,B6EC,Evaluate <chr$>
+BASIC,B700,Evaluate <left$>
+BASIC,B72C,Evaluate <right$>
+BASIC,B737,Evaluate <mid$>
+BASIC,B761,Pull String Parameters
+BASIC,B77C,Evaluate <len>
+BASIC,B782,Exit String Mode
+BASIC,B78B,Evaluate <asc>
+BASIC,B79B,Evaluate Text to 1 Byte in XR
+BASIC,B7AD,Evaluate <val>
+BASIC,B7B5,Convert ASCII String to Flpt
+BASIC,B7EB,Get parameters for POKE/WAIT
+BASIC,B7F7,Convert FAC#1 to Integer in LINNUM
+BASIC,B80D,Evaluate <peek>
+BASIC,B824,Perform [poke]
+BASIC,B82D,Perform [wait]
+BASIC,B849,Add 0.5 to FAC#1
+BASIC,B850,Perform Subtraction
+BASIC,B862,Normalise Addition
+BASIC,B867,Perform Addition
+BASIC,B947,2's Complement FAC#1
+BASIC,B97E,Output ?OVERFLOW Error
+BASIC,B983,Multiply by Zero Byte
+BASIC,B9BC,Table of Flpt Constants  1.00
+BASIC,B9C1,Table of Flpt Constants  #03
+BASIC,B9C2,Table of Flpt Constants  0.434255942
+BASIC,B9C7,Table of Flpt Constants  0.57658454
+BASIC,B9CC,Table of Flpt Constants  0.961800759
+BASIC,B9D1,Table of Flpt Constants  2.885390073
+BASIC,B9D6,Table of Flpt Constants  0.707106781
+BASIC,B9DB,Table of Flpt Constants  1.41421356
+BASIC,B9E0,Table of Flpt Constants  -0.5
+BASIC,B9E5,Table of Flpt Constants  0.693147181
+BASIC,B9EA,Evaluate <log>
+BASIC,BA28,Perform Multiply
+BASIC,BA59,Multiply by a Byte
+BASIC,BA8C,Load FAC#2 From Memory
+BASIC,BAB7,Test Both Accumulators
+BASIC,BAD4,Overflow / Underflow
+BASIC,BAE2,Multiply FAC#1 by 10
+BASIC,BAF9,Constant 10 in Flpt
+BASIC,BAFE,Divide FAC#1 by 10
+BASIC,BB07,Divide FAC#2 by Flpt at (AC/YR)
+BASIC,BB0F,Divide FAC#2 by FAC#1
+BASIC,BBA2,Load FAC#1 From Memory
+BASIC,BBC7,Store FAC#1 in Memory
+BASIC,BBFC,Copy FAC#2 into FAC#1
+BASIC,BC0C,Copy FAC#1 into FAC#2
+BASIC,BC1B,Round FAC#1
+BASIC,BC2B,Check Sign of FAC#1
+BASIC,BC39,Evaluate <sgn>
+BASIC,BC58,Evaluate <abs>
+BASIC,BC5B,Compare FAC#1 With Memory
+BASIC,BC9B,Convert FAC#1 to Integer
+BASIC,BCCC,Evaluate <int>
+BASIC,BCF3,Convert ASCII String to a Number in FAC
+BASIC,BDB3,String Conversion Constants    99999999
+BASIC,BDB8,String Conversion Constants   999999999
+BASIC,BDBD,String Conversion Constants  1000000000
+BASIC,BDC2,Output 'IN' and Line Number
+BASIC,BDCD,Output Positive Integer in A/X
+BASIC,BDDD,Convert FAC#1 to ASCII String
+BASIC,BE68,Convert TI to String
+BASIC,BF11,Table of Constants  0.5
+BASIC,BF16,Table of Constants  4-byte powers of 10
+BASIC,BF3A,Table of Constants  TI Constants
+BASIC,BF71,Evaluate <sqr>
+BASIC,BF7B,Evaluate <power>
+BASIC,BFB4,Negate FAC#1
+BASIC,BFBF,Table of Constants  1.44269504
+BASIC,BFC4,Table of Constants  #07
+BASIC,BFC5,Table of Constants  2.149875 E-5
+BASIC,BFCA,Table of Constants  1.435231 E-4
+BASIC,BFCF,Table of Constants  1.342263 E-3
+BASIC,BFD4,Table of Constants  9.6414017 E-3
+BASIC,BFD9,Table of Constants  5.550513 E-2
+BASIC,BFDE,Table of Constants  2.402263 E-4
+BASIC,BFE3,Table of Constants  6.931471 E-1
+BASIC,BFE8,Table of Constants  1.00
+BASIC,BFED,Evaluate <exp>
+# KERNAL Entry point 
+KERNAL,E000,EXP continued From BASIC ROM
+KERNAL,E043,Series Evaluation
+KERNAL,E08D,Constants for RND
+KERNAL,E097,Evaluate <rnd>
+KERNAL,E0F9,Handle I/O Error in BASIC
+#KERNAL,E10C,Output Character
+KERNAL,E112,Input Character
+KERNAL,E118,Set Up For Output
+KERNAL,E11E,Set Up For Input
+KERNAL,E124,Get One Character
+KERNAL,E12A,Perform [sys]
+KERNAL,E156,Perform [save]
+KERNAL,E165,Perform [verify]
+KERNAL,E168,Perform [load]
+KERNAL,E1BE,Perform [open]
+KERNAL,E1C7,Perform [close]
+KERNAL,E1D4,Get Parameters For LOAD/SAVE
+KERNAL,E200,Get Next One Byte Parameter
+#KERNAL,E206,Check Default Parameters
+KERNAL,E20E,Check For Comma
+KERNAL,E219,Get Parameters For OPEN/CLOSE
+KERNAL,E264,Evaluate <cos>
+KERNAL,E26B,Evaluate <sin>
+KERNAL,E2B4,Evaluate <tan>
+KERNAL,E2E0,Table of Trig Constants   1.570796327
+KERNAL,E2E5,Table of Trig Constants   6.28318531
+KERNAL,E2EA,Table of Trig Constants   0.25
+KERNAL,E2EF,Table of Trig Constants   #05
+KERNAL,E2F0,Table of Trig Constants   -14.3813907
+KERNAL,E2F5,Table of Trig Constants   42.0077971
+KERNAL,E2FA,Table of Trig Constants   -76.7041703
+KERNAL,E2FF,Table of Trig Constants   81.6052237
+KERNAL,E304,Table of Trig Constants   -41.3417021
+KERNAL,E309,Table of Trig Constants   6.28318531
+KERNAL,E30E,Evaluate <atn>
+KERNAL,E33E,Table of ATN Constants   #0b
+KERNAL,E33F,Table of ATN Constants   -0.00068479391
+KERNAL,E344,Table of ATN Constants   0.00485094216
+KERNAL,E349,Table of ATN Constants   -0.161117018
+KERNAL,E34E,Table of ATN Constants   0.034209638
+KERNAL,E353,Table of ATN Constants   -0.0542791328
+KERNAL,E358,Table of ATN Constants   0.0724571965
+KERNAL,E35D,Table of ATN Constants   -0.0898023954
+KERNAL,E362,Table of ATN Constants   0.110932413
+KERNAL,E367,Table of ATN Constants   -0.142839808
+KERNAL,E36C,Table of ATN Constants   0.19999912
+KERNAL,E371,Table of ATN Constants   -0.333333316
+KERNAL,E376,Table of ATN Constants   1.00
+KERNAL,E37B,BASIC Warm Start [RUNSTOP-RESTORE]
+KERNAL,E394,BASIC Cold Start
+KERNAL,E3A2,CHRGET For Zero-page
+KERNAL,E3BA,RND Seed For zero-page
+KERNAL,E3BF,Initialize BASIC RAM
+KERNAL,E422,Output Power-Up Message
+KERNAL,E447,Table of BASIC Vectors (for 0300)
+KERNAL,E453,Initialize Vectors
+KERNAL,E45F,Power-Up Message
+KERNAL,E4AC,Version Indicator(?)
+KERNAL,E4AD,Patch for BASIC Call to CHKOUT
+KERNAL,E4B7,Unused Bytes For Future Patches
+KERNAL,E4D3,Patch for RS232-Routines
+# KERNAL,E4DA,Reset Character Color
+KERNAL,E4E0,Pause After Finding Tape File
+KERNAL,E4EC,RS232 Timing Table -- PAL
+KERNAL,E500,Get I/O Address
+KERNAL,E505,Get Screen Size
+KERNAL,E50A,Put / Get Row And Column
+KERNAL,E518,Initialize I/O
+KERNAL,E544,Clear Screen
+KERNAL,E566,Home Cursor
+#KERNAL,E56C,Set Screen Pointers
+KERNAL,E59A,Set I/O Defaults (Unused Entry)
+KERNAL,E5A0,Set I/O Defaults
+#KERNAL,E5B4,Get Character From Keyboard Buffer
+##? KERNAL,E5CA,Input From Keyboard
+KERNAL,E632,Input From Screen or Keyboard
+#KERNAL,E684,Quotes Test
+#KERNAL,E691,Set Up Screen Print
+#KERNAL,E6B6,Advance Cursor
+#KERNAL,E6ED,Retreat Cursor
+KERNAL,E701,Back on to Previous Line
+#KERNAL,E716,Output to Screen
+#KERNAL,E72A,-unshifted characters-
+#KERNAL,E7D4,-shifted characters-
+#KERNAL,E87C,Go to Next Line
+KERNAL,E891,Output <CR>
+#KERNAL,E8A1,Check Line Decrement
+#KERNAL,E8B3,Check Line Increment
+#KERNAL,E8CB,Set Color Code
+KERNAL,E8DA,Color Code Table
+KERNAL,E8EA,Scroll Screen
+KERNAL,E965,Open A Space On The Screen
+KERNAL,E9C8,Move A Screen Line
+#KERNAL,E9E0,Syncronise Color Transfer
+#KERNAL,E9F0,Set Start of Line
+#KERNAL,E9FF,Clear Screen Line
+#KERNAL,EA13,Print To Screen
+#KERNAL,EA24,Syncronise Color Pointer
+#KERNAL,EA31,Main IRQ Entry Point
+#KERNAL,EA81,Restore A/X/Y and End IRQ
+#KERNAL,EA87,Scan Keyboard
+KERNAL,EADD,Process Key Image
+KERNAL,EB48,Check for Shift, CTRL, C=
+KERNAL,EB79,Pointers to Keyboard decoding tables
+KERNAL,EB81,Keyboard 1 -- Unshifted
+KERNAL,EBC2,Keyboard 2 -- Shifted
+KERNAL,EC03,Keyboard 3 -- Commodore
+#KERNAL,EC44,Graphics/Text Control
+#KERNAL,EC78,Keyboard 4 -- Control
+KERNAL,ECB9,Video Chip Setup Table
+KERNAL,ECE7,Shift-Run Equivalent
+KERNAL,ECF0,Low Byte Screen Line Addresses
+KERNAL,ED09,Send TALK Command on Serial Bus
+KERNAL,ED0C,Send LISTEN Command on Serial Bus
+KERNAL,ED40,Send Data On Serial Bus
+KERNAL,EDAD,Flag Errors: Status #80 - DEVICE NOT PRESENT
+KERNAL,EDB0,Flag Errors: Status #03 - WRITE TIMEOUT
+KERNAL,EDB9,Send LISTEN Secondary Address
+KERNAL,EDBE,Clear ATN
+KERNAL,EDC7,Send TALK Secondary Address
+KERNAL,EDCC,Wait For Clock
+KERNAL,EDDD,Send Serial Deferred
+KERNAL,EDEF,Send UNTALK
+KERNAL,EDFE,Send UNLISTEN
+KERNAL,EE13,Receive From Serial Bus
+#KERNAL,EE85,Serial Clock On
+#KERNAL,EE8E,Serial Clock Off
+KERNAL,EE97,Serial Output 1
+KERNAL,EEA0,Serial Output 0
+KERNAL,EEA9,Get Serial Data And Clock In
+KERNAL,EEB3,Delay 1 ms
+KERNAL,EEBB,RS232 Send
+KERNAL,EF06,Send New RS232 Byte
+KERNAL,EF2E,'No DSR' / 'No CTS' Error
+KERNAL,EF39,Disable Timer
+KERNAL,EF4A,Compute Bit Count
+KERNAL,EF59,RS232 Receive
+KERNAL,EF7E,Set Up To Receive
+KERNAL,EF90,Process RS232 Byte
+KERNAL,EFE1,Submit to RS232
+KERNAL,F00D,No DSR (Data Set Ready) Error
+KERNAL,F017,Send to RS232 Buffer
+KERNAL,F04D,Input From RS232
+KERNAL,F086,Get From RS232
+KERNAL,F0A4,Serial Bus Idle
+KERNAL,F0BD,Table of Kernal I/O Messages
+KERNAL,F12B,Print Message if Direct
+KERNAL,F12F,Print Message
+KERNAL,F13E,Get a byte
+KERNAL,F157,Input a byte
+KERNAL,F199,Get From Tape / Serial / RS232
+# KERNAL,F1CA,Output One Character
+KERNAL,F20E,Set Input Device
+KERNAL,F250,Set Output Device
+KERNAL,F291,Close File
+KERNAL,F30F,Find File
+KERNAL,F31F,Set File values
+KERNAL,F32F,Abort All Files
+KERNAL,F333,Restore Default I/O
+KERNAL,F34A,Open File
+KERNAL,F3D5,Send Secondary Address
+KERNAL,F409,Open RS232
+KERNAL,F49E,Load RAM
+KERNAL,F4B8,Load File From Serial Bus
+KERNAL,F533,Load File From Tape
+KERNAL,F5AF,Print \"SEARCHING\"
+KERNAL,F5C1,Print Filename
+KERNAL,F5D2,Print \"LOADING / VERIFYING\"
+KERNAL,F5DD,Save RAM
+KERNAL,F5FA,Save to Serial Bus
+KERNAL,F659,Save to Tape
+KERNAL,F68F,Print \"SAVING\"
+#KERNAL,F69B,Bump Clock
+KERNAL,F6DD,Get Time
+KERNAL,F6E4,Set Time
+KERNAL,F6ED,Check STOP Key
+KERNAL,F6FB,Output I/O Error Messages: 'TOO MANY FILES'
+KERNAL,F6FE,Output I/O Error Messages: 'FILE OPEN'
+KERNAL,F701,Output I/O Error Messages: 'FILE NOT OPEN'
+KERNAL,F704,Output I/O Error Messages: 'FILE NOT FOUND'
+KERNAL,F707,Output I/O Error Messages: 'DEVICE NOT PRESENT'
+KERNAL,F70A,Output I/O Error Messages: 'NOT INPUT FILE'
+KERNAL,F70D,Output I/O Error Messages: 'NOT OUTPUT FILE'
+KERNAL,F710,Output I/O Error Messages: 'MISSING FILENAME'
+KERNAL,F713,Output I/O Error Messages: 'ILLEGAL DEVICE NUMBER'
+KERNAL,F72C,Find Any Tape Header
+KERNAL,F76A,Write Tape Header
+KERNAL,F7D0,Get Buffer Address
+KERNAL,F7D7,Set Buffer Stat / End Pointers
+KERNAL,F7EA,Find Specific Tape Header
+KERNAL,F80D,Bump Tape Pointer
+KERNAL,F817,Print \"PRESS PLAY ON TAPE\"
+KERNAL,F82E,Check Tape Status
+KERNAL,F838,Print \"PRESS RECORD...\"
+KERNAL,F841,Initiate Tape Read
+KERNAL,F864,Initiate Tape Write
+KERNAL,F875,Common Tape Code
+KERNAL,F8D0,Check Tape Stop
+KERNAL,F8E2,Set Read Timing
+KERNAL,F92C,Read Tape Bits
+KERNAL,FA60,Store Tape Characters
+KERNAL,FB8E,Reset Tape Pointer
+KERNAL,FB97,New Character Setup
+KERNAL,FBA6,Send Tone to Tape
+KERNAL,FBC8,Write Data to Tape
+KERNAL,FBCD,IRQ Entry Point
+KERNAL,FC57,Write Tape Leader
+KERNAL,FC93,Restore Normal IRQ
+KERNAL,FCB8,Set IRQ Vector
+KERNAL,FCCA,Stop Tape Motor
+KERNAL,FCD1,Check Read / Write Pointer
+KERNAL,FCDB,Bump Read / Write Pointer
+KERNAL,FCE2,Power-Up RESET Entry
+KERNAL,FD02,Check For 8-ROM
+KERNAL,FD10,8-ROM Mask 'CBM80'
+KERNAL,FD15,Restore Kernal Vectors
+KERNAL,FD1A,Change Vectors For User
+KERNAL,FD30,Kernal Reset Vectors
+KERNAL,FD50,Initialise System Constants
+KERNAL,FD9B,IRQ Vectors For Tape I/O
+KERNAL,FDA3,Initialise I/O
+KERNAL,FDDD,Enable Timer
+#KERNAL,FDF9,Set Filename
+KERNAL,FE00,Set Logical File Parameters
+KERNAL,FE07,Get I/O Status Word
+#KERNAL,FE18,Control OS Messages
+KERNAL,FE21,Set IEEE Timeout
+KERNAL,FE25,Read / Set Top of Memory
+KERNAL,FE34,Read / Set Bottom of Memory
+KERNAL,FE43,NMI Transfer Entry
+KERNAL,FE66,Warm Start Basic
+KERNAL,FEBC,Exit Interrupt
+KERNAL,FEC2,RS232 Timing Table - NTSC
+KERNAL,FED6,NMI RS232 In
+KERNAL,FF07,NMI RS232 Out
+KERNAL,FF43,Fake IRQ Entry
+KERNAL,FF48,IRQ Entry
+KERNAL,FF5B,Initialize screen editor
+KERNAL,FF80,Kernal Version Number
+KERNAL,FF81,Init Editor & Video Chips
+KERNAL,FF84,Init I/O Devices, Ports & Timers
+KERNAL,FF87,Init Ram & Buffers
+KERNAL,FF8A,Restore Vectors
+KERNAL,FF8D,Change Vectors For User
+#KERNAL,FF90,Control OS Messages
+KERNAL,FF93,Send SA After Listen
+KERNAL,FF96,Send SA After Talk
+KERNAL,FF99,Set/Read System RAM Top
+KERNAL,FF9C,Set/Read System RAM Bottom
+KERNAL,FF9F,Scan Keyboard
+KERNAL,FFA2,Set Timeout In IEEE
+KERNAL,FFA5,Handshake Serial Byte In
+KERNAL,FFA8,Handshake Serial Byte Out
+KERNAL,FFAB,Command Serial Bus UNTALK
+KERNAL,FFAE,Command Serial Bus UNLISTEN
+KERNAL,FFB1,Command Serial Bus LISTEN
+KERNAL,FFB4,Command Serial Bus TALK
+KERNAL,FFB7,Read I/O Status Word st -> A
+KERNAL,FFBA,Set Logical File Parameters: logical, first, and second addresses	A = lfn, X = pa, Y = sa
+KERNAL,FFBD,Set Filename A = len, X/Y = name
+KERNAL,FFC0,Open a logical file
+KERNAL,FFC3,Close logical file A = lfn
+KERNAL,FFC6,CHKIN	Open channel for input	X = lfn
+KERNAL,FFC9,CHKOUT	Open channel for output	X = lfn
+KERNAL,FFCC,CLRCHN	Close input and output channels
+KERNAL,FFCF,CHRIN	Input character from channel	byte -> A
+#KERNAL,FFD2,CHROUT	Output character to channel	A = byte
+KERNAL,FFD5,Load RAM From Device
+KERNAL,FFD8,Save RAM To Device
+KERNAL,FFDB,Set Real-Time Clock
+KERNAL,FFDE,Read Real-Time Clock
+#KERNAL,FFE1,Test-Stop Vector
+#KERNAL,FFE4,Get From Keyboad
+KERNAL,FFE7,CLALL Close All Channels And Files
+# KERNAL,FFEA,Increment Real-Time Clock
+KERNAL,FFED,Return Screen Organization
+KERNAL,FFF0,Read / Set Cursor X/Y Position
+KERNAL,FFF3,Return I/O Base Address
+KERNAL,FFF6,-
+KERNAL,FFF8,SYSTEM
+KERNAL,FFFA,Vector: NMI
+KERNAL,FFFC,Vector: RESET
+KERNAL,FFFE,Vector: IRQ
+KERNAL,FFD8,Save RAM To Device
+KERNAL,FFD5,Load RAM From Device

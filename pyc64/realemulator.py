@@ -28,25 +28,113 @@ class DummyEvent():
         self.x=0
         self.y=0
 
+# Python 3.8 needed
+from dataclasses import dataclass
+
+@dataclass
+class IORecord():
+    logical: int = -1
+    first: int  = -1
+    second: int = -1
+    # Optional:
+    filename: str = ""
+
 class RealC64EmulatorWindow(C64EmulatorWindow):
     welcome_message = "Running the Real ROMS!"
     update_rate = 1000/20
 
     def __init__(self, screen, title, roms_directory,argv):
+        self.last_describe_state=""
         super().__init__(screen, title, roms_directory, True)        
         self.keypresses = [ ]
         if argv!=None and len(argv) >=2:            
             for c in  reversed("lO\"" + argv[1]+ "\"\rlI\rrun\r"):
                  self.keypresses.append( DummyEvent(c))
+        # Maps logical kernel files to IORecord
+        self.kernal_file_table={}
+        self.TRACE_REF={}
+        self.load_trace()
+    
+    def load_trace(self):
+        import csv
+        with open('./etc/trace_config.csv') as f:
+            trace_description=csv.reader(f)
+            for ref in trace_description:
+                if ref[0][0]=='#':
+                    continue
+                #print(str(ref))
+                # Hex address to 
+                # BASIC,A000,Restart Vectors,Restart Vectors
+                self.TRACE_REF[int(ref[1],16)]=(ref[0], ref[2])
 
     def keyrelease(self, event):
         pass
 
-    def keypress(self, event):
-        #print(repr(event))
+    def keypress(self, event):        
         self.keypresses.append(event)
 
+    def describe_state(self,cpu,mem):
+        """
+
+        OPEN 1,8,15,"I"  
+        CLOSE 1
+        On layer 3, this will send LISTEN 8/OPEN 15/“I”/UNLISTEN/LISTEN 8/CLOSE 15/UNLISTEN
+
+        OPEN 1,8,15  
+        PRINT#1, "I";  
+        CLOSE 1
+        (On layer 3, this will send LISTEN 8/SECOND 15/“I”/UNLISTEN.)
+
+
+KERNAL IEEE API
+The "IEEE" API is a set of low-level calls. It allows using primary addresses 0-3, which are not available through the high-level APIs.
+
+address	name	description	arguments
+$FFB1	LISTEN	Send LISTEN command	A = pa
+$FFAE	UNLSN	Send UNLISTEN command	
+$FF93	SECOND	Send LISTEN secondary address	A = 0x60 + sa
+$FFB4	TALK	Send TALK command	A = pa
+$FFAB	UNTLK	Send UNTALK command	
+$FF96	TKSA	Send TALK secondary address	A = 0x60 + sa
+$FFA5	ACPTR	Read byte from serial bus	byte → A
+$FFA8	CIOUT	Send byte to serial bus	A = byte
+$FFA2	SETTMO	Set timeout	A = { 0x00 | 0x80 }
+
+
+KERNAL Channel I/O API
+The KERNAL’s Channel I/O API is higher-level and not specific to the Commodore Peripheral Bus. 
+Devices 0-3 will target the keyboard, tape, RS-232 (PET: tape #2) and the screen. 
+This API does not support multiple listeners or controller-less transmissions (but it can be combined with the low-level 
+API for this).
+
+address	name	description	arguments
+$FFB7	READST	Read I/O status word	st → A
+$FFBA	SETLFS	Set logical, first, and second addresses	A = lfn, X = pa, Y = sa
+$FFBD	SETNAM	Set file name	A = len, X/Y = name
+$FFC0	OPEN	Open a logical file	
+$FFC3	CLOSE	Close a specified logical file	A = lfn
+$FFC6	CHKIN	Open channel for input	X = lfn
+$FFC9	CHKOUT	Open channel for output	X = lfn
+$FFCC	CLRCHN	Close input and output channels	
+$FFCF	CHRIN	Input character from channel	byte → A
+$FFD2	CHROUT	Output character to channel	A = byte
+$FFE7	CLALL	Close all channels and files	
+
+
+        """
+        if cpu.pc in self.TRACE_REF:
+            category, comment=self.TRACE_REF[cpu.pc]
+            msg="{:02X} {:6.6} {:50.50}".format(cpu.pc,category,comment)
+            if self.last_describe_state!=msg:
+                print(msg+(" - A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} "
+                    .format( cpu.a, cpu.x, cpu.y, cpu.p)))
+                self.last_describe_state=msg                
+    
+
     def run_rom_code(self, reset):
+        # Init memory interceptors
+        # self.screen.memory.intercept_write( 0xDD00, self.cia2_write)
+        # self.screen.memory.intercept_read(  0xDD00, self.cia2_read)
         cpu = CPU(memory=self.screen.memory, pc=reset)
         self.real_cpu_running = cpu
         previous_cycles = 0
@@ -57,10 +145,36 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             while time.perf_counter() - irq_start_time < 1.0/60.0:
                 for _ in range(1000):
                     cpu.step()
+                    if self.trace_status():
+                        self.describe_state(cpu,mem)
                     if cpu.pc == 0xFFD8:
                         self.breakpointKernelSave(cpu,mem)
-                    elif cpu.pc == 0xffd5:
-                        self.breakpointKernelLoad(cpu,mem)
+                    elif cpu.pc == 0xFFD5:
+                        self.breakpointKernelLoad(cpu,mem)                      
+                    # LISTEN 8/OPEN 15/“I”/UNLISTEN/LISTEN 8/CLOSE 15/UNLISTEN
+                    elif cpu.pc == 0xFFBA:
+                        print("** Reading logical, first and second file parameters A = lfn, X = pa, Y = sa")
+                    elif cpu.pc == 0xFFBD and cpu.a !=0:
+                        print("** Reading filename (if A=0 ignore it)")
+                    elif cpu.pc== 0xFFC0:
+                        print("***** Opening and returning back")
+                        #the print# then fail with file not open error                        
+                        cpu.pc=0xE1C6
+                    # Major Intercept 
+                    # FFC0 Kernal Open a logical file - A=$0f X=$22 Y=$08 P=%00110000 
+                    # Via some vector it ends up to 
+                    # FFC0 Kernal Open a logical file - A=$0f X=$22 Y=$08 P=%00110000 
+                    # F34A Kernal Open File - A=$0f X=$22 Y=$08 P=%00110000 
+                    # F30F Kernal Find File - A=$0f X=$01 Y=$08 P=%00110000 
+                    # ... Find out return address near 
+                    # E1BE Kernal Perform [open] - A=$31 X=$00 Y=$3e P=%00110000 
+                    #  $E1BE/57790:   Perform [open]
+                    # E1BE: 20 19 E2  JSR $E219     ; Get Parameters For OPEN/CLOSE
+                    # E1C1: 20 C0 FF  JSR $FFC0     ; Open Vector
+                    # E1C4: B0 0B     BCS $E1D1     ; Perform [close]
+                    # E1C6: 60        RTS
+
+                    # -------
                     # set the raster line based off the number of CPU cycles processed
                     raster = (cpu.processorCycles//63) % 312
                     if raster != old_raster:
@@ -74,9 +188,10 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             self.irq(cpu)
             duration = time.perf_counter() - irq_start_time
             speed = (cpu.processorCycles-previous_cycles) / duration / 1e6
-            previous_cycles = cpu.processorCycles            
-            print("CPU simulator: PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} -  clockspeed = {:.1f} MHz   "
-              .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed), end="\r")
+            previous_cycles = cpu.processorCycles    
+            if self.trace_status()==False:
+                print("CPU simulator: PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} -  clockspeed = {:.1f} MHz   "
+                .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed), end="\r")
 
 
     def breakpointKernelSave(self,cpu,mem):        

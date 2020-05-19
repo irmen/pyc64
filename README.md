@@ -109,7 +109,15 @@ Some convenience symbols are provided in the REPL to access the screen
 and memory for instance. Try 'dir()' to see what's there.
 
 
+## Learning mode
+Thre startreal64 has a learning trace mode.
+If enabled, you can get a described trace of what is happening inside the Kernal.
+A Standard Kernal is needed.
+
+
 ## dependencies
+
+Python 3.8 is needed
 
 You'll need the [pillow](https://pillow.readthedocs.io) library because 
 the program needs to do some charset bitmap conversions at startup for tkinter.

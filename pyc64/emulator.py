@@ -70,6 +70,7 @@ class EmulatorWindowBase(tkinter.Tk):
     charset_shifted = "charset-shifted.png"
     colorpalette = []
     welcome_message = "Welcome to the simulator!"
+    trace_mode=True
 
     def __init__(self, screen, title, roms_directory):
         if len(self.colorpalette) not in (2, 4, 8, 16, 32, 64, 128, 256):
@@ -95,8 +96,16 @@ class EmulatorWindowBase(tkinter.Tk):
                                      borderwidth=0, highlightthickness=0, background="black",
                                      xscrollincrement=1, yscrollincrement=1)
         self.buttonbar = tkinter.Frame(self)
-        resetbut1 = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)
+        resetbut1 = tkinter.Button(self.buttonbar, text="reset", command=self.reset_machine)        
         resetbut1.pack(side=tkinter.LEFT)
+
+        # GG Implement trace GUI
+        # Ref https://www.python-course.eu/tkinter_buttons.php
+        self.info_label=tkinter.Label(self.buttonbar, text="...")
+        self.info_label.pack(side=tkinter.RIGHT)
+
+        trace=tkinter.Button(self.buttonbar, text="trace toggle", command=self.trace_toggle)  
+        trace.pack(side=tkinter.RIGHT)
         self.buttonbar.pack(fill=tkinter.X)
         self.refreshtick = threading.Event()
         self.spritebitmapbytes = [None] * self.sprites
@@ -151,7 +160,7 @@ class EmulatorWindowBase(tkinter.Tk):
         duration = time.perf_counter() - starttime
         remaining_timer_budget = (self.update_rate/1000)-duration
         if remaining_timer_budget < 0.001:
-            print("warning: screen refresh took too long! ", remaining_timer_budget, file=sys.stderr)
+            #print("warning: screen refresh took too long! ", remaining_timer_budget, file=sys.stderr)
             remaining_timer_budget = 0.001
         self.cyclic_repaint_after = self.after(int(remaining_timer_budget * 1000), self._cyclic_repaint)
 
@@ -311,6 +320,12 @@ class EmulatorWindowBase(tkinter.Tk):
         self.screen.reset(False)
         self.repaint()
 
+    def trace_toggle(self):
+        self.trace_mode=not self.trace_mode
+        print("Trace Mode: {}".format(self.trace_mode))
+        self.info_label.config(text= ("Trace Mode:"+str(self.trace_mode)))
+    def trace_status(self):
+        return self.trace_mode
 
 class C64EmulatorWindow(EmulatorWindowBase):
     columns = 40
@@ -628,7 +643,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
             self.switch_interpreter("basic")
         if self.screen.using_roms:
             reset = self.screen.memory.getword(0xfffc)
-            print("using actual ROM reset routine at", reset)
+            print( "using actual ROM reset routine at ${:02X}".format(reset) )
             if self.run_real_roms:
                 if self.real_cpu_running is None:
                     threading.Thread(target=self.run_rom_code, args=(reset,), daemon=True).start()
