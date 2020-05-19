@@ -173,7 +173,7 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         fname=""
         for i in range(0,fnlen):
             fname=fname + chr(cpu.ByteAt(fnaddr+i)).lower()
-        if not fname.endswith(".prg") and fname!="$":
+        if fname!="$" and ("." not in fname):
             fname=fname+".prg"
         return fname         
 
