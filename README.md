@@ -48,6 +48,9 @@ Try also:
 
 TAPE are redirected to drive8
 
+## Petcat
+It could be easier to convert basic source to prg
+vice provide petcat command
 
 
 ## BASIC V2 and the VIC-registers (video chip)
@@ -113,11 +116,15 @@ and memory for instance. Try 'dir()' to see what's there.
 Thre startreal64 has a learning trace mode.
 If enabled, you can get a described trace of what is happening inside the Kernal.
 A Standard Kernal is needed.
+### Where the reference have been collected
+The reference are from  All_About_Your_64 done in 1995-2005 by Ninja/The Dreams
+For lower IO Kernal, some information has been taken from the Michael Steil's blog post https://www.pagetable.com/?p=1031.
+
+Tune the etc/trace_config.csv to add/remove your trace at your leasure
 
 
 ## dependencies
 
-Python 3.8 is needed
 
 You'll need the [pillow](https://pillow.readthedocs.io) library because 
 the program needs to do some charset bitmap conversions at startup for tkinter.

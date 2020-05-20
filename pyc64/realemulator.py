@@ -28,16 +28,6 @@ class DummyEvent():
         self.x=0
         self.y=0
 
-# Python 3.8 needed
-from dataclasses import dataclass
-
-@dataclass
-class IORecord():
-    logical: int = -1
-    first: int  = -1
-    second: int = -1
-    # Optional:
-    filename: str = ""
 
 class RealC64EmulatorWindow(C64EmulatorWindow):
     welcome_message = "Running the Real ROMS!"
@@ -125,8 +115,8 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                     # LISTEN 8/OPEN 15/“I”/UNLISTEN/LISTEN 8/CLOSE 15/UNLISTEN
                     elif cpu.pc == 0xFFBA:
                         print("** Reading logical, first and second file parameters A = lfn, X = pa, Y = sa")
-                        self.last_kernel_file=IORecord(cpu.a,cpu.x,cpu.y,"")
-                        print("{}".format (self.last_kernel_file))
+                        # self.last_kernel_file=IORecord(cpu.a,cpu.x,cpu.y,"")
+                        # print("{}".format (self.last_kernel_file))
                     elif cpu.pc == 0xFFBD and cpu.a !=0:                        
                         # A = len, X/Y = name
                         # X low, Y High                        
@@ -160,9 +150,9 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             duration = time.perf_counter() - irq_start_time
             speed = (cpu.processorCycles-previous_cycles) / duration / 1e6
             previous_cycles = cpu.processorCycles    
-            # if self.trace_status()==False:
-            #     print("CPU simulator: PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} -  clockspeed = {:.1f} MHz   "
-            #     .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed), end="\r")
+            if self.trace_status()==False:
+                print("CPU simulator: PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} -  clockspeed = {:.1f} MHz   "
+                .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed), end="\r")
 
 
     def breakpointKernelSave(self,cpu,mem):        
