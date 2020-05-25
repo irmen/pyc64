@@ -1,0 +1,122 @@
+Taken from
+ http://unusedino.de/ec64/technical/formats/crt.html
+*** CRT - CaRTridge Images (from the CCS64 emulator)
+*** Document revision: 1.10
+*** Last updated: Nov 27, 2005
+*** Contributors/sources: Per Hakan Sundell,
+                          Markus Brenner
+                          Marco Van Den Heuvel
+
+  Cartridge files were introduced in the CCS64  emulator,  written  by  Per
+Hakan Sundell, and use the ".CRT" file extension. This format  was  created
+to handle the various ROM cartridges that exist, such as Action Replay, the
+Power cartridge, and the Final Cartridge.
+
+  Normal game cartridges can load  into  several  different  memory  ranges
+($8000-9FFF,  $A000-BFFF  or  $E000-FFFF).  Newer   utility   and   freezer
+cartridges were less intrusive, hiding themselves until  called  upon,  and
+still others used bank-switching techniques to allow much larger ROM's than
+normal. Because of these "stealthing" and bank-switching methods, a special
+cartridge format  was  necessary,  to  let  the  emulator  know  where  the
+cartridge should reside, the control line  states  to  enable  it  and  any
+special hardware features it uses.
+
+  Here is a dump of a sample 8K normal cartridge,  "Attack  Of  The  Mutant
+Camels"...
+
+      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F        ASCII
+      -----------------------------------------------   ----------------
+0000: 43 36 34 20 43 41 52 54 52 49 44 47 45 20 20 20   C64?CARTRIDGE???
+0010: 00 00 00 40 01 00 00 00 00 01 00 00 00 00 00 00   ???@????????????
+0020: 41 54 54 41 43 4B 20 4F 46 20 54 48 45 20 4D 55   ATTACK?OF?THE?MU
+0030: 54 41 4E 54 20 43 41 4D 45 4C 53 00 00 00 00 00   TANT?CAMELS?????
+0040: 43 48 49 50 00 00 20 10 00 00 00 00 80 00 20 00   CHIP????????????
+0050: D3 9B BC FE C3 C2 CD 38 30 EA EA EA A9 01 85 13   ????++-80???????
+0060: 4C B3 9B A9 08 85 5A 88 D0 FD C6 5A D0 F9 60 D0   L|????Z???+Z??`?
+
+  Bytes:$0000-000F - 16-byte cartridge signature  "C64  CARTRIDGE"  (padded
+                     with space characters)
+         0010-0013 - File header length  ($00000040,  in  high/low  format,
+                     calculated from offset $0000). Default value is $40
+         0014-0015 - Cartridge version (high/low, presently 01.00)
+         0016-0017 - Cartridge hardware type ($0000, high/low)
+                       0 - Normal cartridge
+                       1 - Action Replay
+                       2 - KCS Power Cartridge
+                       3 - Final Cartridge III
+                       4 - Simons Basic
+                       5 - Ocean type 1*
+                       6 - Expert Cartridge
+                       7 - Fun Play, Power Play
+                       8 - Super Games
+                       9 - Atomic Power
+                      10 - Epyx Fastload
+                      11 - Westermann Learning
+                      12 - Rex Utility
+                      13 - Final Cartridge I
+                      14 - Magic Formel
+                      15 - C64 Game System, System 3
+                      16 - WarpSpeed
+                      17 - Dinamic**
+                      18 - Zaxxon, Super Zaxxon (SEGA)
+                      19 - Magic Desk, Domark, HES Australia
+              0018 - Cartridge port EXROM line status
+                      0 - inactive
+                      1 - active
+              0019 - Cartridge port GAME line status
+                      0 - inactive
+                      1 - active
+         001A-001F - Reserved for future use
+         0020-003F - 32-byte cartridge  name  "CCSMON"  (uppercase,  padded
+                     with null characters)
+         0040-xxxx - Cartridge contents (called CHIP PACKETS, as there  can
+                     be more than one  per  CRT  file).  See  below  for  a
+                     breakdown of the CHIP format.
+
+  (*Note: Ocean type 1 includes Navy Seals, Robocop 2 & 3,  Shadow  of  the
+    Beast, Toki, Terminator 2 and more)
+
+  (**Note: Dinamic includes Narco Police and more)
+
+
+---------------------------------------------------------------------------
+
+
+CHIP Contents
+-------------
+
+  The following is the contents of the CHIP packet, from position $0040  on
+in the CRT file. Note I have re-adjusted the starting address to be  $0000,
+since we are now looking at a file contained in the .CRT file, and all size
+references are from where it starts.
+
+      00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F        ASCII
+      -----------------------------------------------   ----------------
+0000: 43 48 49 50 00 00 20 10 00 00 00 00 80 00 20 00   CHIP????????????
+0010: D3 9B BC FE C3 C2 CD 38 30 EA EA EA A9 01 85 13   ????++-80???????
+0020: 4C B3 9B A9 08 85 5A 88 D0 FD C6 5A D0 F9 60 D0   L|????Z???+Z??`?
+0030: F2 60 A9 04 85 49 A9 00 85 48 A2 00 A5 48 9D 40   ?`???I???H???H?@
+0040: 03 A5 49 9D 60 03 A5 48 18 69 28 85 48 A5 49 69   ??I?`??H?i(?H?Ii
+0050: 00 85 49 E8 E0 18 D0 E4 60 A6 03 A4 02 BD 40 03   ??I?????`?????@?
+
+  Bytes:$0000-0003 - Contained ROM signature "CHIP" (note there can be more
+                     than one image in a .CRT file)
+         0004-0007 - Total packet length ($00002010,  ROM  image  size  and
+                     header combined) (high/low format)
+         0008-0009 - Chip type
+                      0 - ROM
+                      1 - RAM, no ROM data
+                      2 - Flash ROM
+         000A-000B - Bank number ($0000 - normal cartridge)
+         000C-000D - Starting load address (high/low format)
+         000E-000F - ROM image size in bytes  (high/low  format,  typically
+                     $2000 or $4000)
+         0010-xxxx - ROM data
+
+
+---------------------------------------------------------------------------
+
+
+  The following is a chart taken from the "Commodore Programmers  Reference
+Guide". It details the state of various areas of memory  depending  on  the
+state of the control lines.

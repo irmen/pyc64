@@ -1,0 +1,38 @@
+#The "IEEE" API is a set of low-level calls. It allows using primary addresses 0-3, which are not available through the high-level APIs.
+#
+IEEE_API,FFB1,	LISTEN	Send LISTEN command	A = pa
+IEEE_API,FFAE,	UNLSN	Send UNLISTEN command	
+IEEE_API,FF93,	SECOND	Send LISTEN secondary address	A = 0x60 + sa
+IEEE_API,FFB4,	TALK	Send TALK command	A = pa
+IEEE_API,FFAB,	UNTLK	Send UNTALK command	
+IEEE_API,FF96,	TKSA	Send TALK secondary address	A = 0x60 + sa
+IEEE_API,FFA5,	ACPTR	Read byte from serial bus	byte → A
+IEEE_API,FFA8,	CIOUT	Send byte to serial bus	A = byte
+IEEE_API,FFA2,	SETTMO	Set timeout	A = { 0x00 | 0x80 }
+#
+#KERNAL Channel I/O API
+#The KERNAL’s Channel I/O API is higher-level and not specific to the Commodore Peripheral Bus. 
+#Devices 0-3 will target the keyboard, tape, RS-232 (PET: tape #2) and the screen. 
+#This API does not support multiple listeners or controller-less transmissions (but it can be combined with the low-level 
+#API for this).
+#address	name	description	arguments
+KERNAL_IO,FFB7,	READST	Read I/O status word	st → A
+KERNAL_IO,FFBA,	SETLFS	Set logical, first, and second addresses	A = lfn, X = pa, Y = sa
+KERNAL_IO,FFBD,	SETNAM	Set file name	A = len, X/Y = name
+KERNAL_IO,FFC0,	OPEN	Open a logical file	
+KERNAL_IO,FFC3,	CLOSE	Close a specified logical file	A = lfn
+KERNAL_IO,FFC6,	CHKIN	Open channel for input	X = lfn
+KERNAL_IO,FFC9,	CHKOUT	Open channel for output	X = lfn
+KERNAL_IO,FFCC,	CLRCHN	Close input and output channels	
+KERNAL_IO,FFCF,	CHRIN	Input character from channel	byte → A
+KERNAL_IO,FFD2,	CHROUT	Output character to channel	A = byte
+KERNAL_IO,FFE7,	CLALL	Close all channels and files
+
+BASIC,AA80,Perform [print#]
+BASIC,BAFE,Divide FAC#1 by 10
+BASIC,BB07,Divide FAC#2 by Flpt at (AC/YR)
+BASIC,BB0F,Divide FAC#2 by FAC#1
+BASIC,BBA2,Load FAC#1 From Memory
+BASIC,BBC7,Store FAC#1 in Memory
+#KERNAL,FFEA,Increment Real-Time Clock
+
