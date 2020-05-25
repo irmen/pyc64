@@ -37,8 +37,8 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         super().__init__(screen, title, roms_directory, True)
 
         self.last_describe_state=""
-        #from .monitor import MonitorWindow
-        #self.monitor_window=MonitorWindow(self, self.screen.memory,None)
+        from .monitor import MonitorWindow
+        self.monitor_window=MonitorWindow(self.screen.memory)
        
         self.keypresses = [ ]
         if argv!=None and len(argv) >=2:            
@@ -77,14 +77,14 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             category, comment=self.TRACE_REF[cpu.pc]
             msg="{:02X} {:6.6} {:100.100}".format(cpu.pc,category,comment)
             if self.last_describe_state!=msg:
-                print(msg+(" - A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} SP={:02X}"
+                self.monitor_window.say(msg+(" - A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} SP={:02X}"
                     .format( cpu.a, cpu.x, cpu.y, cpu.p, cpu.sp)))
                 # for i in range(cpu.sp+2, cpu.sp-8, -2):
                 #     loc=mem[i] +mem[i-1]*256
                 #     if i==cpu.sp:
-                #         print("Stack: {:02X} ptr* -> {:04X} ".format(i, loc))
+                #         self.monitor_window.say("Stack: {:02X} ptr* -> {:04X} ".format(i, loc))
                 #     else:
-                #         print("Stack: {:02X} ptr  -> {:04X} ".format(i, loc))
+                #         self.monitor_window.say("Stack: {:02X} ptr  -> {:04X} ".format(i, loc))
                 self.last_describe_state=msg         
     
 
@@ -92,7 +92,7 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         # Init memory interceptors
         cpu = CPU(memory=self.screen.memory, pc=reset)
         self.real_cpu_running = cpu
-        #self.monitor_window.set_cpu(cpu)
+        self.monitor_window.set_cpu(cpu)
         previous_cycles = 0
         mem = self.screen.memory
         old_raster = 0
@@ -110,19 +110,19 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                     # FFCF KERNAL CHRIN  Input character from channel    byte -> A  - A=$40 X=$01 Y=$0a P=%10110000                    
                     # LISTEN 8/OPEN 15/"I"/UNLISTEN/LISTEN 8/CLOSE 15/UNLISTEN
                     elif cpu.pc == 0xFFBA:
-                        print("** Reading logical, first and second file parameters A = lfn, X = pa, Y = sa")
+                        self.monitor_window.say("** Reading logical, first and second file parameters A = lfn, X = pa, Y = sa")
                         if cpu.x == 23:
-                            print("Registering Probe for Device 23 logical file {}".format(cpu.a))
+                            self.monitor_window.say("Registering Probe for Device 23 logical file {}".format(cpu.a))
                             self.device23[cpu.a]={}
                         # self.last_kernel_file=IORecord(cpu.a,cpu.x,cpu.y,"")
-                        # print("{}".format (self.last_kernel_file))
+                        # self.monitor_window.say("{}".format (self.last_kernel_file))
                     elif cpu.pc == 0xFFBD and cpu.a !=0:                        
                         # A = len, X/Y = name
                         # X low, Y High                        
                         fname=self.get_filename(cpu.x+cpu.y*256,cpu.a,cpu)
                         ## 
                         # FFC0 KERNAL Open a logical file / 0xB8 è  logical filename?!
-                        print("** Reading filename (if A=0 ignore it) {}".format(fname))
+                        self.monitor_window.say("** Reading filename (if A=0 ignore it) {}".format(fname))
                         # Then execute FFDB to be sure data is set                                            
                     # FFCF KERNAL CHRIN       Input character from channel    byte -> A       - A=$01 X=$00 Y=$00 P=%00110010 SP=F0
                     # F157 KERNAL Input a byte              - A=$01 X=$00 Y=$00 P=%00110010 SP=F0                        
@@ -133,7 +133,7 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                     # and avoid stalling the emulator                    
                     elif cpu.pc in [ 0xED0C, 0xEDB9, 0xED40 ]:
                         # RTS on Listen
-                        # print("LISTEN / SEND Low level Kernal TRAPPED")
+                        # self.monitor_window.say("LISTEN / SEND Low level Kernal TRAPPED")
                         cpu.pc=0xE1C6
 
                     # -------
@@ -154,14 +154,14 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             speed = (cpu.processorCycles-previous_cycles) / duration / 1e6
             previous_cycles = cpu.processorCycles    
             if self.trace_status()==False:
-                print("CPU simulator: PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} -  clockspeed = {:.1f} MHz   "
+                self.monitor_window.say("CPU simulator: PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} -  clockspeed = {:.1f} MHz   "
                 .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed), end="\r")
 
 
     def breakpointKernelSave(self,cpu,mem):        
         """ Ref https://github.com/irmen/ksim65/blob/d1d433c3a640e1429f8fe2755afa96ca39c4dfbb/src/main/kotlin/razorvine/c64emu/c64Main.kt#L82
         """
-        print("Kernal Save Intercept....")        
+        self.monitor_window.say("Kernal Save Intercept....")        
         fnlen = mem[0xb7]   # file name length
         fa = mem[0xba]      # device number
         sa = mem[0xb9]      # secondary address
@@ -170,23 +170,23 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             fname=self.get_filename(fnaddr,fnlen,cpu)
             startAddr= mem[cpu.a]+256*mem[cpu.a+1]
             endAddr=cpu.x+256*cpu.y
-            print("\nSaving... {} Start Addr:{:02X} End: {:02X} Size:{}".format(fname,startAddr,endAddr, endAddr-startAddr))
+            self.monitor_window.say("\nSaving... {} Start Addr:{:02X} End: {:02X} Size:{}".format(fname,startAddr,endAddr, endAddr-startAddr))
             # Write fromAddr high and low
             with open("drive{}/{}".format(fa,fname), "wb") as file:
                 file.write(startAddr.to_bytes(2, byteorder='little'))
-                print("Header ok")
+                self.monitor_window.say("Header ok")
                 for i in range(startAddr,endAddr):
                     data= mem[i].to_bytes(1, byteorder='little')
                     file.write( data )
-                    print("{}".format(data))
+                    self.monitor_window.say("{}".format(data))
                 file.close()                
             # write data
             mem[0x90]=0 # OK
-            print("Save completed\n")
+            self.monitor_window.say("Save completed\n")
             #success!
             cpu.pc=0xf5a9
         else:
-            print("?missing file name")
+            self.monitor_window.say("?missing file name")
             cpu.pc=0xf710 
 
     def breakpointKernelLoad(self,cpu,mem):
@@ -204,12 +204,12 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             fnaddr = cpu.WordAt(0xbb)             
             fname=self.get_filename(fnaddr,fnlen,cpu)
             if fnlen ==0:
-                print("?missing file name")
+                self.monitor_window.say("?missing file name")
                 cpu.pc=0xf710 
                 return
             if fname=="$":
                 # Make magic dir listing
-                print("Generating dir listing")
+                self.monitor_window.say("Generating dir listing")
                 prog=self.make_dir_listing(fa,destinationAddress)
                 self.load(destinationAddress,prog)  
                 cpu.pc=0xf5a9
@@ -221,16 +221,16 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                         startAddr = struct.unpack("<H", file.read(2))[0]                                            
                         prog=file.read()
                         endAddress=self.load(startAddr,prog)
-                        print("\nLoading {:02X}:{:02X} {} Start Addr: {:02X} ... up to: $ {:02X}\n".format(
+                        self.monitor_window.say("\nLoading {:02X}:{:02X} {} Start Addr: {:02X} ... up to: $ {:02X}\n".format(
                                        fa,sa,final_path, startAddr, endAddress))                        
                         file.close()                
                     # success
                     cpu.pc=0xf5a9
                 except FileNotFoundError:
-                    print("ERR FILE NOT FOUND:", final_path)
+                    self.monitor_window.say("ERR FILE NOT FOUND:", final_path)
                     cpu.pc=0xf704 # 'file not found'           
         else:
-            print("device not present (VERIFY command not supported)")
+            self.monitor_window.say("device not present (VERIFY command not supported)")
             cpu.pc=0xf707
 
     def load(self,startAddr,prog):
@@ -346,7 +346,7 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         num_keys = self.screen.memory[0xc6]
         while self.keypresses and num_keys < self.screen.memory[0x289]:
             event = self.keypresses.pop()
-            #print(repr(event))
+            #self.monitor_window.say(repr(event))
             char = event.char
             if not char or ord(char) > 255:
                 char = event.keysym

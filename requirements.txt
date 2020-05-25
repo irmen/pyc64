@@ -1,3 +1,5 @@
 cbmcodecs >= 0.2.0
 py65 >= 1.1.0
 pillow
+# For curses under windosws add
+# windows-curses >= 2.1.0
