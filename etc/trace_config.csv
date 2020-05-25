@@ -1,3 +1,14 @@
+# Zeropage:
+#ZEROPAGE,0000,6510 On-chip Data Direction Register
+#ZEROPAGE,0001,6510 On-chip 8-bit Input/Output Register
+#ZEROPAGE,0002,Unused
+
+#ZEROPAGE,0073,CHRGET: Get next Byte of BASIC Text
+#ZEROPAGE,0079,CHRGOT: Get same Byte again
+#ZEROPAGE,007A,Pointer: Current Byte of BASIC Text (LOW)
+#ZEROPAGE,007B,Pointer: Current Byte of BASIC Text (HIGH)
+
+
 # Category,entry_point, comment
 BASIC,A000,Restart Vectors
 BASIC,A004,'CBMBASIC'-Identifier

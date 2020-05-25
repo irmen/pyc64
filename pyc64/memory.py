@@ -264,7 +264,7 @@ class ScreenAndMemory:
         self.memory = Memory(65536)    # 64 Kb
         self.using_roms = False
         if rom_directory:
-            for rom, address in (("basic", 0xa000), ("kernal", 0xe000)):
+            for rom, address in (("basic", 0xa000), ("kernal", 0xe000),("cart8000",0x8000)):
                 try:
                     self.memory.load_rom(rom_directory+"/"+rom, address)
                     print("loading rom file", rom, "at", hex(address))

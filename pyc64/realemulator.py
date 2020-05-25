@@ -33,15 +33,19 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
     welcome_message = "Running the Real ROMS!"
     update_rate = 1000/20
 
-    def __init__(self, screen, title, roms_directory,argv):
+    def __init__(self, screen, title, roms_directory,argv):        
+        super().__init__(screen, title, roms_directory, True)
+
         self.last_describe_state=""
-        super().__init__(screen, title, roms_directory, True)        
+        #from .monitor import MonitorWindow
+        #self.monitor_window=MonitorWindow(self, self.screen.memory,None)
+       
         self.keypresses = [ ]
         if argv!=None and len(argv) >=2:            
             for c in  reversed("lO\"" + argv[1]+ "\"\rlI\rrun\r"):
                  self.keypresses.append( DummyEvent(c))
         # Maps logical kernel files to IORecord
-        self.last_kernel_file=None
+        self.device23={}
         self.TRACE_REF={}
         self.load_trace()
     
@@ -52,21 +56,12 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         self.trace_mode=not self.trace_mode        
         self.info_label.config(text= ("Reloaded/Trace Mode:"+str(self.trace_mode)))
         self.load_trace()
-    
+
+
+
     def load_trace(self):
-        import csv
-        self.TRACE_REF={}
-        with open('./etc/trace_config.csv') as f:
-            trace_description=csv.reader(f)
-            for ref in trace_description:
-                try:
-                    if ref[0][0]=='#':
-                        continue
-                except IndexError:
-                    continue
-                # Load
-                # <category>,<hex location>,<Comment>
-                self.TRACE_REF[int(ref[1],16)]=(ref[0].strip(), ref[2].strip())
+        from .xref_loader import load_64disasm
+        self.TRACE_REF= load_64disasm()
 
     def keyrelease(self, event):
         pass
@@ -80,7 +75,7 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         """
         if cpu.pc in self.TRACE_REF:
             category, comment=self.TRACE_REF[cpu.pc]
-            msg="{:02X} {:6.6} {:50.50}".format(cpu.pc,category,comment)
+            msg="{:02X} {:6.6} {:100.100}".format(cpu.pc,category,comment)
             if self.last_describe_state!=msg:
                 print(msg+(" - A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} SP={:02X}"
                     .format( cpu.a, cpu.x, cpu.y, cpu.p, cpu.sp)))
@@ -97,6 +92,7 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         # Init memory interceptors
         cpu = CPU(memory=self.screen.memory, pc=reset)
         self.real_cpu_running = cpu
+        #self.monitor_window.set_cpu(cpu)
         previous_cycles = 0
         mem = self.screen.memory
         old_raster = 0
@@ -112,17 +108,24 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                     elif cpu.pc == 0xFFD5:
                         self.breakpointKernelLoad(cpu,mem)                      
                     # FFCF KERNAL CHRIN  Input character from channel    byte -> A  - A=$40 X=$01 Y=$0a P=%10110000                    
-                    # LISTEN 8/OPEN 15/“I”/UNLISTEN/LISTEN 8/CLOSE 15/UNLISTEN
+                    # LISTEN 8/OPEN 15/"I"/UNLISTEN/LISTEN 8/CLOSE 15/UNLISTEN
                     elif cpu.pc == 0xFFBA:
                         print("** Reading logical, first and second file parameters A = lfn, X = pa, Y = sa")
+                        if cpu.x == 23:
+                            print("Registering Probe for Device 23 logical file {}".format(cpu.a))
+                            self.device23[cpu.a]={}
                         # self.last_kernel_file=IORecord(cpu.a,cpu.x,cpu.y,"")
                         # print("{}".format (self.last_kernel_file))
                     elif cpu.pc == 0xFFBD and cpu.a !=0:                        
                         # A = len, X/Y = name
                         # X low, Y High                        
                         fname=self.get_filename(cpu.x+cpu.y*256,cpu.a,cpu)
+                        ## 
+                        # FFC0 KERNAL Open a logical file / 0xB8 è  logical filename?!
                         print("** Reading filename (if A=0 ignore it) {}".format(fname))
-                        # Then execute FFDB to be sure data is set
+                        # Then execute FFDB to be sure data is set                                            
+                    # FFCF KERNAL CHRIN       Input character from channel    byte -> A       - A=$01 X=$00 Y=$00 P=%00110010 SP=F0
+                    # F157 KERNAL Input a byte              - A=$01 X=$00 Y=$00 P=%00110010 SP=F0                        
                     # Traps 
                     # +KERNAL Send LISTEN Command on Serial Bus
                     # +KERNAL Send LISTEN Secondary Addres
@@ -403,6 +406,8 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             self.screen.memory[0x277 + num_keys] = petscii
             num_keys += 1
         self.screen.memory[0xc6] = num_keys
+
+
 
 
 def start(args=None):
