@@ -1,5 +1,5 @@
 import tkinter
-from PIL import Image
+from PIL import Image, ImageTk
 
 
 class KoalaImage:
@@ -70,19 +70,23 @@ class KoalaImage:
         self.image = None
 
     def convert(self) -> None:
-        converted = [0] * 160 * 200
+        converted = [0] * 320 * 200
         image = Image.new("P", (320, 200))
+        image.putpalette(self._create_img_palette(self.colorpalette_pepto))
         bi = 0
         for cy in range(25):
             for cx in range(40):
                 for bb in range(8):
-                    b = self.bitmap[bi]
-                    c0, c1, c2, c3 = self.mcol_byte(b, cx, cy)
-                    yy = 160 * (cy * 8 + bb)
-                    converted[cx * 4 + yy] = c0
-                    converted[cx * 4 + 1 + yy] = c1
-                    converted[cx * 4 + 2 + yy] = c2
-                    converted[cx * 4 + 3 + yy] = c3
+                    c0, c1, c2, c3 = self._mcol_byte(self.bitmap[bi], cx, cy)
+                    yy = 320 * (cy * 8 + bb)
+                    converted[cx * 8 + yy] = c0
+                    converted[cx * 8 + 1 + yy] = c0
+                    converted[cx * 8 + 2 + yy] = c1
+                    converted[cx * 8 + 3 + yy] = c1
+                    converted[cx * 8 + 4 + yy] = c2
+                    converted[cx * 8 + 5 + yy] = c2
+                    converted[cx * 8 + 6 + yy] = c3
+                    converted[cx * 8 + 7 + yy] = c3
                     yy = cy * 8 + bb
                     image.putpixel((cx * 8, yy), c0)
                     image.putpixel((cx * 8 + 1, yy), c0)
@@ -93,20 +97,19 @@ class KoalaImage:
                     image.putpixel((cx * 8 + 6, yy), c3)
                     image.putpixel((cx * 8 + 7, yy), c3)
                     bi += 1
-        image.putpalette(self.create_img_palette())
         image = image.quantize(16, dither=False)
         self.converted_pixels = converted
         self.image = image
 
-    def create_img_palette(self):
-        palette = [0, 0, 0] * 256
-        for i, c in enumerate(self.colorpalette_pepto):
-            palette[i * 3] = (c >> 16) & 255
-            palette[i * 3 + 1] = (c >> 8) & 255
-            palette[i * 3 + 2] = c & 255
-        return palette
+    def _create_img_palette(self, palette):
+        pal = [0, 0, 0] * 256
+        for i, c in enumerate(palette):
+            pal[i * 3] = (c >> 16) & 255
+            pal[i * 3 + 1] = (c >> 8) & 255
+            pal[i * 3 + 2] = c & 255
+        return pal
 
-    def mcol_byte(self, bits, cx, cy):
+    def _mcol_byte(self, bits, cx, cy):
         def mcol(b):
             if b == 0:
                 return self.screen & 15
@@ -126,7 +129,7 @@ class KoalaImage:
 
 
 class GUI(tkinter.Tk):
-    SCALE = 3
+    SCALE = 2
 
     def __init__(self, image):
         super().__init__()
@@ -146,14 +149,17 @@ class GUI(tkinter.Tk):
         return "#{:06x}".format(self.colorpalette[color & len(self.colorpalette) - 1])
 
     def draw_image(self, image):
-        ci = 0
-        for y in range(200):
-            for x in range(160):
-                color = self.tkcolor(image.converted_pixels[ci])
-                self.canvas.create_rectangle(x * self.SCALE * 2, y * self.SCALE,
-                                             x * self.SCALE * 2 + self.SCALE * 2 - 1,
-                                             y * self.SCALE + self.SCALE - 1, outline=color, fill=color)
-                ci += 1
+        image = image.image.resize((320 * self.SCALE, 200 * self.SCALE))
+        self.canvas.photo_image = ImageTk.PhotoImage(image)
+        self.canvas.create_image(0, 0, image=self.canvas.photo_image, anchor=tkinter.NW)
+        # ci = 0
+        # for y in range(200):
+        #     for x in range(320):
+        #         color = self.tkcolor(image.converted_pixels[ci])
+        #         self.canvas.create_rectangle(x * self.SCALE, y * self.SCALE,
+        #                                      x * self.SCALE + self.SCALE - 1, y * self.SCALE + self.SCALE - 1,
+        #                                      outline=color, fill=color)
+        #         ci += 1
 
 
 if __name__ == "__main__":
