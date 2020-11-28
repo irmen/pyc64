@@ -18,3 +18,6 @@
 .mypy_cache/
 .vscode
 roms/@eaDir
+/roms/basic	
+/roms/chargen	
+/roms/kernal
