@@ -147,13 +147,14 @@ class PcxImage(ImageLoader):
             raise ValueError("pcx is not RLE-encoded")
 
         bits_per_pixel = header[3]
-        if bits_per_pixel != 8:
-            raise ValueError("pcx is not 256-colors")       # TODO support 16, 4, 2 colors as well
-        rle_image = self.image_data[128:-768]
-        if rle_image[-1] != 12:
-            raise ValueError("pcx doesn't contain 256 color palette")
-        palette = self.image_data[-768:]
-
+        if bits_per_pixel not in (8, 4, 1):
+            raise ValueError("unsupported number of bits-per-pixel")
+        if self.image_data[-769] == 12:
+            rle_image = self.image_data[128:-768]
+            palette = self.image_data[-768:]            # 256-color palette
+        else:
+            rle_image = self.image_data[128:]
+            palette = self.image_data[0x10:0x40]        # 16-color palette
         minx = header[0x04] + header[0x05]*256
         miny = header[0x06] + header[0x07]*256
         maxx = header[0x08] + header[0x09]*256
@@ -162,41 +163,113 @@ class PcxImage(ImageLoader):
         height = maxy - miny + 1
         number_of_planes = header[0x41]
         if number_of_planes != 1:
-            raise ValueError("pcx is high-color (multiple color planes)")
-        bytes_per_line = header[0x42] + header[0x43]*256
-        if bytes_per_line != width:
-            raise ValueError("pcx scanline size mismatch with picture width", bytes_per_line, width)
-        palette_format = header[0x44] + header[0x45] * 256
-        if palette_format != 1:
-            raise ValueError("pcx palette format is not colors", palette_format)
-
+            raise ValueError("pcx has >256 colors")
+        # bytes_per_line = header[0x42] + header[0x43]*256
+        # palette_format = header[0x44] + header[0x45] * 256     # 0 = color/mono, 1=grayscale
         image = Image.new("P", (width, height))
         image.putpalette(palette)
 
-        # decode the RLE compressed image
+        self.decode_image(image, rle_image, bits_per_pixel, width, height)
+        return image
+
+    def decode_image(self, image: Image, rle_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
         px = 0
         py = 0
-
-        def output_pixel(value):
-            nonlocal px, py
-            image.putpixel((px, py), value)
-            px += 1
-            if px == bytes_per_line:
-                px = 0
-                py += 1
-
         ix = 0
-        while py != height:
-            b = rle_image[ix]
-            ix += 1
-            if b >> 6 == 3:
-                run_length = b & 0b00111111
-                b = rle_image[ix]
+        if bits_per_pixel == 8:
+            while py != height:
+                b = rle_data[ix]
                 ix += 1
-                for _ in range(run_length):
-                    output_pixel(b)
-            else:
-                output_pixel(b)
+                if b >> 6 == 3:
+                    run_length = b & 0b00111111
+                    b = rle_data[ix]
+                    ix += 1
+                    for _ in range(run_length):
+                        image.putpixel((px, py), b)
+                        px += 1
+                    if px >= width:
+                        px = 0
+                        py += 1
+                else:
+                    image.putpixel((px, py), b)
+                    px += 1
+                    if px == width:
+                        px = 0
+                        py += 1
+        elif bits_per_pixel == 4:
+            while py != height:
+                b = rle_data[ix]
+                ix += 1
+                if b >> 6 == 3:
+                    run_length = b & 0b00111111
+                    b = rle_data[ix]
+                    ix += 1
+                    for _ in range(run_length):
+                        image.putpixel((px, py), b >> 4 & 15)
+                        px += 1
+                        image.putpixel((px, py), b & 15)
+                        px += 1
+                    if px >= width:
+                        px = 0
+                        py += 1
+                else:
+                    image.putpixel((px, py), b >> 4 & 15)
+                    px += 1
+                    image.putpixel((px, py), b & 15)
+                    px += 1
+                    if px >= width:
+                        px = 0
+                        py += 1
+        elif bits_per_pixel == 1:
+            while py != height:
+                b = rle_data[ix]
+                ix += 1
+                if b >> 6 == 3:
+                    run_length = b & 0b00111111
+                    b = rle_data[ix]
+                    ix += 1
+                    for _ in range(run_length):
+                        image.putpixel((px, py), b >> 7 & 1)
+                        px += 1
+                        image.putpixel((px, py), b >> 6 & 1)
+                        px += 1
+                        image.putpixel((px, py), b >> 5 & 1)
+                        px += 1
+                        image.putpixel((px, py), b >> 4 & 1)
+                        px += 1
+                        image.putpixel((px, py), b >> 3 & 1)
+                        px += 1
+                        image.putpixel((px, py), b >> 2 & 1)
+                        px += 1
+                        image.putpixel((px, py), b >> 1 & 1)
+                        px += 1
+                        image.putpixel((px, py), b & 1)
+                        px += 1
+                    if px >= width:
+                        px = 0
+                        py += 1
+
+                else:
+                    image.putpixel((px, py), b >> 7 & 1)
+                    px += 1
+                    image.putpixel((px, py), b >> 6 & 1)
+                    px += 1
+                    image.putpixel((px, py), b >> 5 & 1)
+                    px += 1
+                    image.putpixel((px, py), b >> 4 & 1)
+                    px += 1
+                    image.putpixel((px, py), b >> 3 & 1)
+                    px += 1
+                    image.putpixel((px, py), b >> 2 & 1)
+                    px += 1
+                    image.putpixel((px, py), b >> 1 & 1)
+                    px += 1
+                    image.putpixel((px, py), b & 1)
+                    px += 1
+                    if px >= width:
+                        px = 0
+                        py += 1
+
         return image
 
 
@@ -230,7 +303,7 @@ class GUI(tkinter.Tk):
         return "#{:06x}".format(self.colorpalette[color & len(self.colorpalette) - 1])
 
     def draw_image(self, image: Image) -> None:
-        image = image.resize((320 * self.SCALE, 200 * self.SCALE))
+        image = image.resize((image.size[0] * self.SCALE, image.size[1] * self.SCALE))
         self.canvas.photo_image = ImageTk.PhotoImage(image)
         self.canvas.create_image(0, 0, image=self.canvas.photo_image, anchor=tkinter.NW)
         # ci = 0
@@ -246,9 +319,12 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
-        # "nier16.pcx",
-        "spidey256.pcx",
+        "test1.pcx",
         "nier256.pcx",
+        "nier256gray.pcx",
+        "nier2mono.pcx",
+        "nier16.pcx",
+        "spidey256.pcx",
         "Blubb by Sphinx.koa",
         "Dinothawr Title by Arachne.koa",
         "Bugjam 7 by JSL.koa",
