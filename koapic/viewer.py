@@ -135,7 +135,71 @@ class KoalaImage(ImageLoader):
 
 
 class BitmapImage(ImageLoader):
-    pass
+    def convert(self) -> Image:
+        header = self.image_data[:0x40]
+        if header[0] != ord('B') and header[1] != ord('M'):
+            raise ValueError("not a windows bitmap", header[0], header[1])
+        bitmap_data_offset = header[10] + header[11] * 256 + header[12] * 256 * 256 + header[13] * 256 * 256 * 256
+        dh_size = header[0x0e] + header[0x0f] * 256 + header[0x10] * 256 * 256 + header[0x11] * 256 * 256 * 256
+        width = header[0x12] + header[0x13] * 256 + header[0x14] * 256 * 256 + header[0x15] * 256 * 256 * 256
+        height = header[0x16] + header[0x17] * 256 + header[0x18] * 256 * 256 + header[0x19] * 256 * 256 * 256
+        bits_per_pixel = header[0x1c] + header[0x1d] * 256
+        # image_size = header[0x22] + header[0x23] * 256 + header[0x24] * 256 * 256 + header[0x25] * 256 * 256 * 256
+        num_colors = header[0x2e] + header[0x2f] * 256 + header[0x30] * 256 * 256 + header[0x31] * 256 * 256 * 256
+        if num_colors == 0:
+            num_colors = 2 ** bits_per_pixel
+        palette = self._create_palette(self.image_data[14+dh_size:14+dh_size + 4*num_colors])
+        image = Image.new("P", (width, height))
+        image.putpalette(palette)
+        offset = bitmap_data_offset-0
+        self.decode_image(image, self.image_data[offset:], bits_per_pixel, width, height)
+        return image
+
+    def _create_palette(self, rgba: bytes) -> bytes:
+        num_colors = len(rgba)//4
+        palette = []
+        for i in range(num_colors):
+            palette.append(rgba[i*4+2])
+            palette.append(rgba[i*4+1])
+            palette.append(rgba[i*4+0])
+        return bytes(palette)
+
+    def decode_image(self, image: Image, bitmap_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
+        rowsize = (bits_per_pixel * width + 31) // 32 * 4
+        ix = 0
+        if bits_per_pixel == 8:
+            for y in range(height-1, -1, -1):
+                for x in range(width):
+                    image.putpixel((x, y), bitmap_data[ix+x])
+                ix += rowsize
+        elif bits_per_pixel == 4:
+            for y in range(height-1, -1, -1):
+                for x in range(width//2):
+                    image.putpixel((x*2, y), bitmap_data[ix+x] >> 4)
+                    image.putpixel((x*2+1, y), bitmap_data[ix+x] & 15)
+                ix += rowsize
+        elif bits_per_pixel == 2:
+            for y in range(height-1, -1, -1):
+                for x in range(width//4):
+                    image.putpixel((x*4, y), bitmap_data[ix+x] >> 6)
+                    image.putpixel((x*4+1, y), (bitmap_data[ix+x] >> 4) & 3)
+                    image.putpixel((x*4+2, y), (bitmap_data[ix+x] >> 2) & 3)
+                    image.putpixel((x*4+3, y), bitmap_data[ix+x] & 3)
+                ix += rowsize
+        elif bits_per_pixel == 1:
+            for y in range(height-1, -1, -1):
+                for x in range(width//8):
+                    image.putpixel((x*8, y), bitmap_data[ix+x] >> 7)
+                    image.putpixel((x*8+1, y), (bitmap_data[ix+x] >> 6) & 1)
+                    image.putpixel((x*8+2, y), (bitmap_data[ix+x] >> 5) & 1)
+                    image.putpixel((x*8+3, y), (bitmap_data[ix+x] >> 4) & 1)
+                    image.putpixel((x*8+4, y), (bitmap_data[ix+x] >> 3) & 1)
+                    image.putpixel((x*8+5, y), (bitmap_data[ix+x] >> 2) & 1)
+                    image.putpixel((x*8+6, y), (bitmap_data[ix+x] >> 1) & 1)
+                    image.putpixel((x*8+7, y), bitmap_data[ix+x] & 1)
+                ix += rowsize
+        else:
+            raise ValueError("bpp?", bits_per_pixel)
 
 
 class PcxImage(ImageLoader):
@@ -151,14 +215,14 @@ class PcxImage(ImageLoader):
             raise ValueError("unsupported number of bits-per-pixel")
         if self.image_data[-769] == 12:
             rle_image = self.image_data[128:-768]
-            palette = self.image_data[-768:]            # 256-color palette
+            palette = self.image_data[-768:]  # 256-color palette
         else:
             rle_image = self.image_data[128:]
-            palette = self.image_data[0x10:0x40]        # 16-color palette
-        minx = header[0x04] + header[0x05]*256
-        miny = header[0x06] + header[0x07]*256
-        maxx = header[0x08] + header[0x09]*256
-        maxy = header[0x0a] + header[0x0b]*256
+            palette = self.image_data[0x10:0x40]  # 16-color palette
+        minx = header[0x04] + header[0x05] * 256
+        miny = header[0x06] + header[0x07] * 256
+        maxx = header[0x08] + header[0x09] * 256
+        maxy = header[0x0a] + header[0x0b] * 256
         width = maxx - minx + 1
         height = maxy - miny + 1
         number_of_planes = header[0x41]
@@ -319,6 +383,10 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
+        "nier256.bmp",
+        "nier256gray.bmp",
+        "nier16.bmp",
+        "nier2mono.bmp",
         "test1.pcx",
         "nier256.pcx",
         "nier256gray.pcx",
