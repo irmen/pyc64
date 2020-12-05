@@ -134,7 +134,7 @@ class KoalaImage(ImageLoader):
         return colors
 
 
-class BitmapImage(ImageLoader):
+class BmpImage(ImageLoader):
     def convert(self) -> Image:
         header = self.image_data[:0x40]
         if header[0] != ord('B') and header[1] != ord('M'):
@@ -165,41 +165,50 @@ class BitmapImage(ImageLoader):
         return bytes(palette)
 
     def decode_image(self, image: Image, bitmap_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
-        rowsize = (bits_per_pixel * width + 31) // 32 * 4
+        bits_width = width * bits_per_pixel
+        pad_bytes = (bits_width + 31) // 32 * 4 - bits_width // 8
         ix = 0
         if bits_per_pixel == 8:
             for y in range(height-1, -1, -1):
-                for x in range(width):
-                    image.putpixel((x, y), bitmap_data[ix+x])
-                ix += rowsize
+                for x in range(0, width, 1):
+                    b = bitmap_data[ix]
+                    image.putpixel((x, y), b)
+                    ix += 1
+                ix += pad_bytes
         elif bits_per_pixel == 4:
             for y in range(height-1, -1, -1):
-                for x in range(width//2):
-                    image.putpixel((x*2, y), bitmap_data[ix+x] >> 4)
-                    image.putpixel((x*2+1, y), bitmap_data[ix+x] & 15)
-                ix += rowsize
+                for x in range(0, width, 2):
+                    b = bitmap_data[ix]
+                    image.putpixel((x, y), b >> 4)
+                    image.putpixel((x+1, y), b & 15)
+                    ix += 1
+                ix += pad_bytes
         elif bits_per_pixel == 2:
             for y in range(height-1, -1, -1):
-                for x in range(width//4):
-                    image.putpixel((x*4, y), bitmap_data[ix+x] >> 6)
-                    image.putpixel((x*4+1, y), (bitmap_data[ix+x] >> 4) & 3)
-                    image.putpixel((x*4+2, y), (bitmap_data[ix+x] >> 2) & 3)
-                    image.putpixel((x*4+3, y), bitmap_data[ix+x] & 3)
-                ix += rowsize
+                for x in range(0, width, 4):
+                    b = bitmap_data[ix]
+                    image.putpixel((x, y), b >> 6)
+                    image.putpixel((x+1, y), b >> 4 & 3)
+                    image.putpixel((x+2, y), b >> 2 & 3)
+                    image.putpixel((x+3, y), b & 3)
+                    ix += 1
+                ix += pad_bytes
         elif bits_per_pixel == 1:
             for y in range(height-1, -1, -1):
-                for x in range(width//8):
-                    image.putpixel((x*8, y), bitmap_data[ix+x] >> 7)
-                    image.putpixel((x*8+1, y), (bitmap_data[ix+x] >> 6) & 1)
-                    image.putpixel((x*8+2, y), (bitmap_data[ix+x] >> 5) & 1)
-                    image.putpixel((x*8+3, y), (bitmap_data[ix+x] >> 4) & 1)
-                    image.putpixel((x*8+4, y), (bitmap_data[ix+x] >> 3) & 1)
-                    image.putpixel((x*8+5, y), (bitmap_data[ix+x] >> 2) & 1)
-                    image.putpixel((x*8+6, y), (bitmap_data[ix+x] >> 1) & 1)
-                    image.putpixel((x*8+7, y), bitmap_data[ix+x] & 1)
-                ix += rowsize
+                for x in range(0, width, 8):
+                    b = bitmap_data[ix]
+                    image.putpixel((x, y), b >> 7)
+                    image.putpixel((x+1, y), b >> 6 & 1)
+                    image.putpixel((x+2, y), b >> 5 & 1)
+                    image.putpixel((x+3, y), b >> 4 & 1)
+                    image.putpixel((x+4, y), b >> 3 & 1)
+                    image.putpixel((x+5, y), b >> 2 & 1)
+                    image.putpixel((x+6, y), b >> 1 & 1)
+                    image.putpixel((x+7, y), b & 1)
+                    ix += 1
+                ix += pad_bytes
         else:
-            raise ValueError("bpp?", bits_per_pixel)
+            raise ValueError("unsupported bpp")
 
 
 class PcxImage(ImageLoader):
@@ -353,7 +362,7 @@ class GUI(tkinter.Tk):
 
     def load_image(self, filename: str) -> None:
         if os.path.splitext(filename)[1] in (".bmp", ".BMP"):
-            image = BitmapImage(filename)
+            image = BmpImage(filename)
         elif os.path.splitext(filename)[1] in (".pcx", ".PCX"):
             image = PcxImage(filename)
         elif os.path.splitext(filename)[1] in (".koa", ".KOA"):
@@ -383,6 +392,7 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
+        "spidey256-oddsize.bmp",
         "nier256.bmp",
         "nier256gray.bmp",
         "nier16.bmp",
