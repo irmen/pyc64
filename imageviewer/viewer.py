@@ -12,6 +12,31 @@ class ImageLoader:
     def convert(self) -> Image:
         raise NotImplementedError("implement in subclass")
 
+    def put_eight_pixels(self, image: Image, px: int, py: int, b: int) -> None:
+        if b & 0b10000000:
+            image.putpixel((px, py), 1)
+        px += 1
+        if b & 0b01000000:
+            image.putpixel((px, py), 1)
+        px += 1
+        if b & 0b00100000:
+            image.putpixel((px, py), 1)
+        px += 1
+        if b & 0b00010000:
+            image.putpixel((px, py), 1)
+        px += 1
+        if b & 0b00001000:
+            image.putpixel((px, py), 1)
+        px += 1
+        if b & 0b00000100:
+            image.putpixel((px, py), 1)
+        px += 1
+        if b & 0b00000010:
+            image.putpixel((px, py), 1)
+        px += 1
+        if b & 0b00000001:
+            image.putpixel((px, py), 1)
+
 
 class KoalaImage(ImageLoader):
     colorpalette_morecontrast = (  # this is a palette with more contrast
@@ -199,15 +224,7 @@ class BmpImage(ImageLoader):
         elif bits_per_pixel == 1:
             for y in range(height - 1, -1, -1):
                 for x in range(0, width, 8):
-                    b = bitmap_data[ix]
-                    image.putpixel((x, y), b >> 7)
-                    image.putpixel((x + 1, y), b >> 6 & 1)
-                    image.putpixel((x + 2, y), b >> 5 & 1)
-                    image.putpixel((x + 3, y), b >> 4 & 1)
-                    image.putpixel((x + 4, y), b >> 3 & 1)
-                    image.putpixel((x + 5, y), b >> 2 & 1)
-                    image.putpixel((x + 6, y), b >> 1 & 1)
-                    image.putpixel((x + 7, y), b & 1)
+                    self.put_eight_pixels(image, x, y, bitmap_data[ix])
                     ix += 1
                 ix += pad_bytes
         else:
@@ -274,6 +291,7 @@ class PcxImage(ImageLoader):
                         px = 0
                         py += 1
         elif bits_per_pixel == 4:
+
             while py != height:
                 b = rle_data[ix]
                 ix += 1
@@ -298,6 +316,7 @@ class PcxImage(ImageLoader):
                         px = 0
                         py += 1
         elif bits_per_pixel == 1:
+
             while py != height:
                 b = rle_data[ix]
                 ix += 1
@@ -306,47 +325,17 @@ class PcxImage(ImageLoader):
                     b = rle_data[ix]
                     ix += 1
                     for _ in range(run_length):
-                        image.putpixel((px, py), b >> 7 & 1)
-                        px += 1
-                        image.putpixel((px, py), b >> 6 & 1)
-                        px += 1
-                        image.putpixel((px, py), b >> 5 & 1)
-                        px += 1
-                        image.putpixel((px, py), b >> 4 & 1)
-                        px += 1
-                        image.putpixel((px, py), b >> 3 & 1)
-                        px += 1
-                        image.putpixel((px, py), b >> 2 & 1)
-                        px += 1
-                        image.putpixel((px, py), b >> 1 & 1)
-                        px += 1
-                        image.putpixel((px, py), b & 1)
-                        px += 1
+                        self.put_eight_pixels(image, px, py, b)
+                        px += 8
                     if px >= width:
                         px = 0
                         py += 1
-
                 else:
-                    image.putpixel((px, py), b >> 7 & 1)
-                    px += 1
-                    image.putpixel((px, py), b >> 6 & 1)
-                    px += 1
-                    image.putpixel((px, py), b >> 5 & 1)
-                    px += 1
-                    image.putpixel((px, py), b >> 4 & 1)
-                    px += 1
-                    image.putpixel((px, py), b >> 3 & 1)
-                    px += 1
-                    image.putpixel((px, py), b >> 2 & 1)
-                    px += 1
-                    image.putpixel((px, py), b >> 1 & 1)
-                    px += 1
-                    image.putpixel((px, py), b & 1)
-                    px += 1
+                    self.put_eight_pixels(image, px, py, b)
+                    px += 8
                     if px >= width:
                         px = 0
                         py += 1
-
         return image
 
 
@@ -496,31 +485,8 @@ class PngImage(ImageLoader):
                 ix += 1  # skip filter byte
                 x = 0
                 for sx in range(stride):
-                    b = data[ix]
-                    if b & 0b10000000:
-                        image.putpixel((x, y), 1)
-                    x += 1
-                    if b & 0b01000000:
-                        image.putpixel((x, y), 1)
-                    x += 1
-                    if b & 0b00100000:
-                        image.putpixel((x, y), 1)
-                    x += 1
-                    if b & 0b00010000:
-                        image.putpixel((x, y), 1)
-                    x += 1
-                    if b & 0b00001000:
-                        image.putpixel((x, y), 1)
-                    x += 1
-                    if b & 0b00000100:
-                        image.putpixel((x, y), 1)
-                    x += 1
-                    if b & 0b00000010:
-                        image.putpixel((x, y), 1)
-                    x += 1
-                    if b & 0b00000001:
-                        image.putpixel((x, y), 1)
-                    x += 1
+                    self.put_eight_pixels(image, x, y, data[ix])
+                    x += 8
                     ix += 1
             return image
 
@@ -538,28 +504,23 @@ class PngImage(ImageLoader):
                 return decode_simple_16_color()
             decode_image()
             for y in range(height):
+                x = 0
                 for sx in range(stride):
                     b = bitmap_bytes[sx + y * stride]
-                    x = sx*2
                     image.putpixel((x, y), b >> 4)
-                    image.putpixel((x+1, y), b & 15)
+                    x += 1
+                    image.putpixel((x, y), b & 15)
+                    x += 1
         elif bit_depth == 1:
             stride = (width+7) // 8
             if no_filtering():
                 return decode_simple_2_color()
             decode_image()
             for y in range(height):
+                x = 0
                 for sx in range(stride):
-                    b = bitmap_bytes[sx + y * stride]
-                    x = sx*8
-                    image.putpixel((x, y), b >> 7 & 1)
-                    image.putpixel((x+1, y), b >> 6 & 1)
-                    image.putpixel((x+2, y), b >> 5 & 1)
-                    image.putpixel((x+3, y), b >> 4 & 1)
-                    image.putpixel((x+4, y), b >> 3 & 1)
-                    image.putpixel((x+5, y), b >> 2 & 1)
-                    image.putpixel((x+6, y), b >> 1 & 1)
-                    image.putpixel((x+7, y), b & 1)
+                    self.put_eight_pixels(image, x, y, bitmap_bytes[sx + y * stride])
+                    x += 8
         else:
             raise ValueError("bit depth?", bit_depth)
         return image
@@ -613,25 +574,25 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
-        #"spideymono-oddsize.png",
-        #"spidey256-oddsize.png",
-        #"spideymono-oddsize.bmp",
-        #"spidey256-oddsize.bmp",
+        "spideymono-oddsize.png",
+        "spidey256-oddsize.png",
         "nier256.png",
         "nier256gray.png",
         "nier16.png",
         "nier2mono.png",
-        "test1x1.pcx",
+        "spideymono-oddsize.bmp",
+        "spidey256-oddsize.bmp",
         "test1x1.bmp",
         "nier256.bmp",
         "nier256gray.bmp",
+        "spidey256.bmp",
         "nier16.bmp",
         "nier2mono.bmp",
+        "test1x1.pcx",
         "nier256.pcx",
         "nier256gray.pcx",
         "nier2mono.pcx",
         "nier16.pcx",
-        "spidey256.pcx",
         "Blubb by Sphinx.koa",
         "Dinothawr Title by Arachne.koa",
         "Bugjam 7 by JSL.koa",
