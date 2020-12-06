@@ -373,15 +373,16 @@ class PngImage(ImageLoader):
         if self.image_data[:8] != b"\x89PNG\x0d\x0a\x1a\x0a":
             raise ValueError("no png image", self.image_data[:8])
         chunk_size, chunk_type, chunk = next_chunk()
-        # first chunk is always IHDR
+        if chunk_type != b"IHDR":
+            raise ValueError("IHDR missing")
         width = chunk[0] * 256 * 256 * 256 | chunk[1] * 256 * 256 | chunk[2] * 256 | chunk[3]
         height = chunk[4] * 256 * 256 * 256 | chunk[5] * 256 * 256 | chunk[6] * 256 | chunk[7]
         bit_depth = chunk[8]
         color_type = chunk[9]
         compression = chunk[10]
-        filter = chunk[11]
+        filt = chunk[11]
         interlace = chunk[12]
-        if interlace or filter or compression:
+        if interlace or filt or compression:
             raise ValueError("using interlace or filter or weird compression")
         if color_type not in (0, 3):
             raise ValueError("truecolor and/or alphachannel")
