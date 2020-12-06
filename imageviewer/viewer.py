@@ -1,5 +1,7 @@
 import os
+import zlib
 import tkinter
+from typing import Tuple
 from PIL import Image, ImageTk
 
 
@@ -148,20 +150,20 @@ class BmpImage(ImageLoader):
         num_colors = header[0x2e] + header[0x2f] * 256 + header[0x30] * 256 * 256 + header[0x31] * 256 * 256 * 256
         if num_colors == 0:
             num_colors = 2 ** bits_per_pixel
-        palette = self._create_palette(self.image_data[14+dh_size:14+dh_size + 4*num_colors])
+        palette = self._create_palette(self.image_data[14 + dh_size:14 + dh_size + 4 * num_colors])
         image = Image.new("P", (width, height))
         image.putpalette(palette)
-        offset = bitmap_data_offset-0
+        offset = bitmap_data_offset - 0
         self.decode_image(image, self.image_data[offset:], bits_per_pixel, width, height)
         return image
 
     def _create_palette(self, rgba: bytes) -> bytes:
-        num_colors = len(rgba)//4
+        num_colors = len(rgba) // 4
         palette = []
         for i in range(num_colors):
-            palette.append(rgba[i*4+2])
-            palette.append(rgba[i*4+1])
-            palette.append(rgba[i*4+0])
+            palette.append(rgba[i * 4 + 2])
+            palette.append(rgba[i * 4 + 1])
+            palette.append(rgba[i * 4 + 0])
         return bytes(palette)
 
     def decode_image(self, image: Image, bitmap_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
@@ -169,42 +171,42 @@ class BmpImage(ImageLoader):
         pad_bytes = (bits_width + 31) // 32 * 4 - bits_width // 8
         ix = 0
         if bits_per_pixel == 8:
-            for y in range(height-1, -1, -1):
+            for y in range(height - 1, -1, -1):
                 for x in range(0, width, 1):
                     b = bitmap_data[ix]
                     image.putpixel((x, y), b)
                     ix += 1
                 ix += pad_bytes
         elif bits_per_pixel == 4:
-            for y in range(height-1, -1, -1):
+            for y in range(height - 1, -1, -1):
                 for x in range(0, width, 2):
                     b = bitmap_data[ix]
                     image.putpixel((x, y), b >> 4)
-                    image.putpixel((x+1, y), b & 15)
+                    image.putpixel((x + 1, y), b & 15)
                     ix += 1
                 ix += pad_bytes
         elif bits_per_pixel == 2:
-            for y in range(height-1, -1, -1):
+            for y in range(height - 1, -1, -1):
                 for x in range(0, width, 4):
                     b = bitmap_data[ix]
                     image.putpixel((x, y), b >> 6)
-                    image.putpixel((x+1, y), b >> 4 & 3)
-                    image.putpixel((x+2, y), b >> 2 & 3)
-                    image.putpixel((x+3, y), b & 3)
+                    image.putpixel((x + 1, y), b >> 4 & 3)
+                    image.putpixel((x + 2, y), b >> 2 & 3)
+                    image.putpixel((x + 3, y), b & 3)
                     ix += 1
                 ix += pad_bytes
         elif bits_per_pixel == 1:
-            for y in range(height-1, -1, -1):
+            for y in range(height - 1, -1, -1):
                 for x in range(0, width, 8):
                     b = bitmap_data[ix]
                     image.putpixel((x, y), b >> 7)
-                    image.putpixel((x+1, y), b >> 6 & 1)
-                    image.putpixel((x+2, y), b >> 5 & 1)
-                    image.putpixel((x+3, y), b >> 4 & 1)
-                    image.putpixel((x+4, y), b >> 3 & 1)
-                    image.putpixel((x+5, y), b >> 2 & 1)
-                    image.putpixel((x+6, y), b >> 1 & 1)
-                    image.putpixel((x+7, y), b & 1)
+                    image.putpixel((x + 1, y), b >> 6 & 1)
+                    image.putpixel((x + 2, y), b >> 5 & 1)
+                    image.putpixel((x + 3, y), b >> 4 & 1)
+                    image.putpixel((x + 4, y), b >> 3 & 1)
+                    image.putpixel((x + 5, y), b >> 2 & 1)
+                    image.putpixel((x + 6, y), b >> 1 & 1)
+                    image.putpixel((x + 7, y), b & 1)
                     ix += 1
                 ix += pad_bytes
         else:
@@ -346,6 +348,153 @@ class PcxImage(ImageLoader):
         return image
 
 
+class PngImage(ImageLoader):
+    def convert(self) -> Image:
+        ix = 8
+
+        def next_chunk() -> Tuple[int, bytes, bytes]:
+            nonlocal ix
+            chunk_size = self.image_data[ix] * 256 * 256 * 256
+            ix += 1
+            chunk_size |= self.image_data[ix] * 256 * 256
+            ix += 1
+            chunk_size |= self.image_data[ix] * 256
+            ix += 1
+            chunk_size |= self.image_data[ix]
+            ix += 1
+            chunk_type = self.image_data[ix:ix + 4]
+            ix += 4
+            chunk = self.image_data[ix:ix + chunk_size]
+            ix += chunk_size + 4
+            return chunk_size, chunk_type, chunk
+
+        if self.image_data[:8] != b"\x89PNG\x0d\x0a\x1a\x0a":
+            raise ValueError("no png image", self.image_data[:8])
+        chunk_size, chunk_type, chunk = next_chunk()
+        # first chunk is always IHDR
+        width = chunk[0] * 256 * 256 * 256 | chunk[1] * 256 * 256 | chunk[2] * 256 | chunk[3]
+        height = chunk[4] * 256 * 256 * 256 | chunk[5] * 256 * 256 | chunk[6] * 256 | chunk[7]
+        bit_depth = chunk[8]
+        color_type = chunk[9]
+        compression = chunk[10]
+        filter = chunk[11]
+        interlace = chunk[12]
+        if interlace or filter or compression:
+            raise ValueError("using interlace or filter or weird compression")
+        if color_type not in (0, 3):
+            raise ValueError("truecolor and/or alphachannel")
+        print("width, height: ", width, height)
+        print("bit depth: ", bit_depth)
+        print("color type: ", color_type)
+        data = b""
+        image = Image.new("P", (width, height))
+
+        while True:
+            chunk_size, chunk_type, chunk = next_chunk()
+            if chunk_size == 0:
+                break
+            elif chunk_type == b"PLTE":
+                image.putpalette(chunk)
+            elif chunk_type == b"IDAT":
+                data += chunk
+
+        data = zlib.decompress(data)
+
+        def recon_sub(x: int, y: int) -> int:
+            if x == 0:
+                return 0
+            return raw[y * stride + x - 1]
+
+        def recon_up(x: int, y: int) -> int:
+            if y == 0:
+                return 0
+            return raw[(y - 1) * stride + x]
+
+        def recon_upperleft(x: int, y: int) -> int:
+            if x == 0 or y == 0:
+                return 0
+            return raw[(y - 1) * stride + x - 1]
+
+        def recon_avg(x: int, y: int) -> int:
+            return (recon_sub(x, y) + recon_up(x, y)) // 2
+
+        def paeth(a: int, b: int, c: int) -> int:
+            p = a + b - c
+            pa = abs(p - a)
+            pb = abs(p - b)
+            pc = abs(p - c)
+            if pa <= pb and pa <= pc:
+                pr = a
+            elif pb <= pc:
+                pr = b
+            else:
+                pr = c
+            return pr
+
+        ix = 0
+        raw = []
+        stride = width * 8 // bit_depth
+        if bit_depth == 8:
+            stride = width
+            for y in range(height):
+                filtering = data[ix]
+                ix += 1
+                for x in range(width):
+                    dx = data[ix]
+                    ix += 1
+                    if filtering == 0:
+                        recon_x = dx
+                    elif filtering == 1:
+                        recon_x = dx + recon_sub(x, y)
+                    elif filtering == 2:
+                        recon_x = dx + recon_up(x, y)
+                    elif filtering == 3:
+                        recon_x = dx + recon_avg(x, y)
+                    elif filtering == 4:
+                        recon_x = dx + paeth(recon_sub(x, y), recon_up(x, y), recon_upperleft(x, y))
+                    else:
+                        recon_x = 0
+                    raw.append(recon_x & 255)
+            for y in range(height):
+                for x in range(width):
+                    image.putpixel((x, y), raw[x + y * stride])
+        elif bit_depth == 4:
+            for y in range(height):
+                filtering = data[ix]
+                ix += 1
+                if filtering == 0:
+                    for x in range(0, width, 2):
+                        b = data[ix]
+                        image.putpixel((x, y), b >> 4)
+                        image.putpixel((x + 1, y), b & 15)
+                        ix += 1
+                else:
+                    print("filtering:", y, filtering)  # TODO
+                    ix += width // 2
+        elif bit_depth == 1:
+            for y in range(height):
+                filtering = data[ix]
+                ix += 1
+                if filtering == 0:
+                    for x in range(0, width, 8):
+                        b = data[ix]
+                        image.putpixel((x, y), b >> 7)
+                        image.putpixel((x + 1, y), b >> 6 & 1)
+                        image.putpixel((x + 2, y), b >> 5 & 1)
+                        image.putpixel((x + 3, y), b >> 4 & 1)
+                        image.putpixel((x + 4, y), b >> 3 & 1)
+                        image.putpixel((x + 5, y), b >> 2 & 1)
+                        image.putpixel((x + 6, y), b >> 1 & 1)
+                        image.putpixel((x + 7, y), b & 1)
+                        ix += 1
+                else:
+                    print("filtering:", y, filtering)  # TODO
+                    ix += width // 4
+        else:
+            raise ValueError("bit depth?", bit_depth)
+        return image
+
+
 class GUI(tkinter.Tk):
     SCALE = 2
 
@@ -367,6 +516,8 @@ class GUI(tkinter.Tk):
             image = PcxImage(filename)
         elif os.path.splitext(filename)[1] in (".koa", ".KOA"):
             image = KoalaImage(filename)
+        elif os.path.splitext(filename)[1] in (".png", ".PNG"):
+            image = PngImage(filename)
         else:
             raise IOError("unknown image file format")
         pillow_image = image.convert()
@@ -392,24 +543,30 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
-        "spidey256-oddsize.bmp",
-        "nier256.bmp",
-        "nier256gray.bmp",
-        "nier16.bmp",
-        "nier2mono.bmp",
-        "test1.pcx",
-        "nier256.pcx",
-        "nier256gray.pcx",
-        "nier2mono.pcx",
-        "nier16.pcx",
-        "spidey256.pcx",
-        "Blubb by Sphinx.koa",
-        "Dinothawr Title by Arachne.koa",
-        "Bugjam 7 by JSL.koa",
-        "Jazz-man by Joodas.koa",
-        "Katakis by JonEgg.koa",
-        "The Hunter by Almighty God.koa",
-        "What Does the Fox Say by Leon.koa"]
+        "nier256gray.png",
+        "nier16.png",
+        "nier256.png",
+        "nier2mono.png",
+        # "test1x1.pcx",
+        # "spidey256-oddsize.bmp",
+        # "test1x1.bmp",
+        # "nier256.bmp",
+        # "nier256gray.bmp",
+        # "nier16.bmp",
+        # "nier2mono.bmp",
+        # "nier256.pcx",
+        # "nier256gray.pcx",
+        # "nier2mono.pcx",
+        # "nier16.pcx",
+        # "spidey256.pcx",
+        # "Blubb by Sphinx.koa",
+        # "Dinothawr Title by Arachne.koa",
+        # "Bugjam 7 by JSL.koa",
+        # "Jazz-man by Joodas.koa",
+        # "Katakis by JonEgg.koa",
+        # "The Hunter by Almighty God.koa",
+        # "What Does the Fox Say by Leon.koa"
+    ]
     time = 100
     for img in images:
         gui.after(time, gui.load_image, img)
