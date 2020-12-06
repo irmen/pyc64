@@ -553,6 +553,7 @@ class IlbmImage(ImageLoader):
         width, height = 0, 0
         num_planes = 0
         compression = 0
+        self.camg = 0
         while True:
             chunk_size, chunk_type, chunk = next_chunk()
             if chunk_type == b"BMHD":
@@ -564,19 +565,76 @@ class IlbmImage(ImageLoader):
                 print("num_planes: ", num_planes)
                 print("compression:", compression)
             elif chunk_type == b"CMAP":
-                palette = chunk
+                palette = bytearray(chunk)
+            elif chunk_type == b"CAMG":
+                self.camg = chunk[2]*256 | chunk[3]
+                if self.camg & 0x0800:
+                    raise NotImplementedError("HAM MODE! @TODO")  # XXX
             elif chunk_type == b"BODY":
                 image = Image.new("P", (width, height))
+                if self.camg & 0x0080:
+                    # extra-halfbrite mode, double the palette with half-bright colors
+                    palette.extend(b"\0\0\0" * 32)
+                    for i in range(32*3):
+                        palette[i+32*3] = palette[i] >> 1
                 image.putpalette(palette)
                 if compression:
-                    raise ValueError("rle compression not yet supported")  # XXX
+                    self.decode_rle(image, chunk, num_planes, width, height)
                 else:
                     self.decode(image, chunk, num_planes, width, height)
                 return image
 
+    def decode_rle(self, image: Image, data: bytes, num_planes: int, width: int, height: int) -> None:
+        bitplane_stride = width >> 3
+        interleave_stride = bitplane_stride * num_planes
+        if self.camg & 0x0004:
+            # interlace, just skip every other line
+            interleave_stride *= 2
+            height //= 2
+        bitplane_bits = [0, 0, 0, 0, 0, 0, 0, 0]
+        row_data = [0] * interleave_stride
+        data_idx = 0
+
+        def next_row():
+            nonlocal data_idx, row_data
+            row_idx = 0
+            while row_idx < interleave_stride:
+                b = data[data_idx]
+                data_idx += 1
+                if b > 128:
+                    b2 = data[data_idx]
+                    data_idx += 1
+                    for _ in range(257-b):
+                        row_data[row_idx] = b2
+                        row_idx += 1
+                elif b < 128:
+                    for _ in range(b+1):
+                        row_data[row_idx] = data[data_idx]
+                        data_idx += 1
+                        row_idx += 1
+                else:
+                    break
+
+        for y in range(height):
+            next_row()
+            for x in range(width):
+                bit = (x ^ 255) & 7
+                bitptr = x >> 3
+                for bp in range(num_planes):
+                    bitplane_bits[bp] = (row_data[bitptr] >> bit) & 1
+                    bitptr += bitplane_stride
+                color = 0
+                for bp in range(num_planes):
+                    color |= bitplane_bits[bp] << bp
+                image.putpixel((x, y), color)
+
     def decode(self, image: Image, data: bytes, num_planes: int, width: int, height: int) -> None:
         bitplane_stride = width >> 3
         interleave_stride = bitplane_stride * num_planes
+        if self.camg & 0x0004:
+            # interlace, just skip every other line
+            interleave_stride *= 2
+            height //= 2
         bitplane_bits = [0, 0, 0, 0, 0, 0, 0, 0]
         for y in range(height):
             for x in range(width):
@@ -641,37 +699,40 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
-        "psygnosis.iff",
-        "team17.iff",
-        "trsi.iff",
-        "tk_truth.iff",
-        "tk_truth2.iff",
-        "spideymono-oddsize.png",
-        "spidey256-oddsize.png",
-        "nier256.png",
-        "nier256gray.png",
-        "nier16.png",
-        "nier2mono.png",
-        "spideymono-oddsize.bmp",
-        "spidey256-oddsize.bmp",
-        "test1x1.bmp",
-        "nier256.bmp",
-        "nier256gray.bmp",
-        "spidey256.bmp",
-        "nier16.bmp",
-        "nier2mono.bmp",
-        "test1x1.pcx",
-        "nier256.pcx",
-        "nier256gray.pcx",
-        "nier2mono.pcx",
-        "nier16.pcx",
-        "Blubb by Sphinx.koa",
-        "Dinothawr Title by Arachne.koa",
-        "Bugjam 7 by JSL.koa",
-        "Jazz-man by Joodas.koa",
-        "Katakis by JonEgg.koa",
-        "The Hunter by Almighty God.koa",
-        "What Does the Fox Say by Leon.koa"
+        "demon93-ham.iff",
+        "winterqueen-ehb.iff",
+
+        #"psygnosis.iff",
+        #"team17.iff",
+        #"trsi.iff",
+        #"tk_truth.iff",
+        #"tk_truth2.iff",
+        # "spideymono-oddsize.png",
+        # "spidey256-oddsize.png",
+        # "nier256.png",
+        # "nier256gray.png",
+        # "nier16.png",
+        # "nier2mono.png",
+        # "spideymono-oddsize.bmp",
+        # "spidey256-oddsize.bmp",
+        # "test1x1.bmp",
+        # "nier256.bmp",
+        # "nier256gray.bmp",
+        # "spidey256.bmp",
+        # "nier16.bmp",
+        # "nier2mono.bmp",
+        # "test1x1.pcx",
+        # "nier256.pcx",
+        # "nier256gray.pcx",
+        # "nier2mono.pcx",
+        # "nier16.pcx",
+        # "Blubb by Sphinx.koa",
+        # "Dinothawr Title by Arachne.koa",
+        # "Bugjam 7 by JSL.koa",
+        # "Jazz-man by Joodas.koa",
+        # "Katakis by JonEgg.koa",
+        # "The Hunter by Almighty God.koa",
+        # "What Does the Fox Say by Leon.koa"
     ]
     time = 100
     for img in images:
