@@ -400,24 +400,24 @@ class PngImage(ImageLoader):
                 data += chunk
 
         data = zlib.decompress(data)
-        bitmap_image = []
+        bitmap_bytes = []
         stride = 0
 
         def decode_image():
             def recon_sub(x: int, y: int) -> int:
                 if x == 0:
                     return 0
-                return bitmap_image[y * stride + x - 1]
+                return bitmap_bytes[y * stride + x - 1]
 
             def recon_up(x: int, y: int) -> int:
                 if y == 0:
                     return 0
-                return bitmap_image[(y - 1) * stride + x]
+                return bitmap_bytes[(y - 1) * stride + x]
 
             def recon_upperleft(x: int, y: int) -> int:
                 if x == 0 or y == 0:
                     return 0
-                return bitmap_image[(y - 1) * stride + x - 1]
+                return bitmap_bytes[(y - 1) * stride + x - 1]
 
             def recon_avg(x: int, y: int) -> int:
                 return (recon_sub(x, y) + recon_up(x, y)) // 2
@@ -454,29 +454,103 @@ class PngImage(ImageLoader):
                         recon_x = dx + paeth(recon_sub(x, y), recon_up(x, y), recon_upperleft(x, y))
                     else:
                         recon_x = 0
-                    bitmap_image.append(recon_x & 255)
+                    bitmap_bytes.append(recon_x & 255)
+
+        def no_filtering() -> bool:
+            for y in range(height):
+                if data[y * (1+stride)] != 0:
+                    return False
+            return True
+
+        def decode_simple_256_color() -> Image:
+            # decode a 256 color indexed image that doesn't use any filtering;
+            # we can write directly into the target image.
+            ix = 0
+            for y in range(height):
+                ix += 1  # skip filter byte
+                for x in range(width):
+                    image.putpixel((x, y), data[ix])
+                    ix += 1
+            return image
+
+        def decode_simple_16_color() -> Image:
+            # decode a 16 color indexed image that doesn't use any filtering;
+            # we can write directly into the target image.
+            ix = 0
+            for y in range(height):
+                ix += 1  # skip filter byte
+                x = 0
+                for sx in range(stride):
+                    image.putpixel((x, y), data[ix] >> 4)
+                    x += 1
+                    image.putpixel((x, y), data[ix] & 15)
+                    x += 1
+                    ix += 1
+            return image
+
+        def decode_simple_2_color() -> Image:
+            # decode a monochrome image that doesn't use any filtering;
+            # we can write directly into the target image.
+            ix = 0
+            for y in range(height):
+                ix += 1  # skip filter byte
+                x = 0
+                for sx in range(stride):
+                    b = data[ix]
+                    if b & 0b10000000:
+                        image.putpixel((x, y), 1)
+                    x += 1
+                    if b & 0b01000000:
+                        image.putpixel((x, y), 1)
+                    x += 1
+                    if b & 0b00100000:
+                        image.putpixel((x, y), 1)
+                    x += 1
+                    if b & 0b00010000:
+                        image.putpixel((x, y), 1)
+                    x += 1
+                    if b & 0b00001000:
+                        image.putpixel((x, y), 1)
+                    x += 1
+                    if b & 0b00000100:
+                        image.putpixel((x, y), 1)
+                    x += 1
+                    if b & 0b00000010:
+                        image.putpixel((x, y), 1)
+                    x += 1
+                    if b & 0b00000001:
+                        image.putpixel((x, y), 1)
+                    x += 1
+                    ix += 1
+            return image
 
         if bit_depth == 8:
             stride = width
+            if no_filtering():
+                return decode_simple_256_color()
             decode_image()
             for y in range(height):
-                for sx in range(stride):
-                    image.putpixel((sx, y), bitmap_image[sx + y * stride])
+                for sx in range(width):
+                    image.putpixel((sx, y), bitmap_bytes[sx + y * width])
         elif bit_depth == 4:
             stride = (width+1) // 2
+            if no_filtering():
+                return decode_simple_16_color()
             decode_image()
             for y in range(height):
                 for sx in range(stride):
-                    b = bitmap_image[sx + y * stride]
+                    b = bitmap_bytes[sx + y * stride]
                     x = sx*2
                     image.putpixel((x, y), b >> 4)
                     image.putpixel((x+1, y), b & 15)
         elif bit_depth == 1:
             stride = (width+7) // 8
+            if no_filtering():
+                return decode_simple_2_color()
             decode_image()
             for y in range(height):
                 for sx in range(stride):
-                    b = bitmap_image[sx + y * stride]
+                    b = bitmap_bytes[sx + y * stride]
                     x = sx*8
                     image.putpixel((x, y), b >> 7 & 1)
                     image.putpixel((x+1, y), b >> 6 & 1)
@@ -539,13 +613,13 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
-        "spideymono-oddsize.png",
-        "spidey256-oddsize.png",
-        "spideymono-oddsize.bmp",
-        "spidey256-oddsize.bmp",
+        #"spideymono-oddsize.png",
+        #"spidey256-oddsize.png",
+        #"spideymono-oddsize.bmp",
+        #"spidey256-oddsize.bmp",
+        "nier256.png",
         "nier256gray.png",
         "nier16.png",
-        "nier256.png",
         "nier2mono.png",
         "test1x1.pcx",
         "test1x1.bmp",
