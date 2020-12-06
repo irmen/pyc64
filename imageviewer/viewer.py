@@ -383,11 +383,9 @@ class PngImage(ImageLoader):
             raise ValueError("using interlace or filter or weird compression")
         if color_type not in (0, 3):
             raise ValueError("truecolor and/or alphachannel")
-        print("width, height: ", width, height)
-        print("bit depth: ", bit_depth)
-        print("color type: ", color_type)
         data = b""
-        image = Image.new("P", (width, height))
+        width_8 = (width + 7) & 0b1111111111111000
+        image = Image.new("P", (width_8, height))
 
         while True:
             chunk_size, chunk_type, chunk = next_chunk()
@@ -399,47 +397,46 @@ class PngImage(ImageLoader):
                 data += chunk
 
         data = zlib.decompress(data)
+        bitmap_image = []
+        stride = 0
 
-        def recon_sub(x: int, y: int) -> int:
-            if x == 0:
-                return 0
-            return raw[y * stride + x - 1]
+        def decode_image():
+            def recon_sub(x: int, y: int) -> int:
+                if x == 0:
+                    return 0
+                return bitmap_image[y * stride + x - 1]
 
-        def recon_up(x: int, y: int) -> int:
-            if y == 0:
-                return 0
-            return raw[(y - 1) * stride + x]
+            def recon_up(x: int, y: int) -> int:
+                if y == 0:
+                    return 0
+                return bitmap_image[(y - 1) * stride + x]
 
-        def recon_upperleft(x: int, y: int) -> int:
-            if x == 0 or y == 0:
-                return 0
-            return raw[(y - 1) * stride + x - 1]
+            def recon_upperleft(x: int, y: int) -> int:
+                if x == 0 or y == 0:
+                    return 0
+                return bitmap_image[(y - 1) * stride + x - 1]
 
-        def recon_avg(x: int, y: int) -> int:
-            return (recon_sub(x, y) + recon_up(x, y)) // 2
+            def recon_avg(x: int, y: int) -> int:
+                return (recon_sub(x, y) + recon_up(x, y)) // 2
 
-        def paeth(a: int, b: int, c: int) -> int:
-            p = a + b - c
-            pa = abs(p - a)
-            pb = abs(p - b)
-            pc = abs(p - c)
-            if pa <= pb and pa <= pc:
-                pr = a
-            elif pb <= pc:
-                pr = b
-            else:
-                pr = c
-            return pr
+            def paeth(a: int, b: int, c: int) -> int:
+                p = a + b - c
+                pa = abs(p - a)
+                pb = abs(p - b)
+                pc = abs(p - c)
+                if pa <= pb and pa <= pc:
+                    pr = a
+                elif pb <= pc:
+                    pr = b
+                else:
+                    pr = c
+                return pr
 
-        ix = 0
-        raw = []
-        stride = width * 8 // bit_depth
-        if bit_depth == 8:
-            stride = width
+            ix = 0
             for y in range(height):
                 filtering = data[ix]
                 ix += 1
-                for x in range(width):
+                for x in range(stride):
                     dx = data[ix]
                     ix += 1
                     if filtering == 0:
@@ -454,42 +451,38 @@ class PngImage(ImageLoader):
                         recon_x = dx + paeth(recon_sub(x, y), recon_up(x, y), recon_upperleft(x, y))
                     else:
                         recon_x = 0
-                    raw.append(recon_x & 255)
+                    bitmap_image.append(recon_x & 255)
+
+        if bit_depth == 8:
+            stride = width
+            decode_image()
             for y in range(height):
-                for x in range(width):
-                    image.putpixel((x, y), raw[x + y * stride])
+                for sx in range(stride):
+                    image.putpixel((sx, y), bitmap_image[sx + y * stride])
         elif bit_depth == 4:
+            stride = (width+1) // 2
+            decode_image()
             for y in range(height):
-                filtering = data[ix]
-                ix += 1
-                if filtering == 0:
-                    for x in range(0, width, 2):
-                        b = data[ix]
-                        image.putpixel((x, y), b >> 4)
-                        image.putpixel((x + 1, y), b & 15)
-                        ix += 1
-                else:
-                    print("filtering:", y, filtering)  # TODO
-                    ix += width // 2
+                for sx in range(stride):
+                    b = bitmap_image[sx + y * stride]
+                    x = sx*2
+                    image.putpixel((x, y), b >> 4)
+                    image.putpixel((x+1, y), b & 15)
         elif bit_depth == 1:
+            stride = (width+7) // 8
+            decode_image()
             for y in range(height):
-                filtering = data[ix]
-                ix += 1
-                if filtering == 0:
-                    for x in range(0, width, 8):
-                        b = data[ix]
-                        image.putpixel((x, y), b >> 7)
-                        image.putpixel((x + 1, y), b >> 6 & 1)
-                        image.putpixel((x + 2, y), b >> 5 & 1)
-                        image.putpixel((x + 3, y), b >> 4 & 1)
-                        image.putpixel((x + 4, y), b >> 3 & 1)
-                        image.putpixel((x + 5, y), b >> 2 & 1)
-                        image.putpixel((x + 6, y), b >> 1 & 1)
-                        image.putpixel((x + 7, y), b & 1)
-                        ix += 1
-                else:
-                    print("filtering:", y, filtering)  # TODO
-                    ix += width // 4
+                for sx in range(stride):
+                    b = bitmap_image[sx + y * stride]
+                    x = sx*8
+                    image.putpixel((x, y), b >> 7 & 1)
+                    image.putpixel((x+1, y), b >> 6 & 1)
+                    image.putpixel((x+2, y), b >> 5 & 1)
+                    image.putpixel((x+3, y), b >> 4 & 1)
+                    image.putpixel((x+4, y), b >> 3 & 1)
+                    image.putpixel((x+5, y), b >> 2 & 1)
+                    image.putpixel((x+6, y), b >> 1 & 1)
+                    image.putpixel((x+7, y), b & 1)
         else:
             raise ValueError("bit depth?", bit_depth)
         return image
@@ -543,6 +536,8 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
+        "spideymono-oddsize.png",
+        "spidey256-oddsize.png",
         "nier256gray.png",
         "nier16.png",
         "nier256.png",
