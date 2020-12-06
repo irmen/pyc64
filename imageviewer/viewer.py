@@ -151,7 +151,8 @@ class BmpImage(ImageLoader):
         if num_colors == 0:
             num_colors = 2 ** bits_per_pixel
         palette = self._create_palette(self.image_data[14 + dh_size:14 + dh_size + 4 * num_colors])
-        image = Image.new("P", (width, height))
+        width_8 = (width + 7) & 0b1111111111111000
+        image = Image.new("P", (width_8, height))
         image.putpalette(palette)
         offset = bitmap_data_offset - 0
         self.decode_image(image, self.image_data[offset:], bits_per_pixel, width, height)
@@ -168,7 +169,7 @@ class BmpImage(ImageLoader):
 
     def decode_image(self, image: Image, bitmap_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
         bits_width = width * bits_per_pixel
-        pad_bytes = (bits_width + 31) // 32 * 4 - bits_width // 8
+        pad_bytes = (((bits_width + 31) >> 5) << 2) - ((bits_width+7) >>3)
         ix = 0
         if bits_per_pixel == 8:
             for y in range(height - 1, -1, -1):
@@ -239,11 +240,12 @@ class PcxImage(ImageLoader):
         number_of_planes = header[0x41]
         if number_of_planes != 1:
             raise ValueError("pcx has >256 colors")
+        if width & 7:
+            raise ValueError("pcx width not multiple of 8")
         # bytes_per_line = header[0x42] + header[0x43]*256
         # palette_format = header[0x44] + header[0x45] * 256     # 0 = color/mono, 1=grayscale
         image = Image.new("P", (width, height))
         image.putpalette(palette)
-
         self.decode_image(image, rle_image, bits_per_pixel, width, height)
         return image
 
@@ -538,29 +540,30 @@ if __name__ == "__main__":
     images = [
         "spideymono-oddsize.png",
         "spidey256-oddsize.png",
+        "spideymono-oddsize.bmp",
+        "spidey256-oddsize.bmp",
         "nier256gray.png",
         "nier16.png",
         "nier256.png",
         "nier2mono.png",
-        # "test1x1.pcx",
-        # "spidey256-oddsize.bmp",
-        # "test1x1.bmp",
-        # "nier256.bmp",
-        # "nier256gray.bmp",
-        # "nier16.bmp",
-        # "nier2mono.bmp",
-        # "nier256.pcx",
-        # "nier256gray.pcx",
-        # "nier2mono.pcx",
-        # "nier16.pcx",
-        # "spidey256.pcx",
-        # "Blubb by Sphinx.koa",
-        # "Dinothawr Title by Arachne.koa",
-        # "Bugjam 7 by JSL.koa",
-        # "Jazz-man by Joodas.koa",
-        # "Katakis by JonEgg.koa",
-        # "The Hunter by Almighty God.koa",
-        # "What Does the Fox Say by Leon.koa"
+        "test1x1.pcx",
+        "test1x1.bmp",
+        "nier256.bmp",
+        "nier256gray.bmp",
+        "nier16.bmp",
+        "nier2mono.bmp",
+        "nier256.pcx",
+        "nier256gray.pcx",
+        "nier2mono.pcx",
+        "nier16.pcx",
+        "spidey256.pcx",
+        "Blubb by Sphinx.koa",
+        "Dinothawr Title by Arachne.koa",
+        "Bugjam 7 by JSL.koa",
+        "Jazz-man by Joodas.koa",
+        "Katakis by JonEgg.koa",
+        "The Hunter by Almighty God.koa",
+        "What Does the Fox Say by Leon.koa"
     ]
     time = 100
     for img in images:
