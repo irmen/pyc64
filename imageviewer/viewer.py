@@ -194,7 +194,7 @@ class BmpImage(ImageLoader):
 
     def decode_image(self, image: Image, bitmap_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
         bits_width = width * bits_per_pixel
-        pad_bytes = (((bits_width + 31) >> 5) << 2) - ((bits_width+7) >>3)
+        pad_bytes = (((bits_width + 31) >> 5) << 2) - ((bits_width + 7) >> 3)
         ix = 0
         if bits_per_pixel == 8:
             for y in range(height - 1, -1, -1):
@@ -447,7 +447,7 @@ class PngImage(ImageLoader):
 
         def no_filtering() -> bool:
             for y in range(height):
-                if data[y * (1+stride)] != 0:
+                if data[y * (1 + stride)] != 0:
                     return False
             return True
 
@@ -499,7 +499,7 @@ class PngImage(ImageLoader):
                 for sx in range(width):
                     image.putpixel((sx, y), bitmap_bytes[sx + y * width])
         elif bit_depth == 4:
-            stride = (width+1) // 2
+            stride = (width + 1) // 2
             if no_filtering():
                 return decode_simple_16_color()
             decode_image()
@@ -512,7 +512,7 @@ class PngImage(ImageLoader):
                     image.putpixel((x, y), b & 15)
                     x += 1
         elif bit_depth == 1:
-            stride = (width+7) // 8
+            stride = (width + 7) // 8
             if no_filtering():
                 return decode_simple_2_color()
             decode_image()
@@ -524,6 +524,71 @@ class PngImage(ImageLoader):
         else:
             raise ValueError("bit depth?", bit_depth)
         return image
+
+
+class IlbmImage(ImageLoader):
+    def convert(self) -> Image:
+        if self.image_data[:4] != b"FORM" or self.image_data[8:12] != b"ILBM":
+            raise ValueError("not an iff ilbm file")
+        # size = self.image_data[4]*256*256*256 + self.image_data[5]*256*256+ self.image_data[6]*256 + self.image_data[7]
+        ix = 12
+
+        def next_chunk() -> Tuple[int, bytes, bytes]:
+            nonlocal ix
+            chunk_type = self.image_data[ix:ix + 4]
+            ix += 4
+            chunk_size = self.image_data[ix] * 256 * 256 * 256
+            ix += 1
+            chunk_size |= self.image_data[ix] * 256 * 256
+            ix += 1
+            chunk_size |= self.image_data[ix] * 256
+            ix += 1
+            chunk_size |= self.image_data[ix]
+            ix += 1
+            chunk = self.image_data[ix:ix + chunk_size]
+            ix += chunk_size
+            return chunk_size, chunk_type, chunk
+
+        palette = b""
+        width, height = 0, 0
+        num_planes = 0
+        compression = 0
+        while True:
+            chunk_size, chunk_type, chunk = next_chunk()
+            if chunk_type == b"BMHD":
+                width = chunk[0] * 256 + chunk[1]
+                height = chunk[2] * 256 + chunk[3]
+                num_planes = chunk[8]
+                compression = chunk[10]
+                print("width, height: ", width, height)
+                print("num_planes: ", num_planes)
+                print("compression:", compression)
+            elif chunk_type == b"CMAP":
+                palette = chunk
+            elif chunk_type == b"BODY":
+                image = Image.new("P", (width, height))
+                image.putpalette(palette)
+                if compression:
+                    raise ValueError("rle compression not yet supported")  # XXX
+                else:
+                    self.decode(image, chunk, num_planes, width, height)
+                return image
+
+    def decode(self, image: Image, data: bytes, num_planes: int, width: int, height: int) -> None:
+        bitplane_stride = width >> 3
+        interleave_stride = bitplane_stride * num_planes
+        bitplane_bits = [0, 0, 0, 0, 0, 0, 0, 0]
+        for y in range(height):
+            for x in range(width):
+                bit = (x ^ 255) & 7
+                bitptr = y * interleave_stride + (x >> 3)
+                for bp in range(num_planes):
+                    bitplane_bits[bp] = (data[bitptr] >> bit) & 1
+                    bitptr += bitplane_stride
+                color = 0
+                for bp in range(num_planes):
+                    color |= bitplane_bits[bp] << bp
+                image.putpixel((x, y), color)
 
 
 class GUI(tkinter.Tk):
@@ -549,6 +614,8 @@ class GUI(tkinter.Tk):
             image = KoalaImage(filename)
         elif os.path.splitext(filename)[1] in (".png", ".PNG"):
             image = PngImage(filename)
+        elif os.path.splitext(filename)[1] in (".iff", ".IFF", ".ilbm", ".ILBM"):
+            image = IlbmImage(filename)
         else:
             raise IOError("unknown image file format")
         pillow_image = image.convert()
@@ -574,6 +641,11 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
+        "psygnosis.iff",
+        "team17.iff",
+        "trsi.iff",
+        "tk_truth.iff",
+        "tk_truth2.iff",
         "spideymono-oddsize.png",
         "spidey256-oddsize.png",
         "nier256.png",
