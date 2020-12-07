@@ -1,7 +1,7 @@
 import os
 import zlib
 import tkinter
-from typing import Tuple
+from typing import Tuple, List
 from PIL import Image, ImageTk
 
 
@@ -9,10 +9,10 @@ class ImageLoader:
     def __init__(self, filename: str) -> None:
         self.image_data = open(filename, "rb").read()
 
-    def convert(self) -> Image:
+    def convert(self) -> Tuple[Image.Image, int]:
         raise NotImplementedError("implement in subclass")
 
-    def put_eight_pixels(self, image: Image, px: int, py: int, b: int) -> None:
+    def put_eight_pixels(self, image: Image.Image, px: int, py: int, b: int) -> None:
         if b & 0b10000000:
             image.putpixel((px, py), 1)
         px += 1
@@ -102,9 +102,9 @@ class KoalaImage(ImageLoader):
         self.colorchars = self.image_data[9002:10002]
         self.screen = self.image_data[10002]
         self.border = 0
-        self.converted_pixels = []
+        self.converted_pixels = []   # type: List[int]
 
-    def convert(self) -> None:
+    def convert(self) -> Tuple[Image.Image, int]:
         # converted = [0] * 320 * 200
         image = Image.new("P", (320, 200))
         image.putpalette(self._create_img_palette(self.colorpalette_pepto))
@@ -132,7 +132,7 @@ class KoalaImage(ImageLoader):
                     image.putpixel((cx * 8 + 6, yy), c3)
                     image.putpixel((cx * 8 + 7, yy), c3)
                     bi += 1
-        return image.quantize(16, dither=False)
+        return image.quantize(16, dither=False), 16
 
     def _create_img_palette(self, palette):
         pal = [0, 0, 0] * 256
@@ -162,7 +162,7 @@ class KoalaImage(ImageLoader):
 
 
 class BmpImage(ImageLoader):
-    def convert(self) -> Image:
+    def convert(self) -> Tuple[Image.Image, int]:
         header = self.image_data[:0x40]
         if header[0] != ord('B') and header[1] != ord('M'):
             raise ValueError("not a windows bitmap", header[0], header[1])
@@ -181,7 +181,7 @@ class BmpImage(ImageLoader):
         image.putpalette(palette)
         offset = bitmap_data_offset - 0
         self.decode_image(image, self.image_data[offset:], bits_per_pixel, width, height)
-        return image
+        return image, num_colors
 
     def _create_palette(self, rgba: bytes) -> bytes:
         num_colors = len(rgba) // 4
@@ -192,7 +192,7 @@ class BmpImage(ImageLoader):
             palette.append(rgba[i * 4 + 0])
         return bytes(palette)
 
-    def decode_image(self, image: Image, bitmap_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
+    def decode_image(self, image: Image.Image, bitmap_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
         bits_width = width * bits_per_pixel
         pad_bytes = (((bits_width + 31) >> 5) << 2) - ((bits_width + 7) >> 3)
         ix = 0
@@ -232,7 +232,7 @@ class BmpImage(ImageLoader):
 
 
 class PcxImage(ImageLoader):
-    def convert(self) -> Image:
+    def convert(self) -> Tuple[Image.Image, int]:
         header = self.image_data[:128]
         if header[0] != 0x0a:
             raise ValueError("pcx format error")
@@ -264,9 +264,9 @@ class PcxImage(ImageLoader):
         image = Image.new("P", (width, height))
         image.putpalette(palette)
         self.decode_image(image, rle_image, bits_per_pixel, width, height)
-        return image
+        return image, 2**bits_per_pixel
 
-    def decode_image(self, image: Image, rle_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
+    def decode_image(self, image: Image.Image, rle_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
         px = 0
         py = 0
         ix = 0
@@ -340,7 +340,7 @@ class PcxImage(ImageLoader):
 
 
 class PngImage(ImageLoader):
-    def convert(self) -> Image:
+    def convert(self) -> Tuple[Image.Image, int]:
         ix = 8
 
         def next_chunk() -> Tuple[int, bytes, bytes]:
@@ -389,7 +389,7 @@ class PngImage(ImageLoader):
                 data += chunk
 
         data = zlib.decompress(data)
-        bitmap_bytes = []
+        bitmap_bytes = []   # type: List[int]
         stride = 0
 
         def decode_image():
@@ -451,7 +451,7 @@ class PngImage(ImageLoader):
                     return False
             return True
 
-        def decode_simple_256_color() -> Image:
+        def decode_simple_256_color() -> Image.Image:
             # decode a 256 color indexed image that doesn't use any filtering;
             # we can write directly into the target image.
             ix = 0
@@ -462,7 +462,7 @@ class PngImage(ImageLoader):
                     ix += 1
             return image
 
-        def decode_simple_16_color() -> Image:
+        def decode_simple_16_color() -> Image.Image:
             # decode a 16 color indexed image that doesn't use any filtering;
             # we can write directly into the target image.
             ix = 0
@@ -477,7 +477,7 @@ class PngImage(ImageLoader):
                     ix += 1
             return image
 
-        def decode_simple_2_color() -> Image:
+        def decode_simple_2_color() -> Image.Image:
             # decode a monochrome image that doesn't use any filtering;
             # we can write directly into the target image.
             ix = 0
@@ -493,7 +493,7 @@ class PngImage(ImageLoader):
         if bit_depth == 8:
             stride = width
             if no_filtering():
-                return decode_simple_256_color()
+                return decode_simple_256_color(), 256
             decode_image()
             for y in range(height):
                 for sx in range(width):
@@ -501,7 +501,7 @@ class PngImage(ImageLoader):
         elif bit_depth == 4:
             stride = (width + 1) // 2
             if no_filtering():
-                return decode_simple_16_color()
+                return decode_simple_16_color(), 16
             decode_image()
             for y in range(height):
                 x = 0
@@ -514,7 +514,7 @@ class PngImage(ImageLoader):
         elif bit_depth == 1:
             stride = (width + 7) // 8
             if no_filtering():
-                return decode_simple_2_color()
+                return decode_simple_2_color(), 2
             decode_image()
             for y in range(height):
                 x = 0
@@ -523,11 +523,11 @@ class PngImage(ImageLoader):
                     x += 8
         else:
             raise ValueError("bit depth?", bit_depth)
-        return image
+        return image, 2**bit_depth
 
 
 class IlbmImage(ImageLoader):
-    def convert(self) -> Image:
+    def convert(self) -> Tuple[Image.Image, int]:
         if self.image_data[:4] != b"FORM" or self.image_data[8:12] != b"ILBM":
             raise ValueError("not an iff ilbm file")
         # size = self.image_data[4]*256*256*256 + self.image_data[5]*256*256+ self.image_data[6]*256 + self.image_data[7]
@@ -549,7 +549,7 @@ class IlbmImage(ImageLoader):
             ix += chunk_size
             return chunk_size, chunk_type, chunk
 
-        palette = b""
+        palette = bytearray()
         width, height = 0, 0
         num_planes = 0
         compression = 0
@@ -561,36 +561,35 @@ class IlbmImage(ImageLoader):
                 height = chunk[2] * 256 + chunk[3]
                 num_planes = chunk[8]
                 compression = chunk[10]
-                print("width, height: ", width, height)
-                print("num_planes: ", num_planes)
-                print("compression:", compression)
             elif chunk_type == b"CMAP":
                 palette = bytearray(chunk)
             elif chunk_type == b"CAMG":
                 self.camg = chunk[2]*256 | chunk[3]
                 if self.camg & 0x0800:
-                    raise NotImplementedError("HAM MODE! @TODO")  # XXX
+                    raise NotImplementedError("HAM mode not supported")
             elif chunk_type == b"BODY":
-                image = Image.new("P", (width, height))
                 if self.camg & 0x0080:
                     # extra-halfbrite mode, double the palette with half-bright colors
                     palette.extend(b"\0\0\0" * 32)
                     for i in range(32*3):
                         palette[i+32*3] = palette[i] >> 1
+                if self.camg & 0x0004:
+                    # interlace, just skip every other line
+                    height //= 2
+                image = Image.new("P", (width, height))
                 image.putpalette(palette)
                 if compression:
                     self.decode_rle(image, chunk, num_planes, width, height)
                 else:
                     self.decode(image, chunk, num_planes, width, height)
-                return image
+                return image, 2**num_planes
 
-    def decode_rle(self, image: Image, data: bytes, num_planes: int, width: int, height: int) -> None:
+    def decode_rle(self, image: Image.Image, data: bytes, num_planes: int, width: int, height: int) -> None:
         bitplane_stride = width >> 3
         interleave_stride = bitplane_stride * num_planes
         if self.camg & 0x0004:
             # interlace, just skip every other line
             interleave_stride *= 2
-            height //= 2
         bitplane_bits = [0, 0, 0, 0, 0, 0, 0, 0]
         row_data = [0] * interleave_stride
         data_idx = 0
@@ -628,13 +627,12 @@ class IlbmImage(ImageLoader):
                     color |= bitplane_bits[bp] << bp
                 image.putpixel((x, y), color)
 
-    def decode(self, image: Image, data: bytes, num_planes: int, width: int, height: int) -> None:
+    def decode(self, image: Image.Image, data: bytes, num_planes: int, width: int, height: int) -> None:
         bitplane_stride = width >> 3
         interleave_stride = bitplane_stride * num_planes
         if self.camg & 0x0004:
             # interlace, just skip every other line
             interleave_stride *= 2
-            height //= 2
         bitplane_bits = [0, 0, 0, 0, 0, 0, 0, 0]
         for y in range(height):
             for x in range(width):
@@ -676,13 +674,14 @@ class GUI(tkinter.Tk):
             image = IlbmImage(filename)
         else:
             raise IOError("unknown image file format")
-        pillow_image = image.convert()
+        pillow_image, num_colors = image.convert()
+        print(filename, pillow_image.size, " num colors:", num_colors)
         self.draw_image(pillow_image)
 
     def tkcolor(self, color):
         return "#{:06x}".format(self.colorpalette[color & len(self.colorpalette) - 1])
 
-    def draw_image(self, image: Image) -> None:
+    def draw_image(self, image: Image.Image) -> None:
         image = image.resize((image.size[0] * self.SCALE, image.size[1] * self.SCALE))
         self.canvas.photo_image = ImageTk.PhotoImage(image)
         self.canvas.create_image(0, 0, image=self.canvas.photo_image, anchor=tkinter.NW)
@@ -699,40 +698,38 @@ class GUI(tkinter.Tk):
 if __name__ == "__main__":
     gui = GUI()
     images = [
-        "demon93-ham.iff",
         "winterqueen-ehb.iff",
-
-        #"psygnosis.iff",
-        #"team17.iff",
-        #"trsi.iff",
-        #"tk_truth.iff",
-        #"tk_truth2.iff",
-        # "spideymono-oddsize.png",
-        # "spidey256-oddsize.png",
-        # "nier256.png",
-        # "nier256gray.png",
-        # "nier16.png",
-        # "nier2mono.png",
-        # "spideymono-oddsize.bmp",
-        # "spidey256-oddsize.bmp",
-        # "test1x1.bmp",
-        # "nier256.bmp",
-        # "nier256gray.bmp",
-        # "spidey256.bmp",
-        # "nier16.bmp",
-        # "nier2mono.bmp",
-        # "test1x1.pcx",
-        # "nier256.pcx",
-        # "nier256gray.pcx",
-        # "nier2mono.pcx",
-        # "nier16.pcx",
-        # "Blubb by Sphinx.koa",
-        # "Dinothawr Title by Arachne.koa",
-        # "Bugjam 7 by JSL.koa",
-        # "Jazz-man by Joodas.koa",
-        # "Katakis by JonEgg.koa",
-        # "The Hunter by Almighty God.koa",
-        # "What Does the Fox Say by Leon.koa"
+        "psygnosis.iff",
+        "team17.iff",
+        "trsi.iff",
+        "tk_truth.iff",
+        "tk_truth2.iff",
+        "spideymono-oddsize.png",
+        "spidey256-oddsize.png",
+        "nier256.png",
+        "nier256gray.png",
+        "nier16.png",
+        "nier2mono.png",
+        "spideymono-oddsize.bmp",
+        "spidey256-oddsize.bmp",
+        "test1x1.bmp",
+        "nier256.bmp",
+        "nier256gray.bmp",
+        "spidey256.bmp",
+        "nier16.bmp",
+        "nier2mono.bmp",
+        "test1x1.pcx",
+        "nier256.pcx",
+        "nier256gray.pcx",
+        "nier2mono.pcx",
+        "nier16.pcx",
+        "Blubb by Sphinx.koa",
+        "Dinothawr Title by Arachne.koa",
+        "Bugjam 7 by JSL.koa",
+        "Jazz-man by Joodas.koa",
+        "Katakis by JonEgg.koa",
+        "The Hunter by Almighty God.koa",
+        "What Does the Fox Say by Leon.koa"
     ]
     time = 100
     for img in images:
