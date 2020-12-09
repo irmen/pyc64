@@ -683,29 +683,72 @@ class GUI(tkinter.Tk):
 
 
 class Cx16Image(ImageLoader):
+    """CommanderX16 Image file format.
+
+Numbers are encoded in little endian format (lsb first).
+
+offset      value
+-----------------
+HEADER (12 bytes):
+0-1     'CI' in petscii , from "CommanderX16 Image".
+2-4     size of the remainder of the file in bytes (24-bits number) or 0 if unknown
+5       pad byte, always 0.
+6-7     width in pixels  (must be multiple of 8)
+8-9     height in pixels
+10      bits-per-pixel  (1, 2, 4 or 8)  (= 2, 4, 16 or 256 colors)
+        this also determines the number of palette entries following later.
+11      settings bits.
+        bit 0 and 1 = compression.  00 = uncompressed
+                                    01 = PCX-RLE    [TODO not yet implemented]
+                                    10 = LZSA       [TODO not yet implemented]
+                                    11 = Exomizer   [TODO not yet implemented]
+        bit 2 = palette format.  0 = 4 bits/channel  (2 bytes per color, $0R $GB)  [TODO not yet implemented]
+                                 1 = 8 bits/channel  (3 bytes per color, $RR $GG $BB)
+                4 bits per channel is the Cx16's native palette format.
+        bit 3 = bitmap format.   0 = raw bitmap pixels
+                                 1 = tile-based image   [TODO not yet implemented]
+        bit 4 = hscale (horizontal display resulution) 0 = 320 pixels, 1 = 640 pixels
+        bit 5 = vscale (vertical display resulution) 0 = 240 pixels, 1 = 480 pixels
+        bit 6,7: reserved, set to 0
+PALETTE (size varies):
+12-...  color palette. Number of entries = 2 ^ bits-per-pixel.  Number of bytes per
+        entry is 2 or 3, depending on the chosen palette format in the setting bits.
+BITMAPDATA (size varies):
+After this, the actual image data follows.
+If the bitmap format is 'raw bitmap pixels', the bimap is simply written as a sequence
+of bytes making up the image's scan lines. #bytes per scan line = width * bits-per-pixel / 8
+If it is 'tiles', .... [TODO]
+If a compression scheme is used, the bitmap data here has to be decompressed first.
+    """
+
+    HEADER_FORMAT = "<2sIHHBB"
+
     def __init__(self, filename=""):
         if filename:
             super().__init__(filename)
             headersize = struct.calcsize(self.HEADER_FORMAT)
-            magic, fsize, self.width, self.height, bpp, flags = struct.unpack(self.HEADER_FORMAT, self.image_data[:headersize])
+            magic, fsize, self.width, self.height, bpp, flags = struct.unpack(self.HEADER_FORMAT,
+                                                                              self.image_data[:headersize])
             if magic != b"CI":
                 raise ValueError("not a Cx16 image file")
             if fsize + 6 != len(self.image_data):
                 raise ValueError("file size mismatch in header")
-            self.num_colors = 2**bpp
-            compression = flags & 3
+            self.num_colors = 2 ** bpp
+            compression = flags & 0b00000011
             if compression != 0:
                 raise NotImplementedError("no compression support yet")
-            koala = flags & 8
-            if koala:
-                raise NotImplementedError("no support for loading C64 Koala yet")
-            palette_format = flags & 4
+            palette_format = flags & 0b00000100
+            bitmap_format = flags & 0b00001000
+            hscale = flags & 0b00010000
+            vscale = flags & 0b00100000
+            if bitmap_format == 1:
+                raise NotImplementedError("tile based bitmap not yet supported")
             if palette_format == 0:
                 raise NotImplementedError("4 bits/channel palette not yet supported")
             else:
-                self.palette = self.image_data[headersize:headersize + 3*self.num_colors]
-                self.image_data = self.image_data[headersize + 3*self.num_colors:]
-                if len(self.image_data) != self.width*self.height:
+                self.palette = self.image_data[headersize:headersize + 3 * self.num_colors]
+                self.image_data = self.image_data[headersize + 3 * self.num_colors:]
+                if len(self.image_data) != self.width * self.height:
                     raise ValueError("??")
         else:
             self.width = self.height = 0
@@ -735,64 +778,25 @@ class Cx16Image(ImageLoader):
                 image.putpixel((x, y), next(bytedata))
         return image, self.num_colors
 
-    HEADER_FORMAT = "<2sIHHBB"
-
     def write(self, filename: str) -> None:
-        """
-Image file format.
-Numbers are written in little endian format (lsb first).
-
-offset      value
------------------
-HEADER (12 bytes):
-  0-1     'CI' in petscii , from "CommanderX16 Image".
-  2-4     size of the remainder of the file in bytes (24-bits number) or 0 if unknown
-  5       pad byte, always 0.
-  6-7     width in pixels  (must be multiple of 8)
-  8-9     height in pixels
-  10      bits-per-pixel  (1, 2, 4 or 8)  (= 2, 4, 16 or 256 colors)
-            this also determines the number of palette entries following later.
-  11      settings bits.
-            bit 0 and 1 = compression.  00 = uncompressed
-                                        01 = PCX-RLE    [TODO not yet implemented]
-                                        10 = LZSA       [TODO not yet implemented]
-                                        11 = Exomizer   [TODO not yet implemented]
-            bit 2 = palette format.  0 = 4 bits/channel  (2 bytes per color, $0R $GB)  [TODO not yet implemented]
-                                     1 = 8 bits/channel  (3 bytes per color, $RR $GG $BB)
-                    4 bits per channel is the Cx16's native palette format.
-            bit 3 = C64 Koala format switch.  0 = normal image. 1 = Koala.  [TODO not yet implemented]
-                    If koala, it means there is NO PALETTE, the image bitmap
-                    data is not on a scanline basis but on 8-byte cell basis,
-                    and the bitmap data is followed by 1000 + 1000 + 1 additional
-                    bytes for the C64 to set the required screen and background colors.
-                    If compression is used, this is all compressed as one buffer.
-            bit 4-7: reserved, set to 0
-PALETTE (size varies):
-  12-...  color palette. Number of entries = 2 ^ bits-per-pixel.  Number of bytes per
-            entry is 2 or 3, depending on the chosen palette format in the setting bits.
-BITMAPDATA (size varies):
-  After this, the actual image data follows.
-  The image is written as a sequence of scan lines.
-  The number of bytes per scan line = width * bits-per-pixel / 8
-  If a compression scheme is used, the image data here has to be decompressed first.
-        """
         bits_per_pixel = int(math.log2(self.num_colors))
-        if 2**bits_per_pixel != self.num_colors:
+        if 2 ** bits_per_pixel != self.num_colors:
             raise ValueError("number of colors is not a power of 2")
         compression = 0
-        koala = 0
-        palette_format = 1      # 8 bits/channel = 3 bytes per color
+        bitmap_format = 0
+        hscale = vscale = 0
+        palette_format = 1  # 8 bits/channel = 3 bytes per color
+        flags = compression | (palette_format << 2) | (bitmap_format << 3) | (hscale << 4) | (vscale << 5)
         if palette_format == 0:
             raise NotImplementedError("palette format 0  4 bits/channel not yet implemented")
         else:
-            expected_palette_size = 3 * (2**bits_per_pixel)
+            expected_palette_size = 3 * (2 ** bits_per_pixel)
             ext = b"\0\0\0" * (expected_palette_size - len(self.palette))
             palette = (bytes(self.palette) + ext)[:expected_palette_size]
 
         file_size = struct.calcsize(self.HEADER_FORMAT) - 6 + len(palette) + len(self.image_data)
         header = struct.pack(self.HEADER_FORMAT,
-                             b"CI", file_size, self.width, self.height, bits_per_pixel,
-                             compression | (palette_format << 2) | (koala << 3))
+                             b"CI", file_size, self.width, self.height, bits_per_pixel, flags)
         with open(filename, "wb") as output:
             output.write(header)
             output.write(palette)
@@ -819,41 +823,40 @@ def load_image(filename) -> ImageLoader:
 
 if __name__ == "__main__":
     gui = GUI()
-    # imagenames = [
-    #     "winterqueen-ehb.iff",
-    #     "psygnosis.iff",
-    #     "team17.iff",
-    #     "trsi.iff",
-    #     "tk_truth.iff",
-    #     "tk_truth2.iff",
-    #     "spideymono-oddsize.png",
-    #     "spidey256-oddsize.png",
-    #     "nier256.png",
-    #     "nier256gray.png",
-    #     "nier16.png",
-    #     "nier2mono.png",
-    #     "spideymono-oddsize.bmp",
-    #     "spidey256-oddsize.bmp",
-    #     "test1x1.bmp",
-    #     "nier256.bmp",
-    #     "nier256gray.bmp",
-    #     "spidey256.bmp",
-    #     "nier16.bmp",
-    #     "nier2mono.bmp",
-    #     "test1x1.pcx",
-    #     "nier256.pcx",
-    #     "nier256gray.pcx",
-    #     "nier2mono.pcx",
-    #     "nier16.pcx",
-    #     "Blubb by Sphinx.koa",
-    #     "Dinothawr Title by Arachne.koa",
-    #     "Bugjam 7 by JSL.koa",
-    #     "Jazz-man by Joodas.koa",
-    #     "Katakis by JonEgg.koa",
-    #     "The Hunter by Almighty God.koa",
-    #     "What Does the Fox Say by Leon.koa"
-    # ]
-    imagenames = ["team17.c16i"]
+    imagenames = [
+        "winterqueen-ehb.iff",
+        "psygnosis.iff",
+        "team17.iff",
+        "trsi.iff",
+        "tk_truth.iff",
+        "tk_truth2.iff",
+        "spideymono-oddsize.png",
+        "spidey256-oddsize.png",
+        "nier256.png",
+        "nier256gray.png",
+        "nier16.png",
+        "nier2mono.png",
+        "spideymono-oddsize.bmp",
+        "spidey256-oddsize.bmp",
+        "test1x1.bmp",
+        "nier256.bmp",
+        "nier256gray.bmp",
+        "spidey256.bmp",
+        "nier16.bmp",
+        "nier2mono.bmp",
+        "test1x1.pcx",
+        "nier256.pcx",
+        "nier256gray.pcx",
+        "nier2mono.pcx",
+        "nier16.pcx",
+        "Blubb by Sphinx.koa",
+        "Dinothawr Title by Arachne.koa",
+        "Bugjam 7 by JSL.koa",
+        "Jazz-man by Joodas.koa",
+        "Katakis by JonEgg.koa",
+        "The Hunter by Almighty God.koa",
+        "What Does the Fox Say by Leon.koa"
+    ]
 
     images = []
     for name in imagenames:
@@ -862,7 +865,7 @@ if __name__ == "__main__":
         images.append(pillow_image)
         cx16image = Cx16Image()
         cx16image.load_pillow_image(pillow_image, num_colors)
-        cx16image.write(os.path.splitext(name)[0]+".c16i")
+        cx16image.write(os.path.splitext(name)[0] + ".c16i")
 
     time = 200
     for img in images:
