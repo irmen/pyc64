@@ -690,29 +690,32 @@ Numbers are encoded in little endian format (lsb first).
 offset      value
 -----------------
 HEADER (12 bytes):
-0-1     'CI' in petscii , from "CommanderX16 Image".
-2-4     size of the remainder of the file in bytes (24-bits number) or 0 if unknown
-5       pad byte, always 0.
-6-7     width in pixels  (must be multiple of 8)
-8-9     height in pixels
-10      bits-per-pixel  (1, 2, 4 or 8)  (= 2, 4, 16 or 256 colors)
-        this also determines the number of palette entries following later.
-11      settings bits.
-        bit 0 and 1 = compression.  00 = uncompressed
-                                    01 = PCX-RLE    [TODO not yet implemented]
-                                    10 = LZSA       [TODO not yet implemented]
-                                    11 = Exomizer   [TODO not yet implemented]
-        bit 2 = palette format.  0 = 4 bits/channel  (2 bytes per color, $0R $GB)  [TODO not yet implemented]
-                                 1 = 8 bits/channel  (3 bytes per color, $RR $GG $BB)
+0-1    'CI' in petscii , from "CommanderX16 Image".
+2      Size of the header data following this byte (currently always 9)
+3-4    Width in pixels  (must be multiple of 8)
+5-6    Height in pixels
+7      Bits-per-pixel  (1, 2, 4 or 8)  (= 2, 4, 16 or 256 colors)
+         this also determines the number of palette entries following later.
+8      Settings bits.
+         bit 0 and 1 = compression.  00 = uncompressed
+                                     01 = PCX-RLE    [TODO not yet implemented]
+                                     10 = LZSA       [TODO not yet implemented]
+                                     11 = Exomizer   [TODO not yet implemented]
+         bit 2 = palette format.  0 = 4 bits/channel  (2 bytes per color, $0R $GB)  [TODO not yet implemented]
+                                  1 = 8 bits/channel  (3 bytes per color, $RR $GG $BB)
                 4 bits per channel is the Cx16's native palette format.
-        bit 3 = bitmap format.   0 = raw bitmap pixels
+         bit 3 = bitmap format.   0 = raw bitmap pixels
                                  1 = tile-based image   [TODO not yet implemented]
-        bit 4 = hscale (horizontal display resulution) 0 = 320 pixels, 1 = 640 pixels
-        bit 5 = vscale (vertical display resulution) 0 = 240 pixels, 1 = 480 pixels
-        bit 6,7: reserved, set to 0
-PALETTE (size varies):
-12-...  color palette. Number of entries = 2 ^ bits-per-pixel.  Number of bytes per
-        entry is 2 or 3, depending on the chosen palette format in the setting bits.
+         bit 4 = hscale (horizontal display resulution) 0 = 320 pixels, 1 = 640 pixels
+         bit 5 = vscale (vertical display resulution) 0 = 240 pixels, 1 = 480 pixels
+         bit 6,7: reserved, set to 0
+9-11   Size of the bitmap data following the palette data.
+         This is a 24-bits number, can be 0 ("unknown", in which case just read until the end).
+
+PALETTE (always present but size varies):
+12-... Color palette. Number of entries = 2 ^ bits-per-pixel.  Number of bytes per
+         entry is 2 or 3, depending on the chosen palette format in the setting bits.
+
 BITMAPDATA (size varies):
 After this, the actual image data follows.
 If the bitmap format is 'raw bitmap pixels', the bimap is simply written as a sequence
@@ -721,18 +724,17 @@ If it is 'tiles', .... [TODO]
 If a compression scheme is used, the bitmap data here has to be decompressed first.
     """
 
-    HEADER_FORMAT = "<2sIHHBB"
+    HEADER_FORMAT = "<2sBHHBBBBB"
 
     def __init__(self, filename=""):
         if filename:
             super().__init__(filename)
-            headersize = struct.calcsize(self.HEADER_FORMAT)
-            magic, fsize, self.width, self.height, bpp, flags = struct.unpack(self.HEADER_FORMAT,
-                                                                              self.image_data[:headersize])
+            magic, headersize, self.width, self.height, bpp, flags, bms_lsb, bms_msb, bms_hsb = \
+                struct.unpack(self.HEADER_FORMAT, self.image_data[:struct.calcsize(self.HEADER_FORMAT)])
+            headersize += 3
+            bitmap_size = (bms_hsb << 16) | (bms_msb << 8) | bms_lsb
             if magic != b"CI":
                 raise ValueError("not a Cx16 image file")
-            if fsize + 6 != len(self.image_data):
-                raise ValueError("file size mismatch in header")
             self.num_colors = 2 ** bpp
             compression = flags & 0b00000011
             if compression != 0:
@@ -744,12 +746,18 @@ If a compression scheme is used, the bitmap data here has to be decompressed fir
             if bitmap_format == 1:
                 raise NotImplementedError("tile based bitmap not yet supported")
             if palette_format == 0:
+                palette_size = self.num_colors*2
                 raise NotImplementedError("4 bits/channel palette not yet supported")
             else:
-                self.palette = self.image_data[headersize:headersize + 3 * self.num_colors]
-                self.image_data = self.image_data[headersize + 3 * self.num_colors:]
-                if len(self.image_data) != self.width * self.height:
-                    raise ValueError("??")
+                palette_size = self.num_colors*3
+
+            total_size = headersize + palette_size + bitmap_size
+            if total_size != len(self.image_data):
+                raise ValueError("bitmap size mismatch in header")
+            self.palette = self.image_data[headersize:headersize + palette_size]
+            self.image_data = self.image_data[headersize + palette_size:]
+            if len(self.image_data) != self.width * self.height:
+                raise ValueError("??")
         else:
             self.width = self.height = 0
             self.num_colors = 0
@@ -794,9 +802,14 @@ If a compression scheme is used, the bitmap data here has to be decompressed fir
             ext = b"\0\0\0" * (expected_palette_size - len(self.palette))
             palette = (bytes(self.palette) + ext)[:expected_palette_size]
 
-        file_size = struct.calcsize(self.HEADER_FORMAT) - 6 + len(palette) + len(self.image_data)
+        headersize = struct.calcsize(self.HEADER_FORMAT)
+        bitmap_size = len(self.image_data)
+        bms_lsb = bitmap_size & 255
+        bms_msb = (bitmap_size >> 8) & 255
+        bms_hsb = (bitmap_size >> 16) & 255
         header = struct.pack(self.HEADER_FORMAT,
-                             b"CI", file_size, self.width, self.height, bits_per_pixel, flags)
+                             b"CI", headersize - 3, self.width, self.height, bits_per_pixel, flags, bms_lsb, bms_msb,
+                             bms_hsb)
         with open(filename, "wb") as output:
             output.write(header)
             output.write(palette)
@@ -828,7 +841,8 @@ if __name__ == "__main__":
     #raise SystemExit
 
     gui = GUI()
-    imagenames = [
+    imagenames= ["trsi-small.c16i"]
+    imagenames2 = [
         "winterqueen-ehb.iff",
         "psygnosis.iff",
         "team17.iff",
