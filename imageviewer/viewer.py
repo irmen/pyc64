@@ -263,7 +263,7 @@ class PcxImage(ImageLoader):
         if width & 7:
             raise ValueError("pcx width not multiple of 8")
         # bytes_per_line = header[0x42] + header[0x43]*256
-        # palette_format = header[0x44] + header[0x45] * 256     # 0 = color/mono, 1=grayscale
+        # palette_format = header[0x44] + header[0x45] * 256     # 1 = color/mono, 2=grayscale
         image = Image.new("P", (width, height))
         image.putpalette(palette)
         self.decode_image(image, rle_image, bits_per_pixel, width, height)
@@ -698,12 +698,12 @@ HEADER (12 bytes):
          this also determines the number of palette entries following later.
 8      Settings bits.
          bit 0 and 1 = compression.  00 = uncompressed
-                                     01 = PCX-RLE    [TODO not yet implemented]
+                                     01 = RLE        [TODO not yet implemented]
                                      10 = LZSA       [TODO not yet implemented]
                                      11 = Exomizer   [TODO not yet implemented]
          bit 2 = palette format.  0 = 4 bits/channel  (2 bytes per color, $0R $GB)  [TODO not yet implemented]
                                   1 = 8 bits/channel  (3 bytes per color, $RR $GG $BB)
-                4 bits per channel is the Cx16's native palette format.
+                4 bits per channel is what the Vera in the Cx16 supports.
          bit 3 = bitmap format.   0 = raw bitmap pixels
                                  1 = tile-based image   [TODO not yet implemented]
          bit 4 = hscale (horizontal display resulution) 0 = 320 pixels, 1 = 640 pixels
@@ -722,6 +722,11 @@ If the bitmap format is 'raw bitmap pixels', the bimap is simply written as a se
 of bytes making up the image's scan lines. #bytes per scan line = width * bits-per-pixel / 8
 If it is 'tiles', .... [TODO]
 If a compression scheme is used, the bitmap data here has to be decompressed first.
+
+TODO: with compressed files, store the data in compressed chunks of max 8kb uncompressed?
+(it is a problem to load let alone decompress a full bitmap at once because there will likely not be enough ram to do that)
+(doing it in chunks of 8 kb allows for sticking each chunk in one of the banked 8kb ram blocks, or even copy it directly to the screen)
+
     """
 
     HEADER_FORMAT = "<2sBHHBBBBB"
@@ -828,7 +833,7 @@ def load_image(filename) -> ImageLoader:
         return PngImage(filename)
     elif ext in (".iff", ".IFF", ".ilbm", ".ILBM"):
         return IlbmImage(filename)
-    elif ext in (".c16i", ".C16I"):
+    elif ext in (".ci", ".CI"):
         return Cx16Image(filename)
     else:
         raise IOError("unknown image file format")
@@ -836,13 +841,12 @@ def load_image(filename) -> ImageLoader:
 
 if __name__ == "__main__":
 
-    #ci = Cx16Image("trsi-small.c16i")
+    #ci = Cx16Image("trsi-small.ci")
     #print(ci.height, ci.width, ci.num_colors)
     #raise SystemExit
 
     gui = GUI()
-    imagenames= ["trsi-small.c16i"]
-    imagenames2 = [
+    imagenames = [
         "winterqueen-ehb.iff",
         "psygnosis.iff",
         "team17.iff",
@@ -885,7 +889,7 @@ if __name__ == "__main__":
         images.append(pillow_image)
         cx16image = Cx16Image()
         cx16image.load_pillow_image(pillow_image, num_colors)
-        cx16image.write(os.path.splitext(name)[0] + ".c16i")
+        cx16image.write(os.path.splitext(name)[0] + ".ci")
 
     time = 200
     for img in images:
