@@ -1,6 +1,8 @@
 import os
 import zlib
+import math
 import tkinter
+import struct
 from typing import Tuple, List
 from PIL import Image, ImageTk
 
@@ -102,7 +104,7 @@ class KoalaImage(ImageLoader):
         self.colorchars = self.image_data[9002:10002]
         self.screen = self.image_data[10002]
         self.border = 0
-        self.converted_pixels = []   # type: List[int]
+        self.converted_pixels = []  # type: List[int]
 
     def convert(self) -> Tuple[Image.Image, int]:
         # converted = [0] * 320 * 200
@@ -192,7 +194,8 @@ class BmpImage(ImageLoader):
             palette.append(rgba[i * 4 + 0])
         return bytes(palette)
 
-    def decode_image(self, image: Image.Image, bitmap_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
+    def decode_image(self, image: Image.Image, bitmap_data: bytes, bits_per_pixel: int, width: int,
+                     height: int) -> None:
         bits_width = width * bits_per_pixel
         pad_bytes = (((bits_width + 31) >> 5) << 2) - ((bits_width + 7) >> 3)
         ix = 0
@@ -264,7 +267,7 @@ class PcxImage(ImageLoader):
         image = Image.new("P", (width, height))
         image.putpalette(palette)
         self.decode_image(image, rle_image, bits_per_pixel, width, height)
-        return image, 2**bits_per_pixel
+        return image, 2 ** bits_per_pixel
 
     def decode_image(self, image: Image.Image, rle_data: bytes, bits_per_pixel: int, width: int, height: int) -> None:
         px = 0
@@ -389,7 +392,7 @@ class PngImage(ImageLoader):
                 data += chunk
 
         data = zlib.decompress(data)
-        bitmap_bytes = []   # type: List[int]
+        bitmap_bytes = []  # type: List[int]
         stride = 0
 
         def decode_image():
@@ -523,7 +526,7 @@ class PngImage(ImageLoader):
                     x += 8
         else:
             raise ValueError("bit depth?", bit_depth)
-        return image, 2**bit_depth
+        return image, 2 ** bit_depth
 
 
 class IlbmImage(ImageLoader):
@@ -564,15 +567,15 @@ class IlbmImage(ImageLoader):
             elif chunk_type == b"CMAP":
                 palette = bytearray(chunk)
             elif chunk_type == b"CAMG":
-                self.camg = chunk[2]*256 | chunk[3]
+                self.camg = chunk[2] * 256 | chunk[3]
                 if self.camg & 0x0800:
                     raise NotImplementedError("HAM mode not supported")
             elif chunk_type == b"BODY":
                 if self.camg & 0x0080:
                     # extra-halfbrite mode, double the palette with half-bright colors
                     palette.extend(b"\0\0\0" * 32)
-                    for i in range(32*3):
-                        palette[i+32*3] = palette[i] >> 1
+                    for i in range(32 * 3):
+                        palette[i + 32 * 3] = palette[i] >> 1
                 if self.camg & 0x0004:
                     # interlace, just skip every other line
                     height //= 2
@@ -582,7 +585,7 @@ class IlbmImage(ImageLoader):
                     self.decode_rle(image, chunk, num_planes, width, height)
                 else:
                     self.decode(image, chunk, num_planes, width, height)
-                return image, 2**num_planes
+                return image, 2 ** num_planes
 
     def decode_rle(self, image: Image.Image, data: bytes, num_planes: int, width: int, height: int) -> None:
         bitplane_stride = width >> 3
@@ -603,11 +606,11 @@ class IlbmImage(ImageLoader):
                 if b > 128:
                     b2 = data[data_idx]
                     data_idx += 1
-                    for _ in range(257-b):
+                    for _ in range(257 - b):
                         row_data[row_idx] = b2
                         row_idx += 1
                 elif b < 128:
-                    for _ in range(b+1):
+                    for _ in range(b + 1):
                         row_data[row_idx] = data[data_idx]
                         data_idx += 1
                         row_idx += 1
@@ -661,30 +664,14 @@ class GUI(tkinter.Tk):
         self.canvas.pack(padx=20 * self.SCALE, pady=20 * self.SCALE)
         self.border = self.screen = 0
 
-    def load_image(self, filename: str) -> None:
-        if os.path.splitext(filename)[1] in (".bmp", ".BMP"):
-            image = BmpImage(filename)
-        elif os.path.splitext(filename)[1] in (".pcx", ".PCX"):
-            image = PcxImage(filename)
-        elif os.path.splitext(filename)[1] in (".koa", ".KOA"):
-            image = KoalaImage(filename)
-        elif os.path.splitext(filename)[1] in (".png", ".PNG"):
-            image = PngImage(filename)
-        elif os.path.splitext(filename)[1] in (".iff", ".IFF", ".ilbm", ".ILBM"):
-            image = IlbmImage(filename)
-        else:
-            raise IOError("unknown image file format")
-        pillow_image, num_colors = image.convert()
-        print(filename, pillow_image.size, " num colors:", num_colors)
-        self.draw_image(pillow_image)
-
     def tkcolor(self, color):
         return "#{:06x}".format(self.colorpalette[color & len(self.colorpalette) - 1])
 
     def draw_image(self, image: Image.Image) -> None:
         image = image.resize((image.size[0] * self.SCALE, image.size[1] * self.SCALE))
+        self.canvas.delete("image")
         self.canvas.photo_image = ImageTk.PhotoImage(image)
-        self.canvas.create_image(0, 0, image=self.canvas.photo_image, anchor=tkinter.NW)
+        self.canvas.create_image(0, 0, image=self.canvas.photo_image, anchor=tkinter.NW, tag="image")
         # ci = 0
         # for y in range(200):
         #     for x in range(320):
@@ -695,44 +682,190 @@ class GUI(tkinter.Tk):
         #         ci += 1
 
 
+class Cx16Image(ImageLoader):
+    def __init__(self, filename=""):
+        if filename:
+            super().__init__(filename)
+            headersize = struct.calcsize(self.HEADER_FORMAT)
+            magic, fsize, self.width, self.height, bpp, flags = struct.unpack(self.HEADER_FORMAT, self.image_data[:headersize])
+            if magic != b"CI":
+                raise ValueError("not a Cx16 image file")
+            if fsize + 6 != len(self.image_data):
+                raise ValueError("file size mismatch in header")
+            self.num_colors = 2**bpp
+            compression = flags & 3
+            if compression != 0:
+                raise NotImplementedError("no compression support yet")
+            koala = flags & 8
+            if koala:
+                raise NotImplementedError("no support for loading C64 Koala yet")
+            palette_format = flags & 4
+            if palette_format == 0:
+                raise NotImplementedError("4 bits/channel palette not yet supported")
+            else:
+                self.palette = self.image_data[headersize:headersize + 3*self.num_colors]
+                self.image_data = self.image_data[headersize + 3*self.num_colors:]
+                if len(self.image_data) != self.width*self.height:
+                    raise ValueError("??")
+        else:
+            self.width = self.height = 0
+            self.num_colors = 0
+            self.palette = b""
+            self.image_data = b""
+
+    def load_pillow_image(self, source: Image.Image, num_colors: int) -> None:
+        if source.mode != 'P':
+            raise ValueError("image must be indexed colors (mode P)")
+        if not (2 <= num_colors <= 256):
+            raise ValueError("num colors must be between 2 and 256")
+        self.width, self.height = source.size
+        self.num_colors = num_colors
+        self.palette = source.getpalette()[:num_colors * 3]
+        self.image_data = b""
+        for y in range(self.height):
+            for x in range(self.width):
+                self.image_data += bytes([source.getpixel((x, y))])
+
+    def convert(self) -> Tuple[Image.Image, int]:
+        image = Image.new('P', (self.width, self.height))
+        image.putpalette(self.palette)
+        bytedata = iter(self.image_data)
+        for y in range(self.height):
+            for x in range(self.width):
+                image.putpixel((x, y), next(bytedata))
+        return image, self.num_colors
+
+    HEADER_FORMAT = "<2sIHHBB"
+
+    def write(self, filename: str) -> None:
+        """
+Image file format.
+Numbers are written in little endian format (lsb first).
+
+offset      value
+-----------------
+HEADER (12 bytes):
+  0-1     'CI' in petscii , from "CommanderX16 Image".
+  2-4     size of the remainder of the file in bytes (24-bits number) or 0 if unknown
+  5       pad byte, always 0.
+  6-7     width in pixels  (must be multiple of 8)
+  8-9     height in pixels
+  10      bits-per-pixel  (1, 2, 4 or 8)  (= 2, 4, 16 or 256 colors)
+            this also determines the number of palette entries following later.
+  11      settings bits.
+            bit 0 and 1 = compression.  00 = uncompressed
+                                        01 = PCX-RLE    [TODO not yet implemented]
+                                        10 = LZSA       [TODO not yet implemented]
+                                        11 = Exomizer   [TODO not yet implemented]
+            bit 2 = palette format.  0 = 4 bits/channel  (2 bytes per color, $0R $GB)  [TODO not yet implemented]
+                                     1 = 8 bits/channel  (3 bytes per color, $RR $GG $BB)
+                    4 bits per channel is the Cx16's native palette format.
+            bit 3 = C64 Koala format switch.  0 = normal image. 1 = Koala.  [TODO not yet implemented]
+                    If koala, it means there is NO PALETTE, the image bitmap
+                    data is not on a scanline basis but on 8-byte cell basis,
+                    and the bitmap data is followed by 1000 + 1000 + 1 additional
+                    bytes for the C64 to set the required screen and background colors.
+                    If compression is used, this is all compressed as one buffer.
+            bit 4-7: reserved, set to 0
+PALETTE (size varies):
+  12-...  color palette. Number of entries = 2 ^ bits-per-pixel.  Number of bytes per
+            entry is 2 or 3, depending on the chosen palette format in the setting bits.
+BITMAPDATA (size varies):
+  After this, the actual image data follows.
+  The image is written as a sequence of scan lines.
+  The number of bytes per scan line = width * bits-per-pixel / 8
+  If a compression scheme is used, the image data here has to be decompressed first.
+        """
+        bits_per_pixel = int(math.log2(self.num_colors))
+        if 2**bits_per_pixel != self.num_colors:
+            raise ValueError("number of colors is not a power of 2")
+        compression = 0
+        koala = 0
+        palette_format = 1      # 8 bits/channel = 3 bytes per color
+        if palette_format == 0:
+            raise NotImplementedError("palette format 0  4 bits/channel not yet implemented")
+        else:
+            expected_palette_size = 3 * (2**bits_per_pixel)
+            ext = b"\0\0\0" * (expected_palette_size - len(self.palette))
+            palette = (bytes(self.palette) + ext)[:expected_palette_size]
+
+        file_size = struct.calcsize(self.HEADER_FORMAT) - 6 + len(palette) + len(self.image_data)
+        header = struct.pack(self.HEADER_FORMAT,
+                             b"CI", file_size, self.width, self.height, bits_per_pixel,
+                             compression | (palette_format << 2) | (koala << 3))
+        with open(filename, "wb") as output:
+            output.write(header)
+            output.write(palette)
+            output.write(self.image_data)
+
+
+def load_image(filename) -> ImageLoader:
+    ext = os.path.splitext(filename)[1]
+    if ext in (".bmp", ".BMP"):
+        return BmpImage(filename)
+    elif ext in (".pcx", ".PCX"):
+        return PcxImage(filename)
+    elif ext in (".koa", ".KOA"):
+        return KoalaImage(filename)
+    elif ext in (".png", ".PNG"):
+        return PngImage(filename)
+    elif ext in (".iff", ".IFF", ".ilbm", ".ILBM"):
+        return IlbmImage(filename)
+    elif ext in (".c16i", ".C16I"):
+        return Cx16Image(filename)
+    else:
+        raise IOError("unknown image file format")
+
+
 if __name__ == "__main__":
     gui = GUI()
-    images = [
-        "winterqueen-ehb.iff",
-        "psygnosis.iff",
-        "team17.iff",
-        "trsi.iff",
-        "tk_truth.iff",
-        "tk_truth2.iff",
-        "spideymono-oddsize.png",
-        "spidey256-oddsize.png",
-        "nier256.png",
-        "nier256gray.png",
-        "nier16.png",
-        "nier2mono.png",
-        "spideymono-oddsize.bmp",
-        "spidey256-oddsize.bmp",
-        "test1x1.bmp",
-        "nier256.bmp",
-        "nier256gray.bmp",
-        "spidey256.bmp",
-        "nier16.bmp",
-        "nier2mono.bmp",
-        "test1x1.pcx",
-        "nier256.pcx",
-        "nier256gray.pcx",
-        "nier2mono.pcx",
-        "nier16.pcx",
-        "Blubb by Sphinx.koa",
-        "Dinothawr Title by Arachne.koa",
-        "Bugjam 7 by JSL.koa",
-        "Jazz-man by Joodas.koa",
-        "Katakis by JonEgg.koa",
-        "The Hunter by Almighty God.koa",
-        "What Does the Fox Say by Leon.koa"
-    ]
-    time = 100
+    # imagenames = [
+    #     "winterqueen-ehb.iff",
+    #     "psygnosis.iff",
+    #     "team17.iff",
+    #     "trsi.iff",
+    #     "tk_truth.iff",
+    #     "tk_truth2.iff",
+    #     "spideymono-oddsize.png",
+    #     "spidey256-oddsize.png",
+    #     "nier256.png",
+    #     "nier256gray.png",
+    #     "nier16.png",
+    #     "nier2mono.png",
+    #     "spideymono-oddsize.bmp",
+    #     "spidey256-oddsize.bmp",
+    #     "test1x1.bmp",
+    #     "nier256.bmp",
+    #     "nier256gray.bmp",
+    #     "spidey256.bmp",
+    #     "nier16.bmp",
+    #     "nier2mono.bmp",
+    #     "test1x1.pcx",
+    #     "nier256.pcx",
+    #     "nier256gray.pcx",
+    #     "nier2mono.pcx",
+    #     "nier16.pcx",
+    #     "Blubb by Sphinx.koa",
+    #     "Dinothawr Title by Arachne.koa",
+    #     "Bugjam 7 by JSL.koa",
+    #     "Jazz-man by Joodas.koa",
+    #     "Katakis by JonEgg.koa",
+    #     "The Hunter by Almighty God.koa",
+    #     "What Does the Fox Say by Leon.koa"
+    # ]
+    imagenames = ["team17.c16i"]
+
+    images = []
+    for name in imagenames:
+        pillow_image, num_colors = load_image(name).convert()
+        print(name, pillow_image.size, num_colors)
+        images.append(pillow_image)
+        cx16image = Cx16Image()
+        cx16image.load_pillow_image(pillow_image, num_colors)
+        cx16image.write(os.path.splitext(name)[0]+".c16i")
+
+    time = 200
     for img in images:
-        gui.after(time, gui.load_image, img)
+        gui.after(time, gui.draw_image, img)
         time += 2000
     gui.mainloop()
