@@ -822,6 +822,11 @@ def load_image(filename) -> ImageLoader:
 
 
 if __name__ == "__main__":
+
+    #ci = Cx16Image("trsi-small.c16i")
+    #print(ci.height, ci.width, ci.num_colors)
+    #raise SystemExit
+
     gui = GUI()
     imagenames = [
         "winterqueen-ehb.iff",
@@ -836,6 +841,7 @@ if __name__ == "__main__":
         "nier256gray.png",
         "nier16.png",
         "nier2mono.png",
+        "trsi-small.png",
         "spideymono-oddsize.bmp",
         "spidey256-oddsize.bmp",
         "test1x1.bmp",
