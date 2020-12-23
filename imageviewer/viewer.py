@@ -530,6 +530,20 @@ class PngImage(ImageLoader):
 
 
 class IlbmImage(ImageLoader):
+    class CycleRange:
+        def __init__(self):
+            self.reverse = 0
+            self.low = 0
+            self.high = 0
+            self.rate = 0           # from CRNG
+            self.delay_sec = 0      # from CCRT
+            self.delay_micro = 0    # from CCRT
+            self.rate_tick = 1      # used by actual color cycling
+
+    def __init__(self, filename: str) -> None:
+        super().__init__(filename)
+        self.cycles = []        # type: List[IlbmImage.CycleRange]
+
     def convert(self) -> Tuple[Image.Image, int]:
         if self.image_data[:4] != b"FORM" or self.image_data[8:12] != b"ILBM":
             raise ValueError("not an iff ilbm file")
@@ -586,6 +600,50 @@ class IlbmImage(ImageLoader):
                 else:
                     self.decode(image, chunk, num_planes, width, height)
                 return image, 2 ** num_planes
+            elif chunk_type == b"CCRT":
+                self.add_ccrt_cycle(chunk)
+            elif chunk_type == b"CRNG":
+                self.add_crng_cycle(chunk)
+
+    def add_ccrt_cycle(self, chunk: bytes) -> None:
+        direction = chunk[1]
+        if direction == 0:
+            return
+        crange = IlbmImage.CycleRange()
+        crange.low = chunk[2]
+        crange.high = chunk[3]
+        crange.delay_sec = chunk[4] * 256 * 256 * 256 + chunk[5] * 256 * 256 + chunk[6] * 256 + chunk[7]
+        crange.delay_micro = chunk[8] * 256 * 256 * 256 + chunk[9] * 256 * 256 + chunk[10] * 256 + chunk[11]
+        # Colour cycle rate. The units are such that a rate of 60 steps per second is represented as 2**14 = 16384.
+        # Lower rates can be obtained by linear scaling: for 30 steps/second, rate = 8192
+        delay = float(crange.delay_sec) + crange.delay_micro / 1000000.0
+        crange.rate = int(16384 // (delay * 60))
+        crange.reverse = direction not in (0, 1)
+        for cyc in self.cycles:
+            if cyc.low == crange.low and cyc.high == crange.high:
+                return
+        self.cycles.append(crange)
+
+    def add_crng_cycle(self, chunk: bytes) -> None:
+        crange = IlbmImage.CycleRange()
+        crange.rate = chunk[2]*256 + chunk[3]
+        # Colour cycle rate. The units are such that a rate of 60 steps per second is represented as 2**14 = 16384.
+        # Lower rates can be obtained by linear scaling: for 30 steps/second, rate = 8192
+        if crange.rate == 0:
+            return
+        delay = 16384.0 / (60 * crange.rate)
+        crange.delay_sec = int(delay)
+        crange.delay_micro = int(1000000.0 * (delay - crange.delay_sec))
+        flags = chunk[4] * 256 + chunk[5]
+        if flags & 1 == 0:
+            return
+        crange.reverse = flags & 2 == 1
+        crange.low = chunk[6]
+        crange.high = chunk[7]
+        for cyc in self.cycles:
+            if cyc.low == crange.low and cyc.high == crange.high:
+                return
+        self.cycles.append(crange)
 
     def decode_rle(self, image: Image.Image, data: bytes, num_planes: int, width: int, height: int) -> None:
         bitplane_stride = width >> 3
@@ -751,10 +809,10 @@ TODO: with compressed files, store the data in compressed chunks of max 8kb unco
             if bitmap_format == 1:
                 raise NotImplementedError("tile based bitmap not yet supported")
             if palette_format == 0:
-                palette_size = self.num_colors*2
+                palette_size = self.num_colors * 2
                 raise NotImplementedError("4 bits/channel palette not yet supported")
             else:
-                palette_size = self.num_colors*3
+                palette_size = self.num_colors * 3
 
             total_size = headersize + palette_size + bitmap_size
             if total_size != len(self.image_data):
@@ -841,9 +899,9 @@ def load_image(filename) -> ImageLoader:
 
 if __name__ == "__main__":
 
-    #ci = Cx16Image("trsi-small.ci")
-    #print(ci.height, ci.width, ci.num_colors)
-    #raise SystemExit
+    # ci = Cx16Image("trsi-small.ci")
+    # print(ci.height, ci.width, ci.num_colors)
+    # raise SystemExit
 
     gui = GUI()
     imagenames = [
