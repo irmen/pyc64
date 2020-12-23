@@ -606,7 +606,7 @@ class IlbmImage(ImageLoader):
                 self.add_crng_cycle(chunk)
 
     def add_ccrt_cycle(self, chunk: bytes) -> None:
-        direction = chunk[1]
+        direction = chunk[0]*256 + chunk[1]
         if direction == 0:
             return
         crange = IlbmImage.CycleRange()
@@ -618,7 +618,7 @@ class IlbmImage(ImageLoader):
         # Lower rates can be obtained by linear scaling: for 30 steps/second, rate = 8192
         delay = float(crange.delay_sec) + crange.delay_micro / 1000000.0
         crange.rate = int(16384 // (delay * 60))
-        crange.reverse = direction not in (0, 1)
+        crange.reverse = direction == 1     # TODO weird, the spec say that -1 = reversed but several example images that I have downloaded are the opposite
         for cyc in self.cycles:
             if cyc.low == crange.low and cyc.high == crange.high:
                 return
