@@ -70,7 +70,7 @@ class EmulatorWindowBase(tkinter.Tk):
     charset_shifted = "charset-shifted.png"
     colorpalette = []
     welcome_message = "Welcome to the simulator!"
-    trace_mode=True
+    trace_mode=False
 
     def __init__(self, screen, title, roms_directory):
         if len(self.colorpalette) not in (2, 4, 8, 16, 32, 64, 128, 256):

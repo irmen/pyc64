@@ -15,6 +15,8 @@ from .cputools import CPU
 import struct
 import os, fnmatch
 
+from .monitor import MonitorWindow
+
 class DummyEvent():
     def __init__(self,c):
         self.char=c
@@ -33,13 +35,13 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
     welcome_message = "Running the Real ROMS!"
     update_rate = 1000/20
 
+
     def __init__(self, screen, title, roms_directory,argv):        
         super().__init__(screen, title, roms_directory, True)
-
-        self.last_describe_state=""
-        from .monitor import MonitorWindow
-        self.monitor_window=MonitorWindow(self.screen.memory)
-       
+        self.last_describe_state=""        
+        # Trick to avoid messing up with curses
+        from curses import wrapper
+        wrapper(self.init_monitor)
         self.keypresses = [ ]
         if argv!=None and len(argv) >=2:            
             for c in  reversed("lO\"" + argv[1]+ "\"\rlI\rrun\r"):
@@ -48,6 +50,10 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         self.device23={}
         self.TRACE_REF={}
         self.load_trace()
+
+
+    def init_monitor(self,stdscr):        
+        self.monitor_window=MonitorWindow(self.screen.memory,stdscr)        
     
     def trace_toggle(self):
         """
@@ -96,13 +102,15 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         previous_cycles = 0
         mem = self.screen.memory
         old_raster = 0
+
+
         while True:
             irq_start_time = time.perf_counter()
             while time.perf_counter() - irq_start_time < 1.0/60.0:
                 for _ in range(1000):
                     cpu.step()
                     if self.trace_status():
-                        self.describe_state(cpu,mem)
+                        self.describe_state(cpu,mem)                        
                     if cpu.pc == 0xFFD8:
                         self.breakpointKernelSave(cpu,mem)
                     elif cpu.pc == 0xFFD5:
@@ -121,8 +129,27 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                         # X low, Y High                        
                         fname=self.get_filename(cpu.x+cpu.y*256,cpu.a,cpu)
                         ## 
-                        # FFC0 KERNAL Open a logical file / 0xB8 è  logical filename?!
+                        # FFC0 KERNAL Open a logical file 
                         self.monitor_window.say("** Reading filename (if A=0 ignore it) {}".format(fname))
+                    # The following codition is TOO WEAK and brings troubles
+                    # The BASIC STARTs to loop in a bad way
+                    elif cpu.pc == 0xFFCF  and mem[0x99]==23:
+                        logical_file_number=mem[0xB8]
+                        secondary_address=mem[0xB9]
+                        self.monitor_window.say("DEVICE23 INPUT Intecept TAKE OFF Logical File Number={} SecondayAddress={} ".format(logical_file_number, secondary_address))
+                        # output A
+                        #cpu.a=65 
+                        # ouput cr to finish
+                        cpu.a=13
+                        cpu.pc=0xE1C6 # RTS
+                    # elif cpu.pc in [0xE219]:
+                    #     self.monitor_window.say(" Breakpoint mode")
+                    #     c=self.monitor_window.breakpoint()
+                    #     while c=='s':
+                    #         cpu.step()
+                    #         self.describe_state(cpu,mem)
+                    #         self.monitor_window.say(" Breakpoint (cont)")
+                    #         c=self.monitor_window.breakpoint()
                         # Then execute FFDB to be sure data is set                                            
                     # FFCF KERNAL CHRIN       Input character from channel    byte -> A       - A=$01 X=$00 Y=$00 P=%00110010 SP=F0
                     # F157 KERNAL Input a byte              - A=$01 X=$00 Y=$00 P=%00110010 SP=F0                        
@@ -135,7 +162,6 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                         # RTS on Listen
                         # self.monitor_window.say("LISTEN / SEND Low level Kernal TRAPPED")
                         cpu.pc=0xE1C6
-
                     # -------
                     # set the raster line based off the number of CPU cycles processed
                     raster = (cpu.processorCycles//63) % 312
@@ -150,12 +176,13 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                 if not self.trace_status():
                     time.sleep(0.001)
             self.irq(cpu)
-            duration = time.perf_counter() - irq_start_time
-            speed = (cpu.processorCycles-previous_cycles) / duration / 1e6
-            previous_cycles = cpu.processorCycles    
-            if self.trace_status()==False:
-                self.monitor_window.say("CPU simulator: PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} -  clockspeed = {:.1f} MHz   "
-                .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed), end="\r")
+            duration = time.perf_counter() - irq_start_time            
+            if duration >0.11:
+                # We are so slow we must signal it:
+                speed = (cpu.processorCycles-previous_cycles) / duration / 1e6                   
+                self.monitor_window.say("!! Slowdown CPU PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} - {:.1f} MHz {:.1f}"
+                 .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed,cpu.processorCycles))
+            previous_cycles = cpu.processorCycles 
 
 
     def breakpointKernelSave(self,cpu,mem):        
@@ -221,9 +248,9 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                         startAddr = struct.unpack("<H", file.read(2))[0]                                            
                         prog=file.read()
                         endAddress=self.load(startAddr,prog)
-                        self.monitor_window.say("\nLoading {:02X}:{:02X} {} Start Addr: {:02X} ... up to: $ {:02X}\n".format(
+                        self.monitor_window.say("Loading {:02X}:{:02X} {} Start Addr: {:02X} ... up to: $ {:02X}".format(
                                        fa,sa,final_path, startAddr, endAddress))                        
-                        file.close()                
+                        file.close()
                     # success
                     cpu.pc=0xf5a9
                 except FileNotFoundError:

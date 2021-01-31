@@ -1,6 +1,7 @@
 from pyc64 import monitor
 import sys
 
-monitor.test()
+from curses import wrapper
+wrapper(monitor.test)
 
 

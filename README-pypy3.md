@@ -19,8 +19,10 @@ A convenient install is
   curl -O https://bootstrap.pypa.io/get-pip.py -o get-pip.py  
   pypy3 get-pip.py  
   pypy3 -m pip install -r requirements.txt
+  # Ensure pillow correctly installed (sometimes you get errors)
+  pypy3 -m pip install -U Pillow
+  apt-get install libncurses-dev
   # Test with
   pypy3  startreal64.py  \$
-
 The pip installation will be local to your user.
 

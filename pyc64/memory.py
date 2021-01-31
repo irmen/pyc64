@@ -267,7 +267,7 @@ class ScreenAndMemory:
             for rom, address in (("basic", 0xa000), ("kernal", 0xe000),("cart8000",0x8000)):
                 try:
                     self.memory.load_rom(rom_directory+"/"+rom, address)
-                    print("loading rom file", rom, "at", hex(address))
+                    #print("loading rom file", rom, "at", hex(address))
                     self.using_roms = True
                 except IOError:
                     print("can't load rom-file {:s}/{:s}, consider supplying it".format(rom_directory, rom))
