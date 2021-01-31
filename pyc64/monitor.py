@@ -9,8 +9,6 @@ from .cputools import CPU
 
 class MonitorWindow:
     def __init__(self, memory, stdscr=initscr()):
-        #self.master = master
-        #self.frame = tk.Frame(self.master)
         self.memory=memory
         self.cpu=None
         self.stdscr = stdscr
@@ -18,11 +16,15 @@ class MonitorWindow:
         #noecho()
         #cbreak() 
         self.messages=[]
+        disassemble_buffer_size=20
         # Set here the size of the disassemble buffer
-        # At least 4 lines are suggested to undrstand assembly decode
-        for x in range(1,40):
+        for x in range(1,disassemble_buffer_size):
             self.messages.append("")
-
+        x,y=stdscr.getmaxyx()
+        self.say("Screen size {} x {}".format(x,y))
+        minimal_size=20+disassemble_buffer_size
+        if y<minimal_size:
+            self.say("WARNING:: *Screen too small* Minimal rows:{} ".format(minimal_size))
         # #self.wm_title("Monitor")
         # #self.frame.geometry("+100+40")
         # label = tk.Label(text="ZeroPage")
@@ -46,7 +48,7 @@ class MonitorWindow:
                 self.stdscr.addstr(m+"\n")
             # GG On unbuntu we get _curses.error: addstr() returned ERR
             except  Exception as err:
-                pass          
+                pass        
         self.stdscr.refresh()
 
     def breakpoint(self):

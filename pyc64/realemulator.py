@@ -16,6 +16,8 @@ import struct
 import os, fnmatch
 
 from .monitor import MonitorWindow
+import pyc64.device23
+import importlib
 
 class DummyEvent():
     def __init__(self,c):
@@ -34,8 +36,6 @@ class DummyEvent():
 class RealC64EmulatorWindow(C64EmulatorWindow):
     welcome_message = "Running the Real ROMS with powerful monitor functions!"
     update_rate = 1000/20
-
-
     def __init__(self, screen, title, roms_directory,argv):        
         super().__init__(screen, title, roms_directory, True)
         self.last_describe_state=""        
@@ -50,7 +50,10 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         self.device23={}
         self.TRACE_REF={}
         self.load_trace()
-        self.protocol("WM_DELETE_WINDOW", self.on_closing_quit_and_reset_curses)
+        self.protocol("WM_DELETE_WINDOW", self.on_closing_quit_and_reset_curses)        
+        # Enable device 23 reload
+        importlib.reload(pyc64.device23)
+        pyc64.device23.post_reload(self.screen.memory, self.real_cpu_running)
 
     def on_closing_quit_and_reset_curses(self):
         self.monitor_window.finish()
@@ -59,7 +62,7 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
 
     def init_monitor(self,stdscr):        
         self.monitor_window=MonitorWindow(self.screen.memory,stdscr)        
-    
+           
     def trace_toggle(self):
         """
          Override trace toggle
@@ -68,7 +71,11 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         self.info_label.config(text= ("Reloaded/Trace Mode:"+str(self.trace_mode)))
         self.load_trace()
 
-
+    def hot_reload(self):
+        self.reload_button.config(text="Reloading...")
+        importlib.reload(pyc64.device23)
+        msg=pyc64.device23.post_reload(self.screen.memory,self.real_cpu_running)
+        self.reload_button.config(text=msg) 
 
     def load_trace(self):
         from .xref_loader import load_64disasm
@@ -86,10 +93,10 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         """
         if cpu.pc in self.TRACE_REF:
             category, comment=self.TRACE_REF[cpu.pc]
-            msg="{:02X} {:6.6} {:100.100}".format(cpu.pc,category,comment)
+            msg="{:02X} {:6.6} {:80.80}".format(cpu.pc,category,comment)
             if self.last_describe_state!=msg:
-                self.monitor_window.say(msg+(" - A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} SP={:02X}"
-                    .format( cpu.a, cpu.x, cpu.y, cpu.p, cpu.sp)))
+                self.monitor_window.say(msg+(" - A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} SP={:02X} cycle {}"
+                    .format( cpu.a, cpu.x, cpu.y, cpu.p, cpu.sp,cpu.processorCycles)))
                 self.last_describe_state=msg         
     
 
@@ -101,7 +108,6 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         previous_cycles = 0
         mem = self.screen.memory
         old_raster = 0
-
 
         while True:
             irq_start_time = time.perf_counter()
@@ -170,22 +176,19 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                         if raster > 255:
                             high |= 0b10000000
                         mem[53265] = high
-                        old_raster = raster
-                # skip sleep if trace active: we are too slow to take care of this sleep                        
-                if not self.trace_status():
-                    time.sleep(0.001)
+                        old_raster = raster                
+                time.sleep(0.001)
             self.irq(cpu)
-            duration = time.perf_counter() - irq_start_time            
-            if duration >0.11:
-                # We are so slow we must signal it:
-                speed = (cpu.processorCycles-previous_cycles) / duration / 1e6                   
-                self.monitor_window.say("!! Slowdown CPU PC=${:04x} A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} - {:.1f} MHz {:.1f}"
-                 .format(cpu.pc, cpu.a, cpu.x, cpu.y, cpu.p, speed,cpu.processorCycles))
-            previous_cycles = cpu.processorCycles 
+            # Explanation of sleep and so on
+            #duration = time.perf_counter() - irq_start_time
+            #speed = (cpu.processorCycles-previous_cycles) / duration / 1e6
+            #previous_cycles = cpu.processorCycles            
+             
 
 
     def breakpointKernelSave(self,cpu,mem):        
-        """ Ref https://github.com/irmen/ksim65/blob/d1d433c3a640e1429f8fe2755afa96ca39c4dfbb/src/main/kotlin/razorvine/c64emu/c64Main.kt#L82
+        """ Ported from 
+        Ref https://github.com/irmen/ksim65/blob/d1d433c3a640e1429f8fe2755afa96ca39c4dfbb/src/main/kotlin/razorvine/c64emu/c64Main.kt#L82
         """
         self.monitor_window.say("Kernal Save Intercept....")        
         fnlen = mem[0xb7]   # file name length
@@ -204,7 +207,8 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
                 for i in range(startAddr,endAddr):
                     data= mem[i].to_bytes(1, byteorder='little')
                     file.write( data )
-                    self.monitor_window.say("{}".format(data))
+                    # Very verbose: print each char 
+                    # self.monitor_window.say("{}".format(data))
                 file.close()                
             # write data
             mem[0x90]=0 # OK

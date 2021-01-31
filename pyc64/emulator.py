@@ -101,14 +101,14 @@ class EmulatorWindowBase(tkinter.Tk):
 
         # GG Implement trace GUI
         # Ref https://www.python-course.eu/tkinter_buttons.php
-        self.info_label=tkinter.Label(self.buttonbar, text="...")
-        
-
+        self.info_label=tkinter.Label(self.buttonbar, text="...")        
         trace=tkinter.Button(self.buttonbar, text="trace toggle", command=self.trace_toggle)  
-        
         # Set Button at the extreme right:
         trace.pack(side=tkinter.RIGHT)
         self.info_label.pack(side=tkinter.RIGHT)
+
+        self.reload_button=tkinter.Button(self.buttonbar, text="Hot Reload",  command=self.hot_reload)
+        self.reload_button.pack(side=tkinter.LEFT)
 
         self.buttonbar.pack(fill=tkinter.X)
         self.refreshtick = threading.Event()
@@ -331,6 +331,11 @@ class EmulatorWindowBase(tkinter.Tk):
         self.trace_mode=not self.trace_mode
         print("Trace Mode: {}".format(self.trace_mode))
         self.info_label.config(text= ("Trace Mode:"+str(self.trace_mode)))
+
+    def hot_reload(self):
+        """ Implemented  in subclasses if needed """
+        self.reload_button.config(text="Nothing implemented")        
+
     def trace_status(self):
         return self.trace_mode
 
@@ -650,7 +655,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
             self.switch_interpreter("basic")
         if self.screen.using_roms:
             reset = self.screen.memory.getword(0xfffc)
-            print( "using actual ROM reset routine at ${:02X}".format(reset) )
+            #print( "using actual ROM reset routine at ${:02X}".format(reset) )
             if self.run_real_roms:
                 if self.real_cpu_running is None:
                     threading.Thread(target=self.run_rom_code, args=(reset,), daemon=True).start()
