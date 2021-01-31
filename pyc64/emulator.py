@@ -102,10 +102,14 @@ class EmulatorWindowBase(tkinter.Tk):
         # GG Implement trace GUI
         # Ref https://www.python-course.eu/tkinter_buttons.php
         self.info_label=tkinter.Label(self.buttonbar, text="...")
-        self.info_label.pack(side=tkinter.RIGHT)
+        
 
         trace=tkinter.Button(self.buttonbar, text="trace toggle", command=self.trace_toggle)  
+        
+        # Set Button at the extreme right:
         trace.pack(side=tkinter.RIGHT)
+        self.info_label.pack(side=tkinter.RIGHT)
+
         self.buttonbar.pack(fill=tkinter.X)
         self.refreshtick = threading.Event()
         self.spritebitmapbytes = [None] * self.sprites
@@ -140,7 +144,10 @@ class EmulatorWindowBase(tkinter.Tk):
         # self.bind("<KeyPress>", self.keypress)
         self.bind("<KeyRelease>", self.keyrelease)
         self.bind("<Key>", self.keypress)
+        
         self.canvas.pack()
+
+
 
     def start(self):
         self._cyclic_repaint()
@@ -257,7 +264,7 @@ class EmulatorWindowBase(tkinter.Tk):
             f.write("this is a temporary folder to cache pyc64 files for tkinter graphics bitmaps.\n")
         if roms_directory and os.path.isfile(roms_directory+"/chargen"):
             # create char bitmaps from the C64 chargen rom file.
-            print("creating char bitmaps from chargen rom")
+            #print("creating char bitmaps from chargen rom")
             create_bitmaps_from_char_rom(self.temp_graphics_folder, roms_directory)
         else:
             if roms_directory:

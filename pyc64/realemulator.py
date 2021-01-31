@@ -32,7 +32,7 @@ class DummyEvent():
 
 
 class RealC64EmulatorWindow(C64EmulatorWindow):
-    welcome_message = "Running the Real ROMS!"
+    welcome_message = "Running the Real ROMS with powerful monitor functions!"
     update_rate = 1000/20
 
 
@@ -50,7 +50,12 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
         self.device23={}
         self.TRACE_REF={}
         self.load_trace()
+        self.protocol("WM_DELETE_WINDOW", self.on_closing_quit_and_reset_curses)
 
+    def on_closing_quit_and_reset_curses(self):
+        self.monitor_window.finish()
+        self.destroy()
+        print("C/64 will live forever")
 
     def init_monitor(self,stdscr):        
         self.monitor_window=MonitorWindow(self.screen.memory,stdscr)        
@@ -85,12 +90,6 @@ class RealC64EmulatorWindow(C64EmulatorWindow):
             if self.last_describe_state!=msg:
                 self.monitor_window.say(msg+(" - A=${:02x} X=${:02x} Y=${:02x} P=%{:08b} SP={:02X}"
                     .format( cpu.a, cpu.x, cpu.y, cpu.p, cpu.sp)))
-                # for i in range(cpu.sp+2, cpu.sp-8, -2):
-                #     loc=mem[i] +mem[i-1]*256
-                #     if i==cpu.sp:
-                #         self.monitor_window.say("Stack: {:02X} ptr* -> {:04X} ".format(i, loc))
-                #     else:
-                #         self.monitor_window.say("Stack: {:02X} ptr  -> {:04X} ".format(i, loc))
                 self.last_describe_state=msg         
     
 
