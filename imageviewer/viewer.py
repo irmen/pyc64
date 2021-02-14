@@ -940,6 +940,8 @@ if __name__ == "__main__":
         "What Does the Fox Say by Leon.koa"
     ]
 
+    imagenames=["champagne-ccycle.iff"]
+
     images = []
     for name in imagenames:
         pillow_image, num_colors = load_image(name).convert()

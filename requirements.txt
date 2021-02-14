@@ -1,3 +1,4 @@
-cbmcodecs >= 0.2.0
+git+https://github.com/irmen/cbmcodecs.git#egg=cbmcodecs
+# cbmcodecs >= 0.2.1
 py65 >= 1.1.0
 pillow

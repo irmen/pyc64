@@ -116,6 +116,8 @@ the program needs to do some charset bitmap conversions at startup for tkinter.
 
 You'll also need the [cbmcodecs](https://github.com/dj51d/cbmcodecs) library to handle
 translation of ASCII text to and from the C-64's PETSCII and screencode values.
+An updated version 0.2.1 that works with Python 3.9 [is here](https://github.com/irmen/cbmcodecs) but
+that one is not yet available on Pypi... (hence the github link in requirements.txt)
 
 If you want to execute 6502 machine code or inspect the memory via a
 machine code monitor, you also need the [py65](https://github.com/mnaberez/py65) library. 
