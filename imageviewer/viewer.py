@@ -947,7 +947,7 @@ if __name__ == "__main__":
         images.append(pillow_image)
         cx16image = Cx16Image()
         cx16image.load_pillow_image(pillow_image, num_colors)
-        cx16image.write(os.path.splitext(name)[0] + ".ci")
+        # cx16image.write(os.path.splitext(name)[0] + ".ci")
 
     time = 200
     for img in images:

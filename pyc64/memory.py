@@ -16,7 +16,7 @@ import struct
 import codecs
 from collections import defaultdict
 # noinspection PyUnresolvedReferences
-import cbmcodecs
+import cbmcodecs2
 
 
 def _codec_errors_pyc64specials(error):
