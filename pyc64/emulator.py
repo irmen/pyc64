@@ -456,7 +456,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
         char = event.char
         if not char or ord(char) > 255:
             char = event.keysym
-        # print("keypress", repr(char), event.state)
+        #print("keypress", repr(char), event.state)
         with_shift = event.state & 1
         with_control = event.state & 4
         with_alt = event.state & 8
@@ -477,6 +477,30 @@ class C64EmulatorWindow(EmulatorWindowBase):
                 if char != 'Prior':
                     self.interpret_thread.buffer_keypress(char, event)
             return
+        # Fixes for OSX Keys
+        if char == 'Return':
+            line = self.screen.current_line(True, True, "ascii")
+            line1, line2, line3 = line[0: self.columns], line[self.columns: self.columns * 2], line[
+                                                                                                self.columns * 2:]
+            if line1.endswith(' '):
+                line1 = ''
+            if line2.endswith(' '):
+                line3 = ''
+            else:
+                line1 = ''
+            line = (line1 + line2 + line3).rstrip()
+            self.screen.return_key()
+            if len(line) > self.columns and not line1:
+                self.screen.return_key()
+            if not with_shift:
+                self.execute_direct_line(line)
+        if char == 'BackSpace':
+            if with_shift:
+                self.screen.insert()
+            else:
+                self.screen.backspace()
+        if char == 'Escape':
+            self.interpret_thread.runstop()
 
         if len(char) == 1:
             # if '1' <= char <= '8' and self.key_control_down:
