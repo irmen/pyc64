@@ -478,6 +478,14 @@ class C64EmulatorWindow(EmulatorWindowBase):
                     self.interpret_thread.buffer_keypress(char, event)
             return
 
+        # translate some non-control characters that have names on certain platforms
+        if char == "Return":
+            char = '\r'
+        elif char in ("BackSpace", "Delete"):
+            char = '\x7f'
+        elif char == "Escape":
+            char = '\x1b'
+
         if len(char) == 1:
             # if '1' <= char <= '8' and self.key_control_down:
             #     self.c64screen.text = ord(char)-1
@@ -497,7 +505,7 @@ class C64EmulatorWindow(EmulatorWindowBase):
                     self.screen.return_key()
                 if not with_shift:
                     self.execute_direct_line(line)
-            elif char in ('\x08', '\x7f', 'Delete'):
+            elif char in ('\x08', '\x7f'):  # backspace/del
                 if with_shift:
                     self.screen.insert()
                 else:
